@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: slimeio
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: node server/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000

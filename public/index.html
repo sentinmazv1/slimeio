@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#080B12" />
+  <title>Slime.io - Neon Açık Dünya Savaş Arenası</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #080B12;
+      color: #F8F9FA;
+      touch-action: none;
+      overscroll-behavior: none;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+    /* Üst Neon HUD Barı */
+    #hud-top {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      background: rgba(13, 18, 30, 0.85);
+      backdrop-filter: blur(10px);
+      padding: 8px 20px;
+      border-radius: 999px;
+      box-shadow: 0 0 24px rgba(0, 245, 212, 0.22);
+      border: 1.5px solid rgba(0, 245, 212, 0.45);
+      z-index: 10;
+      white-space: nowrap;
+      max-width: 96vw;
+    }
+    .brand-logo {
+      font-size: 19px;
+      font-weight: 900;
+      color: #00F5D4;
+      text-shadow: 0 0 12px rgba(0, 245, 212, 0.65);
+      letter-spacing: 0.6px;
+    }
+    #timer {
+      font-size: 20px;
+      font-weight: 900;
+      color: #FF2A85;
+      text-shadow: 0 0 10px rgba(255, 42, 133, 0.55);
+    }
+    #my-score {
+      font-size: 15px;
+      font-weight: 800;
+      color: #00BBF9;
+    }
+    #my-bands {
+      font-size: 14px;
+      font-weight: 800;
+      color: #FFE066;
+    }
+    #net-status {
+      font-size: 12px;
+      font-weight: 700;
+      color: #94A3B8;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    /* Sağ Üst Neon Canlı Skor Tablosu */
+    #leaderboard {
+      position: fixed;
+      top: 12px;
+      right: 14px;
+      width: 300px;
+      background: rgba(13, 18, 30, 0.84);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 10px 12px;
+      box-shadow: 0 0 25px rgba(0, 187, 249, 0.18);
+      border: 1.5px solid rgba(0, 187, 249, 0.4);
+      z-index: 10;
+    }
+    #leaderboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      cursor: pointer;
+    }
+    #leaderboard-header h3 {
+      font-size: 13px;
+      color: #00F5D4;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 900;
+    }
+    #leaderboard-header span {
+      font-size: 11px;
+      color: #94A3B8;
+      font-weight: 700;
+    }
+    #leaderboard-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .lb-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      overflow: hidden;
+      font-size: 12px;
+      font-weight: 700;
+      color: #E2E8F0;
+    }
+    .lb-row.is-me {
+      border: 1.5px solid #00F5D4;
+      background: rgba(0, 245, 212, 0.12);
+    }
+    .lb-bar {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      opacity: 0.22;
+      pointer-events: none;
+      transition: width 0.25s ease;
+    }
+    .lb-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .lb-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+      box-shadow: 0 0 8px currentColor;
+    }
+    .lb-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 1;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+    .lb-badge-belt {
+      background: rgba(0, 245, 212, 0.16);
+      color: #00F5D4;
+      padding: 2px 5px;
+      border-radius: 6px;
+      font-weight: 800;
+    }
+    .lb-badge-cut {
+      background: rgba(255, 42, 133, 0.18);
+      color: #FF70A6;
+      padding: 2px 5px;
+      border-radius: 6px;
+      font-weight: 800;
+    }
+    .lb-score {
+      min-width: 44px;
+      text-align: right;
+      color: #FFE066;
+      font-weight: 900;
+    }
+    /* Alt Kontrol Barı */
+    #join-bar {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(13, 18, 30, 0.86);
+      backdrop-filter: blur(10px);
+      padding: 7px 12px;
+      border-radius: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px;
+      border: 1.5px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+      z-index: 10;
+      max-width: 94vw;
+    }
+    #join-bar input {
+      background: rgba(255, 255, 255, 0.08);
+      color: #FFF;
+      border: 1.5px solid #00F5D4;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-weight: 700;
+      width: 130px;
+      outline: none;
+    }
+    #join-bar button {
+      background: #FF2A85;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    /* Mobil Dokunmatik Aksiyon Butonları (Sağ Alt) */
+    #mobile-action-btns {
+      position: fixed;
+      right: 18px;
+      bottom: 78px;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 15;
+    }
+    .mob-btn {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 2.5px solid #FFFFFF;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 11px;
+      color: #080B12;
+      box-shadow: 0 0 22px rgba(0, 245, 212, 0.45);
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .mob-btn span.icon {
+      font-size: 24px;
+      line-height: 1;
+      margin-bottom: 2px;
+    }
+    #mob-shoot-btn {
+      background: radial-gradient(circle, #00F5D4 0%, #00BBF9 100%);
+      border-color: #00F5D4;
+    }
+    #mob-cut-btn {
+      width: 60px;
+      height: 60px;
+      align-self: flex-end;
+      background: radial-gradient(circle, #FF70A6 0%, #FF2A85 100%);
+      border-color: #FF70A6;
+      color: #FFFFFF;
+      box-shadow: 0 0 18px rgba(255, 42, 133, 0.45);
+    }
+    .mob-btn:active {
+      transform: scale(0.92);
+    }
+    /* Respawn Bildirimi */
+    #overlay-msg {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(13, 18, 30, 0.94);
+      padding: 22px 30px;
+      border-radius: 22px;
+      text-align: center;
+      box-shadow: 0 0 40px rgba(255, 42, 133, 0.45);
+      border: 2.5px solid #FF2A85;
+      display: none;
+      z-index: 20;
+      max-width: 90vw;
+    }
+    #overlay-msg h2 {
+      color: #FF2A85;
+      margin-bottom: 8px;
+    }
+    /* Süre Bittiğinde Çıkan Maç Sonu Skor Tablosu Ekranı (Modal) */
+    #match-end-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(6, 9, 16, 0.78);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 12px;
+    }
+    .scoreboard-card {
+      background: #111726;
+      width: 600px;
+      max-width: 96vw;
+      max-height: 92vh;
+      overflow-y: auto;
+      border-radius: 24px;
+      padding: 22px 24px;
+      box-shadow: 0 0 60px rgba(0, 245, 212, 0.3);
+      border: 2.5px solid #00F5D4;
+      text-align: center;
+    }
+    .winner-banner {
+      background: linear-gradient(135deg, rgba(0, 245, 212, 0.18) 0%, rgba(155, 93, 229, 0.22) 100%);
+      border-radius: 16px;
+      padding: 12px 16px;
+      margin: 10px 0 14px;
+      border: 1.5px solid #00F5D4;
+    }
+    .winner-banner h3 {
+      font-size: 20px;
+      color: #FFE066;
+      font-weight: 900;
+    }
+    .winner-banner p {
+      font-size: 13px;
+      font-weight: 700;
+      color: #CBD5E1;
+      margin-top: 4px;
+    }
+    .final-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .final-table th {
+      background: rgba(255, 255, 255, 0.06);
+      color: #94A3B8;
+      padding: 7px 8px;
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+    .final-table td {
+      padding: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-weight: 700;
+      color: #F1F5F9;
+    }
+    .final-table tr.me-row {
+      background: rgba(0, 245, 212, 0.14);
+    }
+    .modal-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    #next-match-countdown {
+      font-size: 13px;
+      font-weight: 700;
+      color: #94A3B8;
+    }
+    #play-again-btn {
+      background: #00F5D4;
+      color: #080B12;
+      border: none;
+      border-radius: 12px;
+      padding: 9px 18px;
+      font-size: 14px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    /* MOBİL & TABLET DUYARLI (RESPONSIVE) TASARIM */
+    @media (max-width: 860px) {
+      #hud-top {
+        top: 6px;
+        left: 8px;
+        transform: none;
+        padding: 6px 12px;
+        gap: 8px;
+      }
+      .brand-logo { font-size: 14px; }
+      #timer { font-size: 15px; }
+      #my-score { font-size: 12px; }
+      #my-bands { font-size: 12px; }
+      #net-status { display: none; }
+
+      #leaderboard {
+        top: 6px;
+        right: 8px;
+        width: 195px;
+        padding: 7px 9px;
+      }
+      #leaderboard-header h3 { font-size: 11px; }
+      #leaderboard-header span { display: none; }
+      .lb-row { padding: 3px 6px; font-size: 11px; }
+      .lb-badge-cut { display: none; }
+
+      #join-bar {
+        bottom: 6px;
+        padding: 5px 8px;
+        gap: 4px;
+      }
+      #join-bar input { width: 105px; font-size: 12px; padding: 4px 8px; }
+      #join-bar button { font-size: 11px; padding: 5px 8px; }
+      #end-match-btn { display: none; }
+
+      #mobile-action-btns {
+        display: flex;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="hud-top">
+    <div class="brand-logo">🟢 Slime.io</div>
+    <div id="timer">03:00</div>
+    <div id="my-score">Puan: 0</div>
+    <div id="my-bands">Kemer: 1 | 🏹 Ok: 0</div>
+    <div id="net-status">🌐 1 Oyuncu | ⚡ 1 ms</div>
+  </div>
+
+  <div id="leaderboard">
+    <div id="leaderboard-header" title="Skor Tablosunu Aç/Kapat">
+      <h3>🏆 Skor Tablosu</h3>
+      <span>Kemer/Ok | Kesim | Puan</span>
+    </div>
+    <ul id="leaderboard-list"></ul>
+  </div>
+
+  <!-- Mobil Dokunmatik Saldırı ve Kemer Koparma Butonları -->
+  <div id="mobile-action-btns">
+    <button id="mob-shoot-btn" class="mob-btn">
+      <span class="icon">🏹</span>
+      <span>OK AT</span>
+    </button>
+    <button id="mob-cut-btn" class="mob-btn">
+      <span class="icon">✂️</span>
+      <span>KOPAR</span>
+    </button>
+  </div>
+
+  <div id="join-bar">
+    <input id="name-input" type="text" placeholder="Slime Adın..." maxlength="14" />
+    <button id="name-btn">İsim</button>
+    <button id="add-bot-btn" style="background:#00F59B; color:#080B12;">+ Bot</button>
+    <button id="rem-bot-btn" style="background:#FFB800; color:#080B12;">- Bot</button>
+    <button id="end-match-btn" style="background:#9B5DE5; color:#FFFFFF;">🏁 Süreyi Bitir</button>
+    <button id="mute-btn" style="background:#00BBF9; color:#080B12;">🔊 Ses</button>
+  </div>
+
+  <div id="overlay-msg">
+    <h2 id="overlay-title">Son Kemerin Koptu!</h2>
+    <p id="overlay-sub">Yeniden doğmana: 5.0 sn</p>
+  </div>
+
+  <!-- Süre Bittiğinde Açılan Maç Sonu Skor Bord Ekranı -->
+  <div id="match-end-modal">
+    <div class="scoreboard-card">
+      <h2 style="color:#00F5D4; font-size:22px; font-weight:900;">⏱️ SÜRE BİTTİ - MAÇ SONUCU</h2>
+      <div class="winner-banner">
+        <h3 id="winner-title">👑 Şampiyon: Slime</h3>
+        <p id="winner-subtitle">0 Puan • 0 Aktif Kemer</p>
+      </div>
+      <table class="final-table">
+        <thead>
+          <tr>
+            <th>Sıra</th>
+            <th style="text-align:left;">Oyuncu</th>
+            <th>Kemer</th>
+            <th>Kesim (✂️)</th>
+            <th>Eleme (💀)</th>
+            <th style="text-align:right;">Puan</th>
+          </tr>
+        </thead>
+        <tbody id="final-standings-body"></tbody>
+      </table>
+      <div class="modal-footer">
+        <span id="next-match-countdown">Yeni tur 10 sn içinde başlıyor...</span>
+        <button id="play-again-btn">🔄 Hemen Yeni Tur Başlat</button>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/vendor/matter.min.js"></script>
+  <script src="/shared/constants.js"></script>
+  <script src="/shared/geometry.js"></script>
+  <script src="/js/audio.js"></script>
+  <script src="/js/client.js"></script>
+</body>
+</html>
