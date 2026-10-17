@@ -695,26 +695,88 @@
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
 
+  // Klavye (WASD / Yön Tuşları + Space Ok Atma + E/Shift Kemer Koparma) Durumu
+  const keyboard = {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+    mode: 'mouse', // 'mouse' | 'keyboard'
+    aimAngle: 0
+  };
+
+  function isKeyboardMoving() {
+    return keyboard.up || keyboard.down || keyboard.left || keyboard.right;
+  }
+
+  function getKeyboardVector() {
+    let kx = 0;
+    let ky = 0;
+    if (keyboard.left) kx -= 1;
+    if (keyboard.right) kx += 1;
+    if (keyboard.up) ky -= 1;
+    if (keyboard.down) ky += 1;
+    return { kx, ky };
+  }
+
+  function isTypingInInput(target) {
+    if (!target) return false;
+    const tag = (target.tagName || '').toUpperCase();
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
+
   function updateMouseWorld() {
-    if (joystick.active) {
-      const me = renderPlayers.get(selfId);
-      if (me && me.alive) {
-        const dx = joystick.currX - joystick.startX;
-        const dy = joystick.currY - joystick.startY;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 4) {
-          joystick.aimAngle = Math.atan2(dy, dx);
-          const ratio = Math.min(dist / joystick.maxRadius, 1.0);
-          const worldDist = ratio * config.MAX_INPUT_DIST;
-          mouseWorld.x = me.renderX + Math.cos(joystick.aimAngle) * worldDist;
-          mouseWorld.y = me.renderY + Math.sin(joystick.aimAngle) * worldDist;
-        } else {
-          mouseWorld.x = me.renderX;
-          mouseWorld.y = me.renderY;
-        }
+    const me = renderPlayers.get(selfId);
+
+    // 1) Mobil sanal joystick aktifse
+    if (joystick.active && me && me.alive) {
+      const dx = joystick.currX - joystick.startX;
+      const dy = joystick.currY - joystick.startY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 4) {
+        joystick.aimAngle = Math.atan2(dy, dx);
+        const ratio = Math.min(dist / joystick.maxRadius, 1.0);
+        const worldDist = ratio * config.MAX_INPUT_DIST;
+        mouseWorld.x = me.renderX + Math.cos(joystick.aimAngle) * worldDist;
+        mouseWorld.y = me.renderY + Math.sin(joystick.aimAngle) * worldDist;
+      } else {
+        mouseWorld.x = me.renderX;
+        mouseWorld.y = me.renderY;
+      }
+      return;
+    }
+
+    // 2) PC Klavye (WASD / Yön Tuşları) kontrolü
+    const { kx, ky } = getKeyboardVector();
+    if (kx !== 0 || ky !== 0) {
+      keyboard.mode = 'keyboard';
+      const len = Math.hypot(kx, ky) || 1;
+      const nx = kx / len;
+      const ny = ky / len;
+      keyboard.aimAngle = Math.atan2(ny, nx);
+
+      if (me && me.waitingForWall && !me.spectating) {
+        // Duvar seçimi ekranında klavye yön tuşları imleci arenada gezdirir
+        mouseScreen.x = Math.max(20, Math.min(canvas.width - 20, mouseScreen.x + nx * 12));
+        mouseScreen.y = Math.max(20, Math.min(canvas.height - 20, mouseScreen.y + ny * 12));
+        mouseWorld.x = (mouseScreen.x - canvas.width / 2) / camera.zoom + camera.x;
+        mouseWorld.y = (mouseScreen.y - canvas.height / 2) / camera.zoom + camera.y;
         return;
       }
+
+      if (me && me.alive) {
+        mouseWorld.x = me.renderX + nx * config.MAX_INPUT_DIST;
+        mouseWorld.y = me.renderY + ny * config.MAX_INPUT_DIST;
+        return;
+      }
+    } else if (keyboard.mode === 'keyboard' && me && me.alive) {
+      // Sadece klavye ile oynarken tuşlar bırakıldığında karakter fareye çekilmesin, olduğu yönde süzülsün
+      mouseWorld.x = me.renderX;
+      mouseWorld.y = me.renderY;
+      return;
     }
+
+    // 3) Standart Fare (Mouse) kontrolü
     mouseWorld.x = (mouseScreen.x - canvas.width / 2) / camera.zoom + camera.x;
     mouseWorld.y = (mouseScreen.y - canvas.height / 2) / camera.zoom + camera.y;
   }
@@ -771,16 +833,136 @@
     return best || { anchorX: 0, anchorY: -halfH, spawnX: 0, spawnY: -halfH + 40 };
   }
 
-  // --- FARE VE DOKUNMATİK KONTROLLERİ ---
+  // --- FARE, KLAVYE VE DOKUNMATİK KONTROLLERİ ---
   let lastMouseEmitTime = 0;
 
   window.addEventListener('mousemove', (e) => {
     joystick.active = false;
     joystick.touchId = null;
+    const movedDist = Math.hypot(e.clientX - mouseScreen.x, e.clientY - mouseScreen.y);
     mouseScreen.x = e.clientX;
     mouseScreen.y = e.clientY;
+    if (!isKeyboardMoving() && movedDist > 3) {
+      keyboard.mode = 'mouse';
+    }
     updateMouseWorld();
     sendMouseTarget();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (isTypingInInput(e.target)) return;
+    if (lobbyModal.style.display !== 'none' || profileModal.style.display !== 'none' || friendsModal.style.display !== 'none') {
+      return;
+    }
+
+    const code = e.code;
+    const key = (e.key || '').toLowerCase();
+
+    let handledMove = false;
+    if (code === 'KeyW' || code === 'ArrowUp' || key === 'w') {
+      keyboard.up = true;
+      handledMove = true;
+    }
+    if (code === 'KeyS' || code === 'ArrowDown' || key === 's') {
+      keyboard.down = true;
+      handledMove = true;
+    }
+    if (code === 'KeyA' || code === 'ArrowLeft' || key === 'a') {
+      keyboard.left = true;
+      handledMove = true;
+    }
+    if (code === 'KeyD' || code === 'ArrowRight' || key === 'd') {
+      keyboard.right = true;
+      handledMove = true;
+    }
+
+    if (handledMove) {
+      e.preventDefault();
+      window.soundManager.init();
+      joystick.active = false;
+      joystick.touchId = null;
+      keyboard.mode = 'keyboard';
+      updateMouseWorld();
+      sendMouseTarget(true);
+      return;
+    }
+
+    const me = renderPlayers.get(selfId);
+    if (!me || me.spectating) return;
+
+    // Boşluk (Space), Enter, J veya Z -> Duvar Seçiminde Doğma / Oyunda Slime Oku Fırlatma
+    if (code === 'Space' || code === 'Enter' || code === 'KeyJ' || code === 'KeyZ') {
+      e.preventDefault();
+      window.soundManager.init();
+      if (me.waitingForWall) {
+        updateMouseWorld();
+        socket.emit('spawnAtWall', { x: mouseWorld.x, y: mouseWorld.y });
+      } else if (me.alive) {
+        const aimAngle = keyboard.mode === 'keyboard'
+          ? keyboard.aimAngle
+          : Math.atan2(mouseWorld.y - me.renderY, mouseWorld.x - me.renderX);
+        const tx = me.renderX + Math.cos(aimAngle) * 400;
+        const ty = me.renderY + Math.sin(aimAngle) * 400;
+        socket.emit('shootArrow', { x: tx, y: ty });
+      }
+      return;
+    }
+
+    // E, Shift, Q, K veya X -> Kendi Kemerini Koparma
+    if (
+      code === 'KeyE' ||
+      code === 'ShiftLeft' ||
+      code === 'ShiftRight' ||
+      code === 'KeyQ' ||
+      code === 'KeyK' ||
+      code === 'KeyX'
+    ) {
+      e.preventDefault();
+      window.soundManager.init();
+      if (me.alive) {
+        const aimAngle = keyboard.mode === 'keyboard'
+          ? keyboard.aimAngle
+          : Math.atan2(mouseWorld.y - me.renderY, mouseWorld.x - me.renderX);
+        const tx = me.renderX + Math.cos(aimAngle) * 400;
+        const ty = me.renderY + Math.sin(aimAngle) * 400;
+        socket.emit('cutOwnBelt', { x: tx, y: ty });
+      }
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    const code = e.code;
+    const key = (e.key || '').toLowerCase();
+    let changed = false;
+
+    if (code === 'KeyW' || code === 'ArrowUp' || key === 'w') {
+      keyboard.up = false;
+      changed = true;
+    }
+    if (code === 'KeyS' || code === 'ArrowDown' || key === 's') {
+      keyboard.down = false;
+      changed = true;
+    }
+    if (code === 'KeyA' || code === 'ArrowLeft' || key === 'a') {
+      keyboard.left = false;
+      changed = true;
+    }
+    if (code === 'KeyD' || code === 'ArrowRight' || key === 'd') {
+      keyboard.right = false;
+      changed = true;
+    }
+
+    if (changed) {
+      updateMouseWorld();
+      sendMouseTarget(true);
+    }
+  });
+
+  window.addEventListener('blur', () => {
+    keyboard.up = false;
+    keyboard.down = false;
+    keyboard.left = false;
+    keyboard.right = false;
   });
 
   window.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -802,6 +984,11 @@
     joystick.touchId = null;
     mouseScreen.x = e.clientX;
     mouseScreen.y = e.clientY;
+    const clickWorldX = (mouseScreen.x - canvas.width / 2) / camera.zoom + camera.x;
+    const clickWorldY = (mouseScreen.y - canvas.height / 2) / camera.zoom + camera.y;
+    if (!isKeyboardMoving()) {
+      keyboard.mode = 'mouse';
+    }
     updateMouseWorld();
 
     const me = renderPlayers.get(selfId);
@@ -809,15 +996,15 @@
 
     if (e.button === 0) {
       if (me.waitingForWall) {
-        socket.emit('spawnAtWall', { x: mouseWorld.x, y: mouseWorld.y });
+        socket.emit('spawnAtWall', { x: clickWorldX, y: clickWorldY });
       } else if (me.alive) {
-        socket.emit('shootArrow', { x: mouseWorld.x, y: mouseWorld.y });
+        socket.emit('shootArrow', { x: clickWorldX, y: clickWorldY });
       }
       return;
     }
 
     if (e.button === 2 && me.alive) {
-      socket.emit('cutOwnBelt', { x: mouseWorld.x, y: mouseWorld.y });
+      socket.emit('cutOwnBelt', { x: clickWorldX, y: clickWorldY });
     }
   });
 
@@ -925,7 +1112,9 @@
     if (!player || !player.alive || player.bands.length <= 1) return null;
     const lookAngle = joystick.active
       ? joystick.aimAngle
-      : Math.atan2(mouseWorld.y - player.renderY, mouseWorld.x - player.renderX);
+      : keyboard.mode === 'keyboard'
+        ? keyboard.aimAngle
+        : Math.atan2(mouseWorld.y - player.renderY, mouseWorld.x - player.renderX);
     let bestId = null;
     let smallestDiff = Infinity;
 
@@ -1270,8 +1459,8 @@
       } else if (me.waitingForWall) {
         overlayEl.style.display = 'none';
         spectatorBannerEl.style.display = 'block';
-        spectatorBannerEl.textContent = '🎯 DUVAR SEÇİMİ — Doğmak istediğin duvara veya kayaya fareyle sol tıkla (mobilde dokun)!';
-        myBandsEl.textContent = '🎯 Doğmak İçin Bir Kayaya/Duvara Tıkla!';
+        spectatorBannerEl.textContent = '🎯 DUVAR SEÇİMİ — Doğmak istediğin duvara/kayaya Sol Tıkla veya Klavyede [WASD / Yön Tuşları + Space] bas!';
+        myBandsEl.textContent = '🎯 Doğmak İçin Duvara Tıkla / Space Bas!';
       } else if (me.alive) {
         spectatorBannerEl.style.display = 'none';
         overlayEl.style.display = 'none';
@@ -1737,7 +1926,9 @@
       player.id === selfId
         ? joystick.active
           ? joystick.aimAngle
-          : Math.atan2(mouseWorld.y - player.renderY, mouseWorld.x - player.renderX)
+          : keyboard.mode === 'keyboard'
+            ? keyboard.aimAngle
+            : Math.atan2(mouseWorld.y - player.renderY, mouseWorld.x - player.renderX)
         : moveAngle;
     const lookX = Math.cos(lookAngle) * 4;
     const lookY = Math.sin(lookAngle) * 4;
