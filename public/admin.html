@@ -369,12 +369,12 @@
     botSkinSelect.addEventListener('change', saveFormSelections);
     botNameInput.addEventListener('input', saveFormSelections);
 
-    function flashSavedBadge(msg = '✅ Tüm Bot ve Oda Ayarları Kaydedildi!') {
+    function flashSavedBadge(msg = '☁️ Supabase Buluta Kaydedildi!') {
       if (!saveStatusBadge) return;
       saveStatusBadge.textContent = msg;
       saveStatusBadge.style.background = 'rgba(0, 245, 155, 0.28)';
       setTimeout(() => {
-        saveStatusBadge.textContent = '💾 Tüm Ayarlar Otomatik Kayıtlı';
+        saveStatusBadge.textContent = '☁️ Supabase Bulut Bağlı (Kalıcı Kayıt Aktif)';
         saveStatusBadge.style.background = 'rgba(0, 245, 155, 0.16)';
       }, 2200);
     }

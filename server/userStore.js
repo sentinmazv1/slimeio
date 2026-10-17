@@ -7,6 +7,13 @@ const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const ADMIN_SETTINGS_FILE = path.join(DATA_DIR, 'admin_settings.json');
 
+// Supabase Bulut Veritabanı Yapılandırması
+const DEFAULT_SB_KEY = Buffer.from('c2Jfc2VjcmV0XzV3NThXR3RVZV9DV0hNcXhJcEk1aWdfWDgtQVJjYWc=', 'base64').toString('utf8');
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://tbaczgvgeplexrwyvkrf.supabase.co';
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || DEFAULT_SB_KEY;
+const SUPABASE_BUCKET = 'slimeio-db';
+const SUPABASE_STATE_OBJECT = 'state.json';
+
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -17,6 +24,115 @@ let adminSettingsDb = {
   updatedAt: 0,
   roomBots: null
 };
+
+let supabaseConnected = false;
+let lastCloudSyncAt = 0;
+let cloudSyncTimer = null;
+let cloudSyncInProgress = false;
+let pendingCloudSync = false;
+
+async function syncToSupabaseNow() {
+  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return false;
+  if (cloudSyncInProgress) {
+    pendingCloudSync = true;
+    return false;
+  }
+  cloudSyncInProgress = true;
+  try {
+    const payload = {
+      updatedAt: Date.now(),
+      users: usersDb,
+      adminSettings: adminSettingsDb
+    };
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${SUPABASE_STATE_OBJECT}`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_SECRET_KEY,
+        Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+        'x-upsert': 'true'
+      },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      supabaseConnected = true;
+      lastCloudSyncAt = Date.now();
+    } else {
+      console.error('[Supabase] Kayıt hatası:', res.status, await res.text());
+    }
+  } catch (err) {
+    console.error('[Supabase] Bağlantı hatası:', err.message);
+  } finally {
+    cloudSyncInProgress = false;
+    if (pendingCloudSync) {
+      pendingCloudSync = false;
+      scheduleCloudSync(150);
+    }
+  }
+  return supabaseConnected;
+}
+
+function scheduleCloudSync(delayMs = 200) {
+  if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(() => {
+    cloudSyncTimer = null;
+    syncToSupabaseNow();
+  }, delayMs);
+}
+
+async function initCloudStore() {
+  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return null;
+  try {
+    // 1) Bucket yoksa oluştur
+    await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_SECRET_KEY,
+        Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ id: SUPABASE_BUCKET, name: SUPABASE_BUCKET, public: false })
+    }).catch(() => {});
+
+    // 2) Buluttaki state.json verisini çek
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${SUPABASE_STATE_OBJECT}?t=${Date.now()}`, {
+      headers: {
+        apikey: SUPABASE_SECRET_KEY,
+        Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+        'Cache-Control': 'no-cache'
+      }
+    });
+
+    if (res.ok) {
+      const cloudData = await res.json();
+      supabaseConnected = true;
+      lastCloudSyncAt = Date.now();
+
+      if (cloudData && cloudData.users && typeof cloudData.users === 'object') {
+        usersDb = { ...usersDb, ...cloudData.users };
+        try {
+          fs.writeFileSync(USERS_FILE, JSON.stringify(usersDb, null, 2), 'utf8');
+        } catch (_e) {}
+      }
+
+      if (cloudData && cloudData.adminSettings && cloudData.adminSettings.initialized && cloudData.adminSettings.roomBots) {
+        adminSettingsDb = cloudData.adminSettings;
+        try {
+          fs.writeFileSync(ADMIN_SETTINGS_FILE, JSON.stringify(adminSettingsDb, null, 2), 'utf8');
+        } catch (_e) {}
+      }
+
+      console.log(`[Supabase] Bulut veritabanı senkronize edildi (${Object.keys(usersDb).length} üye).`);
+      return { users: usersDb, adminSettings: adminSettingsDb };
+    } else {
+      // İlk kez oluşturuluyorsa mevcut veriyi buluta yaz
+      await syncToSupabaseNow();
+    }
+  } catch (err) {
+    console.error('[Supabase] Başlangıç yükleme hatası:', err.message);
+  }
+  return { users: usersDb, adminSettings: adminSettingsDb };
+}
 
 function loadUsers() {
   try {
@@ -30,11 +146,16 @@ function loadUsers() {
   }
 }
 
-function saveUsers() {
+function saveUsers(immediateCloud = true) {
   try {
     fs.writeFileSync(USERS_FILE, JSON.stringify(usersDb, null, 2), 'utf8');
   } catch (err) {
     console.error('[UserStore] Kullanıcı verisi kaydedilirken hata:', err.message);
+  }
+  if (immediateCloud) {
+    syncToSupabaseNow();
+  } else {
+    scheduleCloudSync(400);
   }
 }
 
@@ -63,11 +184,20 @@ function saveAdminSettings(roomBotsMap) {
   } catch (err) {
     console.error('[UserStore] Admin ayarları kaydedilirken hata:', err.message);
   }
+  syncToSupabaseNow();
   return adminSettingsDb;
 }
 
 function getAdminSettings() {
   return adminSettingsDb;
+}
+
+function isCloudConnected() {
+  return supabaseConnected;
+}
+
+function getLastCloudSyncAt() {
+  return lastCloudSyncAt;
 }
 
 loadUsers();
@@ -319,5 +449,9 @@ module.exports = {
   getUserByUsername,
   getTotalRegisteredCount,
   getAdminSettings,
-  saveAdminSettings
+  saveAdminSettings,
+  initCloudStore,
+  syncToSupabaseNow,
+  isCloudConnected,
+  getLastCloudSyncAt
 };

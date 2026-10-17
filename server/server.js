@@ -825,6 +825,17 @@ if (initialAdminSettings && initialAdminSettings.initialized && initialAdminSett
   }
 }
 
+// Supabase Bulut Veritabanından üyeleri ve bot/oda ayarlarını senkronize et
+userStore.initCloudStore().then((cloudState) => {
+  if (cloudState && cloudState.adminSettings && cloudState.adminSettings.initialized && cloudState.adminSettings.roomBots) {
+    applySavedBotConfigToRooms(cloudState.adminSettings.roomBots);
+  } else {
+    persistCurrentAdminBotSettings();
+  }
+}).catch((err) => {
+  console.error('[Server] Supabase başlangıç senkronizasyonu hatası:', err.message);
+});
+
 // --- ENGEL & OK ÇARPIŞMASI ---
 function isPointInPolygon(px, py, vertices) {
   let inside = false;
@@ -1470,6 +1481,8 @@ function buildAdminSnapshot() {
     totalHumansInRooms,
     totalBotsInRooms,
     registeredUsersCount: userStore.getTotalRegisteredCount(),
+    supabaseConnected: userStore.isCloudConnected(),
+    lastCloudSyncAt: userStore.getLastCloudSyncAt(),
     settingsUpdatedAt: adminSettings ? adminSettings.updatedAt || 0 : 0,
     savedBotConfig: exportAllRoomsBotConfig(),
     rooms: detailedRooms
