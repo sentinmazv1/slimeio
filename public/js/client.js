@@ -702,10 +702,14 @@
   }
 
   // --- FARE VE DOKUNMATİK KONTROLLERİ ---
+  let lastMouseEmitTime = 0;
+
   window.addEventListener('mousemove', (e) => {
-    if (joystick.active) return;
+    joystick.active = false;
+    joystick.touchId = null;
     mouseScreen.x = e.clientX;
     mouseScreen.y = e.clientY;
+    updateMouseWorld();
     sendMouseTarget();
   });
 
@@ -724,6 +728,8 @@
     if (isTouchDevice && e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
 
     window.soundManager.init();
+    joystick.active = false;
+    joystick.touchId = null;
     mouseScreen.x = e.clientX;
     mouseScreen.y = e.clientY;
     updateMouseWorld();
@@ -757,10 +763,11 @@
       if (!touch || !me || me.spectating) return;
 
       if (me.waitingForWall) {
+        joystick.active = false;
+        joystick.touchId = null;
         mouseScreen.x = touch.clientX;
         mouseScreen.y = touch.clientY;
-        mouseWorld.x = (mouseScreen.x - canvas.width / 2) / camera.zoom + camera.x;
-        mouseWorld.y = (mouseScreen.y - canvas.height / 2) / camera.zoom + camera.y;
+        updateMouseWorld();
         socket.emit('spawnAtWall', { x: mouseWorld.x, y: mouseWorld.y });
         return;
       }
@@ -772,7 +779,7 @@
         joystick.startY = touch.clientY;
         joystick.currX = touch.clientX;
         joystick.currY = touch.clientY;
-        sendMouseTarget();
+        sendMouseTarget(true);
       } else if (me.alive) {
         const tapWorldX = (touch.clientX - canvas.width / 2) / camera.zoom + camera.x;
         const tapWorldY = (touch.clientY - canvas.height / 2) / camera.zoom + camera.y;
@@ -807,8 +814,8 @@
       }
     }
   }
-  canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
-  canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+  window.addEventListener('touchend', handleTouchEnd, { passive: false });
+  window.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
   function triggerMobileShoot(e) {
     e.preventDefault();
@@ -836,8 +843,11 @@
   mobCutBtn.addEventListener('touchstart', triggerMobileCut, { passive: false });
   mobCutBtn.addEventListener('click', triggerMobileCut);
 
-  function sendMouseTarget() {
+  function sendMouseTarget(force = false) {
     updateMouseWorld();
+    const now = performance.now();
+    if (!force && now - lastMouseEmitTime < 28) return;
+    lastMouseEmitTime = now;
     socket.emit('mouseMove', { x: mouseWorld.x, y: mouseWorld.y });
   }
 
@@ -976,8 +986,23 @@
 
   socket.on('playerDied', ({ victimId }) => {
     if (victimId === selfId) {
+      joystick.active = false;
+      joystick.touchId = null;
       window.soundManager.playDeathPop();
     }
+  });
+
+  socket.on('readyForWallSelect', () => {
+    joystick.active = false;
+    joystick.touchId = null;
+    const me = renderPlayers.get(selfId);
+    if (me) {
+      me.waitingForWall = true;
+      me.alive = false;
+    }
+    overlayEl.style.display = 'none';
+    myBandsEl.textContent = '🎯 Doğmak İçin Bir Kayaya/Duvara Dokun!';
+    updateMouseWorld();
   });
 
   socket.on('matchEnded', ({ isTeam, seferScore, telliScore, winnerName, winnerScore, winnerBands, standings, nextMatchIn }) => {
@@ -1134,6 +1159,7 @@
           impactPulse: 0
         });
       } else {
+        const justSpawned = !existing.alive && p.alive;
         existing.name = p.name;
         existing.username = p.username;
         existing.color = p.color;
@@ -1151,6 +1177,10 @@
         existing.vx = p.vx;
         existing.vy = p.vy;
         existing.bands = p.bands;
+        if (justSpawned) {
+          existing.renderX = p.x;
+          existing.renderY = p.y;
+        }
       }
     }
 
@@ -1170,9 +1200,10 @@
         spectatorBannerEl.textContent = `👀 İZLEYİCİ MODU — Oyuna başlamak için turun bitmesini bekleyiniz! Yeni turda herkesle eşit başlayacaksın (Kalan: ${mins}:${secs})`;
         myBandsEl.textContent = '⏳ Sonraki Tur Bekleniyor';
       } else if (me.waitingForWall) {
-        spectatorBannerEl.style.display = 'none';
         overlayEl.style.display = 'none';
-        myBandsEl.textContent = '🎯 Doğmak İçin Bir Kayaya/Duvara Dokun!';
+        spectatorBannerEl.style.display = 'block';
+        spectatorBannerEl.textContent = '🎯 DUVAR SEÇİMİ — Doğmak istediğin duvara veya kayaya fareyle sol tıkla (mobilde dokun)!';
+        myBandsEl.textContent = '🎯 Doğmak İçin Bir Kayaya/Duvara Tıkla!';
       } else if (me.alive) {
         spectatorBannerEl.style.display = 'none';
         overlayEl.style.display = 'none';
@@ -1181,7 +1212,7 @@
         spectatorBannerEl.style.display = 'none';
         overlayEl.style.display = 'block';
         overlayTitleEl.textContent = 'Son Kemerin Koptu!';
-        overlaySubEl.textContent = `Yeniden doğmana: ${(me.respawnRemaining / 1000).toFixed(1)} sn`;
+        overlaySubEl.textContent = `5 sn sonra duvar seçip doğacaksın: ${(me.respawnRemaining / 1000).toFixed(1)} sn`;
       }
     }
 
@@ -1770,21 +1801,19 @@
 
     const me = renderPlayers.get(selfId);
     if (me) {
-      if (me.spectating) {
-        // İzleyici modunda lider oyuncuyu veya arenayı izlet
-        let leader = null;
-        for (const p of renderPlayers.values()) {
-          if (p.alive && (!leader || (p.score || 0) > (leader.score || 0))) {
-            leader = p;
-          }
+      if (me.alive && !me.spectating && !me.waitingForWall) {
+        camera.zoom += (camera.targetGameplayZoom - camera.zoom) * 0.08;
+        camera.x += (me.renderX - camera.x) * 0.16;
+        camera.y += (me.renderY - camera.y) * 0.16;
+
+        const mySpeed = Math.hypot(me.vx, me.vy);
+        if (mySpeed > 6.5) {
+          window.soundManager.playCuteGiggle(Math.min(mySpeed / 13, 1));
         }
-        const targetZoom = camera.targetGameplayZoom * 0.75;
-        camera.zoom += (targetZoom - camera.zoom) * 0.08;
-        const tx = leader ? leader.renderX : 0;
-        const ty = leader ? leader.renderY : 0;
-        camera.x += (tx - camera.x) * 0.08;
-        camera.y += (ty - camera.y) * 0.08;
-      } else if (me.waitingForWall) {
+        updateMouseWorld();
+        sendMouseTarget();
+      } else {
+        // Duvar seçimi, 5 saniye yeniden doğuş sayacı veya izleyici modunda tüm arenayı göster
         const overviewScale = Math.min(
           (canvas.width - 40) / config.ARENA_WIDTH,
           (canvas.height - 110) / config.ARENA_HEIGHT
@@ -1792,17 +1821,8 @@
         camera.zoom += (overviewScale - camera.zoom) * 0.12;
         camera.x += (0 - camera.x) * 0.12;
         camera.y += (0 - camera.y) * 0.12;
-      } else if (me.alive) {
-        camera.zoom += (camera.targetGameplayZoom - camera.zoom) * 0.08;
-        camera.x += (me.renderX - camera.x) * 0.14;
-        camera.y += (me.renderY - camera.y) * 0.14;
-
-        const mySpeed = Math.hypot(me.vx, me.vy);
-        if (mySpeed > 6.5) {
-          window.soundManager.playCuteGiggle(Math.min(mySpeed / 13, 1));
-        }
+        updateMouseWorld();
       }
-      sendMouseTarget();
     }
 
     ctx.save();

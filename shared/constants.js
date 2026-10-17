@@ -12,14 +12,14 @@
     ARENA_HEIGHT: 3000,            // Yükseklik (-1500 .. +1500)
     WALL_THICKNESS: 100,
 
-    // Slime (Oyuncu) Fizik Parametreleri (Uzayda akıcı süzülme)
+    // Slime (Oyuncu) Fizik Parametreleri (Uzayda akıcı ve fareye duyarlı süzülme)
     PLAYER_RADIUS: 24,
     PLAYER_MASS: 5,
-    PLAYER_FRICTION_AIR: 0.032,
+    PLAYER_FRICTION_AIR: 0.045,
     PLAYER_RESTITUTION: 0.88,
-    BASE_MOVE_FORCE: 0.025,
-    MAX_INPUT_DIST: 240,
-    WALL_BOUNCE_SPEED: 8.8,
+    BASE_MOVE_FORCE: 0.038,
+    MAX_INPUT_DIST: 220,
+    WALL_BOUNCE_SPEED: 8.5,
 
     // Kemer (Uzay Bağı) Parametreleri - Uzama Sınırı Yok & Çok Zayıf Çekim
     MAX_BANDS: 99,

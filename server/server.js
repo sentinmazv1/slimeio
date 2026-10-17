@@ -1182,6 +1182,7 @@ setInterval(() => {
             io.to(room.id).emit('playerRespawned', { id: p.id });
           } else {
             p.waitingForWall = true;
+            io.to(p.id).emit('readyForWallSelect');
           }
         }
         continue;
@@ -1201,9 +1202,17 @@ setInterval(() => {
 
         if (dist > 4) {
           const throttle = Math.min(dist / GAME_CONFIG.MAX_INPUT_DIST, 1.0);
-          const fx = (dx / dist) * GAME_CONFIG.BASE_MOVE_FORCE * throttle;
-          const fy = (dy / dist) * GAME_CONFIG.BASE_MOVE_FORCE * throttle;
+          const dirX = dx / dist;
+          const dirY = dy / dist;
+          const fx = dirX * GAME_CONFIG.BASE_MOVE_FORCE * throttle;
+          const fy = dirY * GAME_CONFIG.BASE_MOVE_FORCE * throttle;
           Body.applyForce(p.body, p.body.position, { x: fx, y: fy });
+
+          // Fare yönüne anında ve akıcı dönüş desteği (Steering Assist)
+          const desiredSpeed = 9.2 * throttle;
+          const nextVx = p.body.velocity.x * 0.90 + dirX * desiredSpeed * 0.10;
+          const nextVy = p.body.velocity.y * 0.90 + dirY * desiredSpeed * 0.10;
+          Body.setVelocity(p.body, { x: nextVx, y: nextVy });
         }
 
         for (const b of p.bands) {
@@ -1581,21 +1590,41 @@ io.on('connection', (socket) => {
     const playerSkin = socket.user ? socket.user.skin : 'crown';
 
     // ADİL BAŞLANGIÇ KURALI:
-    // Herkes Tek (FFA) moduna yeni gelen oyuncu mevcut tur devam ediyorsa maçı canlı izler (spectating = true)
-    // ve "Oyuna başlamak için turun bitmesini bekleyiniz" uyarısı görür. Yeni turda herkesle eşit başlar!
+    // Odada başka aktif gerçek oyuncu varsa (ve tur yeni başlamadıysa) yeni gelen kişi turun bitmesini bekler (spectating = true).
+    // Ancak odada sadece botlar varsa bekletmeden turu sıfırlar ve hemen Duvar Seçimi (waitingForWall = true) açılır!
     let isSpectating = false;
     let isWaitingForWall = false;
 
     if (!room.isTeam) {
-      if (room.status === 'playing') {
+      let activeHumansInRoom = 0;
+      for (const existingP of room.players.values()) {
+        if (!existingP.isBot && !existingP.spectating && existingP.id !== socket.id) {
+          activeHumansInRoom++;
+        }
+      }
+
+      if (room.status === 'playing' && activeHumansInRoom === 0) {
+        // Odada sadece botlar var: tur süresini sıfırla ve oyuncuyu hemen duvar seçimine al!
+        room.matchStartTime = Date.now();
+        room.matchEndTime = Date.now() + GAME_CONFIG.MATCH_DURATION_SEC * 1000;
+        for (const botP of room.players.values()) {
+          if (botP.isBot) {
+            botP.score = 0;
+            botP.cuts = 0;
+            botP.kills = 0;
+          }
+        }
+        isSpectating = false;
+        isWaitingForWall = true;
+      } else if (room.status === 'playing' && activeHumansInRoom > 0) {
         isSpectating = true;
         isWaitingForWall = false;
       } else {
         isSpectating = false;
-        isWaitingForWall = false;
+        isWaitingForWall = true;
       }
     } else {
-      // Takım odasında kadro dolana kadar beklenir
+      // Takım odasında kadro dolana kadar beklenir, oynanıyorsa duvar seçimine geçer
       isSpectating = false;
       isWaitingForWall = room.status === 'playing';
     }
