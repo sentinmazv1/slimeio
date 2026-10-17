@@ -431,6 +431,10 @@
       currentRoomId = res.roomId;
       lobbyModal.style.display = 'none';
       matchEndModal.style.display = 'none';
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
+      window.focus();
 
       if (res.isTeam && res.roomStatus === 'waiting_for_teams') {
         teamWaitingModal.style.display = 'flex';
@@ -719,8 +723,14 @@
     return { kx, ky };
   }
 
+  function isElementVisible(el) {
+    if (!el) return false;
+    return window.getComputedStyle(el).display !== 'none';
+  }
+
   function isTypingInInput(target) {
     if (!target) return false;
+    if (target.offsetParent === null) return false;
     const tag = (target.tagName || '').toUpperCase();
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
   }
@@ -757,8 +767,8 @@
 
       if (me && me.waitingForWall && !me.spectating) {
         // Duvar seçimi ekranında klavye yön tuşları imleci arenada gezdirir
-        mouseScreen.x = Math.max(20, Math.min(canvas.width - 20, mouseScreen.x + nx * 12));
-        mouseScreen.y = Math.max(20, Math.min(canvas.height - 20, mouseScreen.y + ny * 12));
+        mouseScreen.x = Math.max(20, Math.min(canvas.width - 20, mouseScreen.x + nx * 16));
+        mouseScreen.y = Math.max(20, Math.min(canvas.height - 20, mouseScreen.y + ny * 16));
         mouseWorld.x = (mouseScreen.x - canvas.width / 2) / camera.zoom + camera.x;
         mouseWorld.y = (mouseScreen.y - canvas.height / 2) / camera.zoom + camera.y;
         return;
@@ -842,7 +852,7 @@
     const movedDist = Math.hypot(e.clientX - mouseScreen.x, e.clientY - mouseScreen.y);
     mouseScreen.x = e.clientX;
     mouseScreen.y = e.clientY;
-    if (!isKeyboardMoving() && movedDist > 3) {
+    if (!isKeyboardMoving() && movedDist > 4) {
       keyboard.mode = 'mouse';
     }
     updateMouseWorld();
@@ -851,7 +861,7 @@
 
   window.addEventListener('keydown', (e) => {
     if (isTypingInInput(e.target)) return;
-    if (lobbyModal.style.display !== 'none' || profileModal.style.display !== 'none' || friendsModal.style.display !== 'none') {
+    if (isElementVisible(lobbyModal) || isElementVisible(profileModal) || isElementVisible(friendsModal)) {
       return;
     }
 
