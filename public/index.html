@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#080B12" />
-  <title>Slime.io - Neon Açık Dünya Savaş Arenası</title>
+  <title>Slime.io - Neon Açık Dünya & Takım Savaş Arenası</title>
   <style>
     * {
       box-sizing: border-box;
@@ -26,7 +26,7 @@
       touch-action: none;
       overscroll-behavior: none;
     }
-    canvas {
+    canvas#gameCanvas {
       display: block;
       touch-action: none;
     }
@@ -37,11 +37,11 @@
       left: 50%;
       transform: translateX(-50%);
       display: flex;
-      gap: 14px;
+      gap: 12px;
       align-items: center;
-      background: rgba(13, 18, 30, 0.85);
+      background: rgba(13, 18, 30, 0.88);
       backdrop-filter: blur(10px);
-      padding: 8px 20px;
+      padding: 8px 18px;
       border-radius: 999px;
       box-shadow: 0 0 24px rgba(0, 245, 212, 0.22);
       border: 1.5px solid rgba(0, 245, 212, 0.45);
@@ -50,25 +50,34 @@
       max-width: 96vw;
     }
     .brand-logo {
-      font-size: 19px;
+      font-size: 18px;
       font-weight: 900;
       color: #00F5D4;
       text-shadow: 0 0 12px rgba(0, 245, 212, 0.65);
-      letter-spacing: 0.6px;
     }
     #timer {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 900;
       color: #FF2A85;
       text-shadow: 0 0 10px rgba(255, 42, 133, 0.55);
     }
+    #team-hud-scores {
+      display: none;
+      gap: 8px;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 900;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
     #my-score {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 800;
       color: #00BBF9;
     }
     #my-bands {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 800;
       color: #FFE066;
     }
@@ -80,13 +89,32 @@
       padding: 4px 10px;
       border-radius: 999px;
     }
+    /* İzleyici (Spectator) Tur Bekleme Banner'ı */
+    #spectator-banner {
+      position: fixed;
+      top: 64px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, rgba(255, 184, 0, 0.92), rgba(255, 42, 133, 0.92));
+      color: #080B12;
+      padding: 10px 22px;
+      border-radius: 14px;
+      font-weight: 900;
+      font-size: 14px;
+      z-index: 18;
+      display: none;
+      text-align: center;
+      box-shadow: 0 0 28px rgba(255, 184, 0, 0.45);
+      border: 2px solid #FFFFFF;
+      max-width: 92vw;
+    }
     /* Sağ Üst Neon Canlı Skor Tablosu */
     #leaderboard {
       position: fixed;
       top: 12px;
       right: 14px;
-      width: 300px;
-      background: rgba(13, 18, 30, 0.84);
+      width: 305px;
+      background: rgba(13, 18, 30, 0.86);
       backdrop-filter: blur(10px);
       border-radius: 16px;
       padding: 10px 12px;
@@ -111,7 +139,7 @@
       font-weight: 900;
     }
     #leaderboard-header span {
-      font-size: 11px;
+      font-size: 10px;
       color: #94A3B8;
       font-weight: 700;
     }
@@ -133,6 +161,11 @@
       font-size: 12px;
       font-weight: 700;
       color: #E2E8F0;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .lb-row:hover {
+      background: rgba(255, 255, 255, 0.1);
     }
     .lb-row.is-me {
       border: 1.5px solid #00F5D4;
@@ -192,50 +225,40 @@
       color: #FFE066;
       font-weight: 900;
     }
-    /* Alt Kontrol Barı */
-    #join-bar {
+    /* Alt Oyuncu Menü Barı (Bot Ekleme/Çıkarma Kaldırıldı!) */
+    #bottom-menu-bar {
       position: fixed;
       bottom: 12px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(13, 18, 30, 0.86);
+      background: rgba(13, 18, 30, 0.88);
       backdrop-filter: blur(10px);
-      padding: 7px 12px;
+      padding: 6px 12px;
       border-radius: 14px;
       display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 6px;
+      gap: 8px;
       border: 1.5px solid rgba(255, 255, 255, 0.14);
       box-shadow: 0 8px 28px rgba(0,0,0,0.45);
       z-index: 10;
-      max-width: 94vw;
     }
-    #join-bar input {
+    #bottom-menu-bar button {
       background: rgba(255, 255, 255, 0.08);
-      color: #FFF;
-      border: 1.5px solid #00F5D4;
-      border-radius: 8px;
-      padding: 5px 10px;
-      font-weight: 700;
-      width: 130px;
-      outline: none;
-    }
-    #join-bar button {
-      background: #FF2A85;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 6px 10px;
+      color: #F8FAFC;
+      border: 1px solid rgba(0, 245, 212, 0.35);
+      border-radius: 9px;
+      padding: 6px 12px;
       font-size: 12px;
       font-weight: 800;
       cursor: pointer;
     }
-    /* Mobil Dokunmatik Aksiyon Butonları (Sağ Alt) */
+    #bottom-menu-bar button:hover {
+      background: rgba(0, 245, 212, 0.18);
+    }
+    /* Mobil Dokunmatik Aksiyon Butonları */
     #mobile-action-btns {
       position: fixed;
       right: 18px;
-      bottom: 78px;
+      bottom: 74px;
       display: none;
       flex-direction: column;
       gap: 12px;
@@ -273,12 +296,271 @@
       background: radial-gradient(circle, #FF70A6 0%, #FF2A85 100%);
       border-color: #FF70A6;
       color: #FFFFFF;
-      box-shadow: 0 0 18px rgba(255, 42, 133, 0.45);
     }
-    .mob-btn:active {
-      transform: scale(0.92);
+    /* Ortak Modal Arkaplanı */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 15, 0.85);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 60;
+      padding: 12px;
     }
-    /* Respawn Bildirimi */
+    /* 1) ANA GİRİŞ & LOBİ EKRANI */
+    .lobby-container {
+      width: 1080px;
+      max-width: 98vw;
+      max-height: 94vh;
+      overflow-y: auto;
+      background: #0D1322;
+      border: 2px solid #00F5D4;
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 0 60px rgba(0, 245, 212, 0.25);
+    }
+    .lobby-header {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+    .lobby-header h1 {
+      font-size: 30px;
+      font-weight: 900;
+      color: #00F5D4;
+      text-shadow: 0 0 18px rgba(0, 245, 212, 0.6);
+    }
+    .lobby-header p {
+      font-size: 13px;
+      color: #94A3B8;
+      margin-top: 4px;
+    }
+    .lobby-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr 1.15fr;
+      gap: 16px;
+    }
+    @media (max-width: 920px) {
+      .lobby-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .lobby-panel {
+      background: rgba(19, 27, 46, 0.9);
+      border: 1.5px solid rgba(255, 255, 255, 0.1);
+      border-radius: 18px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .lobby-panel h2 {
+      font-size: 15px;
+      color: #00BBF9;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .auth-tabs {
+      display: flex;
+      gap: 6px;
+      background: rgba(0,0,0,0.3);
+      padding: 4px;
+      border-radius: 10px;
+    }
+    .auth-tab {
+      flex: 1;
+      background: transparent;
+      color: #94A3B8;
+      border: none;
+      padding: 7px 6px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .auth-tab.active {
+      background: #00F5D4;
+      color: #080B12;
+    }
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .form-field label {
+      font-size: 11px;
+      color: #94A3B8;
+      font-weight: 700;
+    }
+    .form-field input {
+      background: #080B12;
+      color: #FFF;
+      border: 1.5px solid rgba(0, 245, 212, 0.4);
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      outline: none;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #00F5D4, #00BBF9);
+      color: #080B12;
+      border: none;
+      border-radius: 11px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    /* Renk & Basic 10 Kostüm Seçici */
+    .color-palette {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .color-swatch {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2.5px solid transparent;
+      transition: transform 0.12s;
+    }
+    .color-swatch.selected {
+      border-color: #FFFFFF;
+      transform: scale(1.18);
+      box-shadow: 0 0 12px currentColor;
+    }
+    .skins-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 7px;
+      max-height: 225px;
+      overflow-y: auto;
+    }
+    .skin-item {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1.5px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 7px 9px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .skin-item.selected {
+      border-color: #00F5D4;
+      background: rgba(0, 245, 212, 0.15);
+    }
+    /* Oyun Modu Kartları */
+    .mode-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1.8px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .mode-card.selected {
+      border-color: #FF2A85;
+      background: rgba(255, 42, 133, 0.15);
+      box-shadow: 0 0 18px rgba(255, 42, 133, 0.25);
+    }
+    .mode-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 900;
+      font-size: 13.5px;
+    }
+    .mode-card-desc {
+      font-size: 11px;
+      color: #94A3B8;
+      margin-top: 3px;
+    }
+    /* 2) SEFEROĞULLARI vs TELLİOĞULLARI TAKIM LOBİSİ EKRANI */
+    #team-waiting-modal {
+      display: none;
+    }
+    .team-lobby-card {
+      width: 780px;
+      max-width: 96vw;
+      background: #0D1322;
+      border: 2.5px solid #00F5D4;
+      border-radius: 24px;
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 0 60px rgba(0, 245, 212, 0.3);
+    }
+    .teams-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 18px 0;
+    }
+    @media (max-width: 640px) {
+      .teams-columns {
+        grid-template-columns: 1fr;
+      }
+    }
+    .team-box {
+      border-radius: 16px;
+      padding: 16px;
+      text-align: left;
+    }
+    .team-sefer {
+      background: rgba(0, 245, 155, 0.08);
+      border: 2px solid #00F59B;
+    }
+    .team-telli {
+      background: rgba(255, 42, 133, 0.08);
+      border: 2px solid #FF2A85;
+    }
+    .team-slot {
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      margin-top: 6px;
+      font-size: 13px;
+      font-weight: 800;
+      display: flex;
+      justify-content: space-between;
+    }
+    /* 3) PROFİL İNCELEME & ARKADAŞ MODALI */
+    #profile-modal, #friends-modal {
+      display: none;
+    }
+    .social-card {
+      width: 440px;
+      max-width: 94vw;
+      background: #111726;
+      border: 2px solid #00BBF9;
+      border-radius: 22px;
+      padding: 22px;
+      text-align: center;
+      box-shadow: 0 0 45px rgba(0, 187, 249, 0.3);
+    }
+    /* Davet Bildirimi (Toast) */
+    #invite-toast {
+      position: fixed;
+      top: 72px;
+      right: 16px;
+      background: #111726;
+      border: 2px solid #00F59B;
+      border-radius: 16px;
+      padding: 14px 18px;
+      z-index: 80;
+      display: none;
+      box-shadow: 0 0 30px rgba(0, 245, 155, 0.4);
+      max-width: 320px;
+    }
+    /* Respawn & Maç Sonu */
     #overlay-msg {
       position: fixed;
       top: 50%;
@@ -292,13 +574,7 @@
       border: 2.5px solid #FF2A85;
       display: none;
       z-index: 20;
-      max-width: 90vw;
     }
-    #overlay-msg h2 {
-      color: #FF2A85;
-      margin-bottom: 8px;
-    }
-    /* Süre Bittiğinde Çıkan Maç Sonu Skor Tablosu Ekranı (Modal) */
     #match-end-modal {
       position: fixed;
       inset: 0;
@@ -329,17 +605,6 @@
       margin: 10px 0 14px;
       border: 1.5px solid #00F5D4;
     }
-    .winner-banner h3 {
-      font-size: 20px;
-      color: #FFE066;
-      font-weight: 900;
-    }
-    .winner-banner p {
-      font-size: 13px;
-      font-weight: 700;
-      color: #CBD5E1;
-      margin-top: 4px;
-    }
     .final-table {
       width: 100%;
       border-collapse: collapse;
@@ -350,44 +615,13 @@
       background: rgba(255, 255, 255, 0.06);
       color: #94A3B8;
       padding: 7px 8px;
-      font-weight: 800;
-      text-transform: uppercase;
       font-size: 11px;
     }
     .final-table td {
       padding: 8px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       font-weight: 700;
-      color: #F1F5F9;
     }
-    .final-table tr.me-row {
-      background: rgba(0, 245, 212, 0.14);
-    }
-    .modal-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 8px;
-    }
-    #next-match-countdown {
-      font-size: 13px;
-      font-weight: 700;
-      color: #94A3B8;
-    }
-    #play-again-btn {
-      background: #00F5D4;
-      color: #080B12;
-      border: none;
-      border-radius: 12px;
-      padding: 9px 18px;
-      font-size: 14px;
-      font-weight: 900;
-      cursor: pointer;
-    }
-
-    /* MOBİL & TABLET DUYARLI (RESPONSIVE) TASARIM */
     @media (max-width: 860px) {
       #hud-top {
         top: 6px;
@@ -401,7 +635,6 @@
       #my-score { font-size: 12px; }
       #my-bands { font-size: 12px; }
       #net-status { display: none; }
-
       #leaderboard {
         top: 6px;
         right: 8px;
@@ -412,35 +645,35 @@
       #leaderboard-header span { display: none; }
       .lb-row { padding: 3px 6px; font-size: 11px; }
       .lb-badge-cut { display: none; }
-
-      #join-bar {
-        bottom: 6px;
-        padding: 5px 8px;
-        gap: 4px;
-      }
-      #join-bar input { width: 105px; font-size: 12px; padding: 4px 8px; }
-      #join-bar button { font-size: 11px; padding: 5px 8px; }
-      #end-match-btn { display: none; }
-
-      #mobile-action-btns {
-        display: flex;
-      }
+      #mobile-action-btns { display: flex; }
     }
   </style>
 </head>
 <body>
+  <!-- Üst Oyun HUD -->
   <div id="hud-top">
     <div class="brand-logo">🟢 Slime.io</div>
     <div id="timer">03:00</div>
+    <div id="team-hud-scores">
+      <span id="hud-sefer-score" style="color:#00F59B;">🟢 Sefer: 0</span>
+      <span>⚔️</span>
+      <span id="hud-telli-score" style="color:#FF2A85;">🔴 Telli: 0</span>
+    </div>
     <div id="my-score">Puan: 0</div>
     <div id="my-bands">Kemer: 1 | 🏹 Ok: 0</div>
     <div id="net-status">🌐 1 Oyuncu | ⚡ 1 ms</div>
   </div>
 
+  <!-- İzleyici (Spectator) Tur Bekleme Uyarısı -->
+  <div id="spectator-banner">
+    👀 İZLEYİCİ MODU — Oyuna başlamak için turun bitmesini bekleyiniz! Yeni turda herkesle eşit başlayacaksın.
+  </div>
+
+  <!-- Sağ Üst Skor Tablosu (Oyuncuya Tıklayınca Profili Açılır) -->
   <div id="leaderboard">
     <div id="leaderboard-header" title="Skor Tablosunu Aç/Kapat">
       <h3>🏆 Skor Tablosu</h3>
-      <span>Kemer/Ok | Kesim | Puan</span>
+      <span>Profile tıkla 👤</span>
     </div>
     <ul id="leaderboard-list"></ul>
   </div>
@@ -457,21 +690,222 @@
     </button>
   </div>
 
-  <div id="join-bar">
-    <input id="name-input" type="text" placeholder="Slime Adın..." maxlength="14" />
-    <button id="name-btn">İsim</button>
-    <button id="add-bot-btn" style="background:#00F59B; color:#080B12;">+ Bot</button>
-    <button id="rem-bot-btn" style="background:#FFB800; color:#080B12;">- Bot</button>
-    <button id="end-match-btn" style="background:#9B5DE5; color:#FFFFFF;">🏁 Süreyi Bitir</button>
-    <button id="mute-btn" style="background:#00BBF9; color:#080B12;">🔊 Ses</button>
+  <!-- Alt Oyuncu Barı (Bot Ekleme/Çıkarma Kaldırıldı) -->
+  <div id="bottom-menu-bar">
+    <button id="open-lobby-btn">🏠 Lobi / Mod Seç</button>
+    <button id="open-friends-btn">👥 Arkadaşlar (<span id="my-friend-count-badge">0</span>)</button>
+    <button id="open-my-profile-btn">👤 Profilim</button>
+    <button id="mute-btn">🔊 Ses</button>
   </div>
 
+  <!-- 1) ANA GİRİŞ, ÜYELİK, KOSTÜM VE ODA SEÇİM LOBİSİ -->
+  <div id="lobby-modal" class="modal-backdrop">
+    <div class="lobby-container">
+      <div class="lobby-header">
+        <h1>🟢 SLIME.IO — SAVAŞ ARENASI</h1>
+        <p>İsmini gir, kostümünü kuşan, Seferoğulları veya Tellioğulları takımını kur ya da Açık Dünyada tek başına kapış!</p>
+      </div>
+
+      <div class="lobby-grid">
+        <!-- SOL KOLON: GİRİŞ & HIZLI ÜYELİK -->
+        <div class="lobby-panel">
+          <h2>👤 1. Oyuncu Kimliği & Üyelik</h2>
+
+          <!-- Giriş Yapılmamışsa Gösterilen Sekmeler -->
+          <div id="auth-guest-or-member-box">
+            <div class="auth-tabs">
+              <button class="auth-tab active" data-tab="guest">⚡ Misafir</button>
+              <button class="auth-tab" data-tab="login">🔑 Giriş Yap</button>
+              <button class="auth-tab" data-tab="register">✨ Hızlı Üye Ol</button>
+            </div>
+
+            <!-- Misafir Sekmesi -->
+            <div id="tab-guest" style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
+              <div class="form-field">
+                <label>Slime Takma Adın (Zorunlu)</label>
+                <input id="guest-name-input" type="text" placeholder="Örn: NeonAvcı..." maxlength="14" />
+              </div>
+              <div style="font-size:11.5px; color:#94A3B8; background:rgba(255,184,0,0.1); border:1px solid rgba(255,184,0,0.35); padding:9px; border-radius:10px;">
+                💡 <strong>Bilgi:</strong> Üye olmadan tek maçta <strong>Herkes Tek</strong> modunda oynayabilirsin.<br/>
+                <strong>Takım kurmak (2v2, 4v4, 8v8)</strong>, <strong>10 kostüm/renk seçmek</strong> ve <strong>arkadaş eklemek</strong> için yukarıdan <em>Hızlı Üye Ol</em>!
+              </div>
+            </div>
+
+            <!-- Üye Girişi Sekmesi -->
+            <div id="tab-login" style="margin-top:12px; display:none; flex-direction:column; gap:9px;">
+              <div class="form-field">
+                <label>Kullanıcı Adı</label>
+                <input id="login-username" type="text" placeholder="kullanici_adi" maxlength="16" />
+              </div>
+              <div class="form-field">
+                <label>Şifre</label>
+                <input id="login-password" type="password" placeholder="••••••" />
+              </div>
+              <button id="do-login-btn" class="btn-primary">🔑 Hesabıma Giriş Yap</button>
+            </div>
+
+            <!-- Hızlı Üye Ol Sekmesi -->
+            <div id="tab-register" style="margin-top:12px; display:none; flex-direction:column; gap:8px;">
+              <div class="form-field">
+                <label>İsim Soyisim</label>
+                <input id="reg-fullname" type="text" placeholder="Adınız Soyadınız" maxlength="32" />
+              </div>
+              <div class="form-field">
+                <label>Kullanıcı Adı</label>
+                <input id="reg-username" type="text" placeholder="slime_krali" maxlength="16" />
+              </div>
+              <div class="form-field">
+                <label>Şifre</label>
+                <input id="reg-password" type="password" placeholder="En az 4 karakter" />
+              </div>
+              <button id="do-register-btn" class="btn-primary" style="background:linear-gradient(135deg,#00F59B,#00BBF9);">✨ Hızlı Üye Ol ve Kaydet</button>
+            </div>
+
+            <p id="auth-feedback" style="font-size:12px; color:#FF2A85; font-weight:700; min-height:16px;"></p>
+          </div>
+
+          <!-- Üye Girişi Yapıldıysa Gösterilen Kart -->
+          <div id="logged-in-user-box" style="display:none; flex-direction:column; gap:10px; background:rgba(0,245,212,0.08); border:1.5px solid #00F5D4; padding:12px; border-radius:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div id="member-display-name" style="font-size:17px; font-weight:900; color:#00F5D4;">@oyuncu</div>
+                <div id="member-fullname" style="font-size:12px; color:#CBD5E1;">Ad Soyad</div>
+              </div>
+              <span style="background:rgba(0,245,155,0.2); color:#00F59B; padding:4px 9px; border-radius:999px; font-size:11px; font-weight:900;">✓ ÜYE</span>
+            </div>
+            <div style="display:flex; gap:10px; font-size:12px; font-weight:800; color:#FFE066;">
+              <span id="member-friends-stat">👥 0 Arkadaş</span>
+              <span>•</span>
+              <span id="member-wins-stat">🏆 0 Galibiyet</span>
+            </div>
+            <button id="logout-btn" style="background:rgba(255,42,133,0.2); color:#FF70A6; border:1px solid #FF2A85; padding:6px; border-radius:8px; font-size:11px; font-weight:800; cursor:pointer;">Çıkış Yap</button>
+          </div>
+        </div>
+
+        <!-- ORTA KOLON: SLIME RENGİ & BASIC 10 KOSTÜM -->
+        <div class="lobby-panel">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2>🎨 2. Renk & Basic 10 Kostüm</h2>
+            <span id="skin-lock-badge" style="font-size:10.5px; color:#FFB800; font-weight:800;">🔒 Üyelere Özel</span>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:center; background:#080B12; border-radius:14px; padding:8px; border:1px solid rgba(255,255,255,0.08);">
+            <canvas id="skinPreviewCanvas" width="170" height="110"></canvas>
+          </div>
+
+          <div style="font-size:11px; color:#94A3B8; font-weight:700;">Slime Rengi Seç:</div>
+          <div id="color-palette-container" class="color-palette"></div>
+
+          <div style="font-size:11px; color:#94A3B8; font-weight:700;">Basic 10 Kostüm Seç:</div>
+          <div id="skins-grid-container" class="skins-grid"></div>
+        </div>
+
+        <!-- SAĞ KOLON: OYUN MODU & TAKIM ODALARI -->
+        <div class="lobby-panel">
+          <h2>🏟️ 3. Oyun Modu Seç</h2>
+          <div id="modes-list-container" style="display:flex; flex-direction:column; gap:8px;"></div>
+
+          <button id="join-game-btn" style="margin-top:auto; background:linear-gradient(135deg, #FF2A85, #FF6B00); color:#FFF; border:none; border-radius:14px; padding:14px; font-size:16px; font-weight:900; cursor:pointer; box-shadow:0 0 25px rgba(255,42,133,0.45);">
+            🚀 SAVAŞA KATIL!
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2) SEFEROĞULLARI vs TELLİOĞULLARI TAKIM BEKLEME ODASI -->
+  <div id="team-waiting-modal" class="modal-backdrop">
+    <div class="team-lobby-card">
+      <h2 id="team-lobby-title" style="color:#00F5D4; font-size:24px; font-weight:900;">⚔️ 2v2 TAKIM SAVAŞI LOBİSİ</h2>
+      <p id="team-lobby-status" style="color:#FFE066; font-size:14px; font-weight:800; margin-top:6px;">
+        ⏳ Takımların dolması bekleniyor... Kadrolar dolduğunda maç otomatik başlayacak!
+      </p>
+
+      <div class="teams-columns">
+        <!-- Seferoğulları -->
+        <div class="team-box team-sefer">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h3 style="color:#00F59B; font-size:17px; font-weight:900;">🟢 SEFEROĞULLARI</h3>
+            <span id="sefer-count-badge" style="font-weight:900; color:#00F59B;">0/2</span>
+          </div>
+          <div id="sefer-slots-list"></div>
+          <button id="join-sefer-btn" style="width:100%; margin-top:10px; background:#00F59B; color:#080B12; border:none; padding:8px; border-radius:9px; font-weight:900; cursor:pointer;">
+            🟢 Seferoğulları Tarafını Seç
+          </button>
+        </div>
+
+        <!-- Tellioğulları -->
+        <div class="team-box team-telli">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h3 style="color:#FF2A85; font-size:17px; font-weight:900;">🔴 TELLİOĞULLARI</h3>
+            <span id="telli-count-badge" style="font-weight:900; color:#FF2A85;">0/2</span>
+          </div>
+          <div id="telli-slots-list"></div>
+          <button id="join-telli-btn" style="width:100%; margin-top:10px; background:#FF2A85; color:#FFFFFF; border:none; padding:8px; border-radius:9px; font-weight:900; cursor:pointer;">
+            🔴 Tellioğulları Tarafını Seç
+          </button>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <button id="team-lobby-back-btn" style="background:rgba(255,255,255,0.1); color:#FFF; border:none; padding:10px 18px; border-radius:10px; font-weight:800; cursor:pointer;">
+          🔙 Lobiye Dön
+        </button>
+        <button id="team-lobby-invite-btn" style="background:#00BBF9; color:#080B12; border:none; padding:10px 18px; border-radius:10px; font-weight:900; cursor:pointer;">
+          💌 Arkadaşını Odaya Davet Et
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3) OYUNCU PROFİLİ İNCELEME MODALI -->
+  <div id="profile-modal" class="modal-backdrop">
+    <div class="social-card">
+      <h3 style="color:#00F5D4; font-size:19px; font-weight:900; margin-bottom:10px;">👤 Oyuncu Profili</h3>
+      <div id="profile-content" style="display:flex; flex-direction:column; gap:10px;"></div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:16px;">
+        <button id="profile-add-friend-btn" class="btn-primary" style="display:none;">➕ Arkadaş Ekle</button>
+        <button id="profile-invite-btn" class="btn-primary" style="background:#00F59B; display:none;">📩 Oyuna Davet Et</button>
+        <button id="profile-close-btn" style="background:rgba(255,255,255,0.12); color:#FFF; border:none; padding:9px 18px; border-radius:10px; font-weight:800; cursor:pointer;">Kapat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4) ARKADAŞLARIM & DAVET MODALI -->
+  <div id="friends-modal" class="modal-backdrop">
+    <div class="social-card" style="width:500px;">
+      <h3 style="color:#00F5D4; font-size:19px; font-weight:900;">👥 Arkadaşlarım & Oyuna Davet</h3>
+      <p id="friends-count-title" style="font-size:12px; color:#94A3B8; margin:4px 0 12px;">Toplam 0 Arkadaş</p>
+
+      <div style="display:flex; gap:6px; margin-bottom:12px;">
+        <input id="add-friend-input" type="text" placeholder="Kullanıcı adı yaz (@kullanici)..." style="flex:1; background:#080B12; color:#FFF; border:1.5px solid #00F5D4; border-radius:9px; padding:8px 12px; user-select:text; -webkit-user-select:text;" />
+        <button id="add-friend-submit-btn" class="btn-primary">➕ Ekle</button>
+      </div>
+      <p id="friend-action-msg" style="font-size:12px; color:#00F59B; min-height:16px; margin-bottom:6px;"></p>
+
+      <div id="friends-list-box" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; text-align:left;"></div>
+
+      <button id="friends-close-btn" style="margin-top:14px; width:100%; background:rgba(255,255,255,0.12); color:#FFF; border:none; padding:9px; border-radius:10px; font-weight:800; cursor:pointer;">Kapat</button>
+    </div>
+  </div>
+
+  <!-- 5) GELEN OYUN DAVETİ BİLDİRİMİ (TOAST) -->
+  <div id="invite-toast">
+    <div style="font-weight:900; color:#00F59B; font-size:14px; margin-bottom:4px;">💌 Oyuna Davet Edildin!</div>
+    <p id="invite-toast-text" style="font-size:12.5px; color:#E2E8F0; margin-bottom:10px;"></p>
+    <div style="display:flex; gap:8px;">
+      <button id="invite-accept-btn" style="flex:1; background:#00F59B; color:#080B12; border:none; padding:7px; border-radius:8px; font-weight:900; cursor:pointer;">✓ Katıl</button>
+      <button id="invite-decline-btn" style="flex:1; background:rgba(255,255,255,0.12); color:#FFF; border:none; padding:7px; border-radius:8px; font-weight:800; cursor:pointer;">Kapat</button>
+    </div>
+  </div>
+
+  <!-- Respawn Bildirimi -->
   <div id="overlay-msg">
     <h2 id="overlay-title">Son Kemerin Koptu!</h2>
     <p id="overlay-sub">Yeniden doğmana: 5.0 sn</p>
   </div>
 
-  <!-- Süre Bittiğinde Açılan Maç Sonu Skor Bord Ekranı -->
+  <!-- Maç Sonu Skor Tablosu Ekranı -->
   <div id="match-end-modal">
     <div class="scoreboard-card">
       <h2 style="color:#00F5D4; font-size:22px; font-weight:900;">⏱️ SÜRE BİTTİ - MAÇ SONUCU</h2>
@@ -492,9 +926,9 @@
         </thead>
         <tbody id="final-standings-body"></tbody>
       </table>
-      <div class="modal-footer">
-        <span id="next-match-countdown">Yeni tur 10 sn içinde başlıyor...</span>
-        <button id="play-again-btn">🔄 Hemen Yeni Tur Başlat</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <span id="next-match-countdown" style="font-size:13px; color:#94A3B8; font-weight:700;">Yeni tur 10 sn içinde başlıyor...</span>
+        <button id="back-to-lobby-from-end-btn" class="btn-primary">🏠 Lobiye Dön</button>
       </div>
     </div>
   </div>
