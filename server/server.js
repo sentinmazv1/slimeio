@@ -2403,8 +2403,35 @@ io.on('connection', (socket) => {
   });
 });
 
+// Sunucu sağlık kontrolü (Render Health Check & Keep-Alive)
+app.get('/healthz', (_req, res) => {
+  res.status(200).json({ ok: true, uptime: Math.round(process.uptime()), ts: Date.now() });
+});
+
+// Beklenmeyen çalışma zamanı hatalarında sunucunun çökmesini (502 Bad Gateway) engelle
+process.on('uncaughtException', (err) => {
+  console.error('[Sunucu Koruması - uncaughtException]:', err && err.stack ? err.stack : err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Sunucu Koruması - unhandledRejection]:', reason);
+});
+
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 server.listen(PORT, HOST, () => {
   console.log(`[Slime.io v2.0] Online Sunucu Aktif: http://${HOST}:${PORT}`);
+
+  // Render.com Free/Starter uyku modunu (15 dk inaktivite sonrası 502 Bad Gateway) önlemek için 8 dakikada bir harici Keep-Alive pingi
+  const externalUrl = process.env.RENDER_EXTERNAL_URL || 'https://slimeio.com';
+  setInterval(() => {
+    fetch(`${externalUrl}/healthz`)
+      .then((r) => {
+        if (!r.ok) console.warn('[KeepAlive] Durum kodu:', r.status);
+      })
+      .catch((e) => {
+        console.warn('[KeepAlive] Ping hatası:', e.message);
+      });
+  }, 8 * 60 * 1000);
 });
+
