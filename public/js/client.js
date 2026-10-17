@@ -83,10 +83,16 @@
   const teamLobbyBackBtn = document.getElementById('team-lobby-back-btn');
   const teamLobbyInviteBtn = document.getElementById('team-lobby-invite-btn');
 
-  // Profil & Arkadaş Modalları
+  // Profil & Arkadaş Modalları + Kamera Takip Barı
+  const cameraFollowBannerEl = document.getElementById('camera-follow-banner');
+  const cameraFollowTextEl = document.getElementById('camera-follow-text');
+  const cameraUnfollowBtn = document.getElementById('camera-unfollow-btn');
+
   const profileModal = document.getElementById('profile-modal');
   const profileContent = document.getElementById('profile-content');
+  const profileFeedbackMsg = document.getElementById('profile-feedback-msg');
   const profileAddFriendBtn = document.getElementById('profile-add-friend-btn');
+  const profileWatchBtn = document.getElementById('profile-watch-btn');
   const profileInviteBtn = document.getElementById('profile-invite-btn');
   const profileCloseBtn = document.getElementById('profile-close-btn');
 
@@ -122,11 +128,17 @@
   let roomsSummary = [];
 
   let currentUser = null; // Giriş yapmış üye bilgisi
+  let guestFriends = []; // Misafir oturumda takip edilen oyuncular
   let selectedColor = availableColors[0] ? availableColors[0].id : '#00F5D4';
   let selectedSkin = availableSkins[0] ? availableSkins[0].id : 'crown';
   let selectedModeId = 'ffa';
   let currentRoomId = null;
   let pendingInviteData = null;
+
+  let followedPlayerId = null;
+  let followedPlayerName = '';
+  let lastLeaderboardRenderAt = 0;
+  let lastTeamSlotsSignature = '';
 
   let countdownInterval = null;
   let currentPingMs = 1;
@@ -149,9 +161,77 @@
     aimAngle: 0
   };
 
-  leaderboardHeaderEl.addEventListener('click', () => {
+  function setCameraFollowPlayer(targetId, targetName) {
+    if (!targetId || targetId === selfId) {
+      followedPlayerId = null;
+      followedPlayerName = '';
+      if (cameraFollowBannerEl) cameraFollowBannerEl.style.display = 'none';
+      return;
+    }
+    followedPlayerId = targetId;
+    followedPlayerName = targetName || 'Oyuncu';
+    if (cameraFollowTextEl) {
+      cameraFollowTextEl.textContent = `🎥 Kamera Takibi: ${followedPlayerName}`;
+    }
+    if (cameraFollowBannerEl) {
+      cameraFollowBannerEl.style.display = 'flex';
+    }
+  }
+
+  if (cameraUnfollowBtn) {
+    cameraUnfollowBtn.addEventListener('click', () => {
+      setCameraFollowPlayer(null, '');
+    });
+  }
+
+  leaderboardHeaderEl.addEventListener('click', (e) => {
     const isHidden = leaderboardListEl.style.display === 'none';
-    leaderboardListEl.style.display = isHidden ? 'flex' : 'none';
+    if (isHidden) {
+      leaderboardListEl.style.display = 'flex';
+      return;
+    }
+    if (e.target && e.target.tagName === 'SPAN') {
+      const firstRow = leaderboardListEl.querySelector('.lb-row');
+      if (firstRow && typeof window.inspectPlayerProfile === 'function') {
+        window.inspectPlayerProfile(firstRow.dataset.playerId || null, firstRow.dataset.username || '');
+        return;
+      }
+    }
+    leaderboardListEl.style.display = 'none';
+  });
+
+  // Skor tablosu, takım koltukları ve maç sonu tablosu için anında (pointerdown) profil tıklama delegasyonu
+  leaderboardListEl.addEventListener('pointerdown', (e) => {
+    const row = e.target.closest('.lb-row');
+    if (!row) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window.inspectPlayerProfile === 'function') {
+      window.inspectPlayerProfile(row.dataset.playerId || null, row.dataset.username || '');
+    }
+  });
+
+  [seferSlotsListEl, telliSlotsListEl].forEach((slotContainer) => {
+    if (!slotContainer) return;
+    slotContainer.addEventListener('pointerdown', (e) => {
+      const slot = e.target.closest('[data-player-id]');
+      if (!slot) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window.inspectPlayerProfile === 'function') {
+        window.inspectPlayerProfile(slot.dataset.playerId || null, slot.dataset.username || '');
+      }
+    });
+  });
+
+  finalStandingsBody.addEventListener('pointerdown', (e) => {
+    const tr = e.target.closest('tr[data-player-id]');
+    if (!tr) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window.inspectPlayerProfile === 'function') {
+      window.inspectPlayerProfile(tr.dataset.playerId || null, tr.dataset.username || '');
+    }
   });
 
   const renderPlayers = new Map();
@@ -203,6 +283,12 @@
     } catch (_e) {}
   }
 
+  function saveGuestFriendsToStorage() {
+    try {
+      localStorage.setItem('slimeio_guest_friends', JSON.stringify(guestFriends));
+    } catch (_e) {}
+  }
+
   function restoreLocalUserSessionImmediately() {
     try {
       const savedGuest = localStorage.getItem('slimeio_guest_name');
@@ -210,6 +296,12 @@
 
       const savedMode = localStorage.getItem('slimeio_selected_mode');
       if (savedMode) selectedModeId = savedMode;
+
+      const savedGuestFriendsRaw = localStorage.getItem('slimeio_guest_friends');
+      if (savedGuestFriendsRaw) {
+        const parsedGF = JSON.parse(savedGuestFriendsRaw);
+        if (Array.isArray(parsedGF)) guestFriends = parsedGF;
+      }
 
       const savedCredsRaw = localStorage.getItem('slimeio_creds');
       if (savedCredsRaw) {
@@ -248,7 +340,7 @@
     } else {
       authGuestOrMemberBox.style.display = 'block';
       loggedInUserBox.style.display = 'none';
-      myFriendCountBadge.textContent = '0';
+      myFriendCountBadge.textContent = String(guestFriends.length || 0);
       skinLockBadge.textContent = '🔒 Üyelere Özel';
       skinLockBadge.style.color = '#FFB800';
       if (selectedModeId !== 'ffa') selectedModeId = 'ffa';
@@ -489,26 +581,56 @@
     muteBtn.textContent = isMuted ? '🔇 Ses' : '🔊 Ses';
   });
 
-  // --- PROFİL İNCELEME & ARKADAŞ SİSTEMİ ---
-  window.inspectPlayerProfile = (targetId, targetUsername) => {
-    socket.emit('inspectProfile', { targetId, targetUsername }, (res) => {
+  // --- PROFİL İNCELEME, TAKİP ET (ARKADAŞ EKLE) & KAMERA İZLEME SİSTEMİ ---
+  window.inspectPlayerProfile = (targetId, targetUsername, statusFeedback = '') => {
+    const fallbackSelf = {
+      name: (guestNameInput && guestNameInput.value.trim()) || 'Misafir Slime',
+      color: selectedColor,
+      skin: selectedSkin
+    };
+
+    socket.emit('inspectProfile', { targetId, targetUsername, fallbackSelf }, (res) => {
       if (!res || !res.ok || !res.profile) return;
       const pf = res.profile;
+      const resolvedId = pf.targetId || targetId || null;
       const skinObj = availableSkins.find((s) => s.id === pf.skin) || { icon: '👑', name: 'Klasik' };
+      const isSelf = Boolean(
+        pf.isSelf ||
+        (resolvedId && resolvedId === selfId) ||
+        (currentUser && pf.username && pf.username === currentUser.username)
+      );
+
+      const badgeRole = pf.isBot
+        ? `<span style="background:rgba(139,92,246,0.22); color:#C4B5FD; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:800;">🤖 BOT</span>`
+        : pf.isRegistered
+          ? `<span style="background:rgba(0,245,155,0.2); color:#00F59B; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:800;">✓ ÜYE</span>`
+          : `<span style="background:rgba(255,184,0,0.2); color:#FFE066; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:800;">⚡ MİSAFİR</span>`;
+
+      const onlineText = pf.online
+        ? `<span style="color:#00F59B; font-weight:800;">● Çevrimiçi${pf.currentRoomName ? ' (' + pf.currentRoomName + ')' : ''}</span>`
+        : `<span style="color:#64748B;">○ Çevrimdışı</span>`;
 
       profileContent.innerHTML = `
-        <div style="display:flex; align-items:center; justify-content:center; gap:12px; background:rgba(255,255,255,0.04); padding:14px; border-radius:16px;">
-          <div style="width:54px; height:54px; border-radius:50%; background:${pf.color}; display:flex; align-items:center; justify-content:center; font-size:28px; box-shadow:0 0 18px ${pf.color}; border:2px solid #FFF;">
+        <div style="display:flex; align-items:center; justify-content:flex-start; gap:14px; background:rgba(255,255,255,0.04); padding:14px; border-radius:16px; border:1px solid rgba(255,255,255,0.08);">
+          <div style="width:58px; height:58px; border-radius:50%; background:${pf.color}; display:flex; align-items:center; justify-content:center; font-size:30px; box-shadow:0 0 18px ${pf.color}; border:2.5px solid #FFF; flex-shrink:0;">
             ${skinObj.icon}
           </div>
-          <div style="text-align:left;">
-            <div style="font-size:18px; font-weight:900; color:#FFF;">${pf.displayName}</div>
-            <div style="font-size:12px; color:#94A3B8;">${pf.fullName} ${pf.username ? '(@' + pf.username + ')' : ''}</div>
-            <div style="font-size:11px; color:#00F5D4; margin-top:2px;">Kostüm: ${skinObj.icon} ${skinObj.name}</div>
+          <div style="text-align:left; flex:1; overflow:hidden;">
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span style="font-size:18px; font-weight:900; color:#FFF;">${pf.displayName}</span>
+              ${badgeRole}
+            </div>
+            <div style="font-size:12px; color:#94A3B8; margin-top:2px;">${pf.fullName} ${pf.username ? '(@' + pf.username + ')' : ''}</div>
+            <div style="font-size:11px; margin-top:4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <span style="color:#00F5D4;">Kostüm: ${skinObj.icon} ${skinObj.name}</span>
+              <span>•</span>
+              ${onlineText}
+            </div>
           </div>
         </div>
-        <div style="background:rgba(0,245,155,0.12); border:1.5px solid #00F59B; border-radius:12px; padding:10px; font-size:15px; font-weight:900; color:#00F59B;">
-          👥 Arkadaş Sayısı: ${pf.friendCount || 0}
+        <div style="background:rgba(0,245,155,0.12); border:1.5px solid #00F59B; border-radius:12px; padding:10px; font-size:15px; font-weight:900; color:#00F59B; display:flex; justify-content:center; align-items:center; gap:8px;">
+          <span>👥 Takipçi / Arkadaş Sayısı: ${pf.friendCount || 0}</span>
+          ${pf.isFriend ? '<span style="background:#00F59B; color:#080B12; font-size:10.5px; padding:2px 8px; border-radius:999px;">✓ Takip Ediliyor</span>' : ''}
         </div>
         <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; font-size:12px;">
           <div style="background:rgba(255,255,255,0.04); padding:8px; border-radius:10px;">
@@ -526,26 +648,120 @@
         </div>
       `;
 
-      if (pf.isRegistered && currentUser && pf.username !== currentUser.username) {
-        profileAddFriendBtn.style.display = pf.isFriend ? 'none' : 'inline-block';
+      if (profileFeedbackMsg) {
+        profileFeedbackMsg.style.color = '#00F59B';
+        profileFeedbackMsg.textContent = statusFeedback || '';
+      }
+
+      if (isSelf) {
+        profileAddFriendBtn.style.display = 'inline-block';
+        profileAddFriendBtn.style.background = 'linear-gradient(135deg,#00F5D4,#00BBF9)';
+        profileAddFriendBtn.textContent = '🎨 Kostüm & Profil Düzenle';
         profileAddFriendBtn.onclick = () => {
-          socket.emit('addFriend', { targetUsername: pf.username }, (fRes) => {
-            if (fRes && fRes.ok) {
-              currentUser.friendCount = fRes.friendCount;
-              updateAuthUI();
-              window.inspectPlayerProfile(targetId, pf.username);
-            }
-          });
+          profileModal.style.display = 'none';
+          lobbyModal.style.display = 'flex';
         };
-        profileInviteBtn.style.display = pf.online ? 'inline-block' : 'none';
-        profileInviteBtn.onclick = () => {
-          socket.emit('sendGameInvite', { targetUsername: pf.username, roomId: currentRoomId || selectedModeId }, () => {
-            profileInviteBtn.textContent = '✓ Davet Gönderildi!';
-          });
-        };
-      } else {
-        profileAddFriendBtn.style.display = 'none';
+        if (profileWatchBtn) profileWatchBtn.style.display = 'none';
         profileInviteBtn.style.display = 'none';
+      } else {
+        // 1) Takip Et / Arkadaş Ekle veya Takibi Bırak butonu (Tüm oyuncular ve botlar için aktif)
+        profileAddFriendBtn.style.display = 'inline-block';
+        if (pf.isFriend) {
+          profileAddFriendBtn.style.background = 'rgba(255,42,133,0.22)';
+          profileAddFriendBtn.style.color = '#FF70A6';
+          profileAddFriendBtn.style.border = '1px solid #FF2A85';
+          profileAddFriendBtn.textContent = '✓ Takip Ediliyor (Bırak)';
+          profileAddFriendBtn.onclick = () => {
+            socket.emit('removeFriend', { targetUsername: pf.username || pf.displayName, targetId: resolvedId }, (rRes) => {
+              if (rRes && rRes.ok) {
+                if (currentUser) {
+                  currentUser.friendCount = rRes.friendCount;
+                  currentUser.friends = (currentUser.friends || []).filter((u) => u !== pf.username);
+                  saveUserSessionToStorage(currentUser);
+                } else if (Array.isArray(rRes.friendsList)) {
+                  guestFriends = rRes.friendsList;
+                  saveGuestFriendsToStorage();
+                }
+                updateAuthUI();
+                window.inspectPlayerProfile(resolvedId, pf.username || pf.displayName, 'Takip bırakıldı.');
+              }
+            });
+          };
+        } else {
+          profileAddFriendBtn.style.background = 'linear-gradient(135deg,#00F5D4,#00BBF9)';
+          profileAddFriendBtn.style.color = '#080B12';
+          profileAddFriendBtn.style.border = 'none';
+          profileAddFriendBtn.textContent = '➕ Takip Et / Arkadaş Ekle';
+          profileAddFriendBtn.onclick = () => {
+            socket.emit('addFriend', { targetUsername: pf.username || pf.displayName, targetId: resolvedId }, (fRes) => {
+              if (fRes && fRes.ok) {
+                if (currentUser) {
+                  currentUser.friendCount = fRes.friendCount;
+                  if (fRes.targetUsername && !(currentUser.friends || []).includes(fRes.targetUsername)) {
+                    currentUser.friends = [...(currentUser.friends || []), fRes.targetUsername];
+                  }
+                  saveUserSessionToStorage(currentUser);
+                } else if (Array.isArray(fRes.friendsList)) {
+                  guestFriends = fRes.friendsList;
+                  saveGuestFriendsToStorage();
+                }
+                updateAuthUI();
+                window.inspectPlayerProfile(
+                  resolvedId,
+                  fRes.targetUsername || pf.username || pf.displayName,
+                  `✓ ${pf.displayName} takip listene ve arkadaşlarına eklendi!`
+                );
+              } else if (profileFeedbackMsg) {
+                profileFeedbackMsg.style.color = '#FF2A85';
+                profileFeedbackMsg.textContent = (fRes && fRes.error) || 'Takip edilemedi.';
+              }
+            });
+          };
+        }
+
+        // 2) Kamerayla Takip Et (İzle) butonu
+        if (profileWatchBtn) {
+          const canWatchInArena = Boolean((resolvedId && renderPlayers.has(resolvedId)) || pf.currentRoomId);
+          profileWatchBtn.style.display = canWatchInArena ? 'inline-block' : 'none';
+          const isCurrentlyWatching = Boolean(resolvedId && followedPlayerId === resolvedId);
+          profileWatchBtn.textContent = isCurrentlyWatching ? '🎥 Takibi Bırak' : '🎥 Kamerayla Takip Et';
+          profileWatchBtn.onclick = () => {
+            if (isCurrentlyWatching) {
+              setCameraFollowPlayer(null, '');
+              profileModal.style.display = 'none';
+              return;
+            }
+            if (pf.currentRoomId && pf.currentRoomId !== currentRoomId) {
+              enterRoom(pf.currentRoomId);
+            }
+            if (resolvedId) {
+              setCameraFollowPlayer(resolvedId, pf.displayName);
+            }
+            profileModal.style.display = 'none';
+          };
+        }
+
+        // 3) Oyuna Davet Et butonu
+        profileInviteBtn.style.display = pf.online ? 'inline-block' : 'none';
+        profileInviteBtn.textContent = '📩 Oyuna Davet Et';
+        profileInviteBtn.onclick = () => {
+          socket.emit(
+            'sendGameInvite',
+            { targetUsername: pf.username || pf.displayName, targetId: resolvedId, roomId: currentRoomId || selectedModeId },
+            (invRes) => {
+              if (invRes && invRes.ok) {
+                profileInviteBtn.textContent = '✓ Davet Gönderildi!';
+                if (profileFeedbackMsg) {
+                  profileFeedbackMsg.style.color = '#00F59B';
+                  profileFeedbackMsg.textContent = invRes.message || `✓ ${pf.displayName} oyuncusuna oyun daveti gönderildi!`;
+                }
+              } else if (profileFeedbackMsg) {
+                profileFeedbackMsg.style.color = '#FF2A85';
+                profileFeedbackMsg.textContent = (invRes && invRes.error) || 'Davet gönderilemedi.';
+              }
+            }
+          );
+        };
       }
 
       profileModal.style.display = 'flex';
@@ -565,55 +781,77 @@
   });
 
   function openFriendsModal() {
-    if (!currentUser) {
-      lobbyModal.style.display = 'flex';
-      switchAuthTab('register');
-      authFeedback.style.color = '#FFB800';
-      authFeedback.textContent = '👥 Arkadaş eklemek ve oyuna davet etmek için lütfen hızlı üye olun!';
-      return;
-    }
-    friendActionMsg.textContent = '';
+    friendActionMsg.style.color = '#00F59B';
+    friendActionMsg.textContent = currentUser
+      ? ''
+      : '💡 Misafir modundasın: Takip ettiğin oyuncular bu cihazda kaydedilir. Tüm cihazlardan erişmek için üye olabilirsin!';
     friendsModal.style.display = 'flex';
     refreshFriendsList();
   }
 
   function refreshFriendsList() {
-    socket.emit('getFriendsList', (res) => {
+    socket.emit('getFriendsList', { guestFriends }, (res) => {
       if (!res || !res.ok) return;
-      friendsCountTitle.textContent = `Toplam ${res.friendCount || 0} Arkadaş`;
+      friendsCountTitle.textContent = `Toplam ${res.friendCount || 0} Takip Edilen / Arkadaş`;
       myFriendCountBadge.textContent = String(res.friendCount || 0);
-      if (currentUser) currentUser.friendCount = res.friendCount || 0;
+      if (currentUser) {
+        currentUser.friendCount = res.friendCount || 0;
+        saveUserSessionToStorage(currentUser);
+      }
 
       if (!res.friends || res.friends.length === 0) {
-        friendsListBox.innerHTML = `<div style="text-align:center; color:#64748B; padding:18px; font-size:13px;">Henüz arkadaşın yok. Yukarıdan kullanıcı adı yazarak veya skor tablosunda oyunculara tıklayarak arkadaş ekleyebilirsin!</div>`;
+        friendsListBox.innerHTML = `<div style="text-align:center; color:#64748B; padding:18px; font-size:13px;">Henüz takip ettiğin bir oyuncu yok. Yukarıdan oyuncu adı yazarak veya sağ üstteki Skor Tablosunda herhangi bir oyuncuya tıklayıp <strong>➕ Takip Et</strong> diyerek ekleyebilirsin!</div>`;
         return;
       }
 
       friendsListBox.innerHTML = res.friends.map((f) => {
+        const skinObj = availableSkins.find((s) => s.id === f.skin) || { icon: '👑', name: 'Klasik' };
         const statusDot = f.online
           ? `<span style="color:#00F59B; font-size:11px; font-weight:800;">● Çevrimiçi ${f.roomName ? '(' + f.roomName + ')' : ''}</span>`
           : `<span style="color:#64748B; font-size:11px;">○ Çevrimdışı</span>`;
 
-        const inviteBtnHtml = f.online
-          ? `<button class="btn-primary" style="padding:5px 10px; font-size:11px;" onclick="inviteFriendByUsername('${f.username}')">📩 Davet Et</button>`
+        const watchBtnHtml = f.online && f.targetId
+          ? `<button class="btn-primary" style="padding:5px 9px; font-size:11px; background:linear-gradient(135deg,#8B5CF6,#EC4899); color:#FFF;" onclick="watchFriendFromList('${f.targetId || ''}', '${(f.displayName || f.username).replace(/'/g, '')}', '${f.roomId || ''}')">🎥 İzle</button>`
           : '';
 
-        return `<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:8px 12px; border-radius:10px;">
-          <div style="cursor:pointer;" onclick="inspectPlayerProfile(null, '${f.username}')">
-            <div style="font-weight:900; font-size:13px; color:#FFF;">@${f.username} <span style="color:#94A3B8; font-weight:600;">(${f.fullName})</span></div>
-            <div>${statusDot} • <span style="font-size:11px; color:#00BBF9;">👥 ${f.friendCount} Arkadaş</span></div>
+        const inviteBtnHtml = f.online
+          ? `<button class="btn-primary" style="padding:5px 9px; font-size:11px;" onclick="inviteFriendByUsername('${f.username}', '${f.targetId || ''}')">📩 Davet</button>`
+          : '';
+
+        return `<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; background:rgba(255,255,255,0.05); padding:8px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.06);">
+          <div style="display:flex; align-items:center; gap:10px; cursor:pointer; flex:1; overflow:hidden;" onclick="inspectPlayerProfile('${f.targetId || ''}', '${f.username}')">
+            <div style="width:34px; height:34px; border-radius:50%; background:${f.color || '#00F5D4'}; display:flex; align-items:center; justify-content:center; font-size:17px; border:1.5px solid #FFF; flex-shrink:0;">
+              ${skinObj.icon}
+            </div>
+            <div style="overflow:hidden;">
+              <div style="font-weight:900; font-size:13px; color:#FFF; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${f.displayName || f.username} <span style="color:#94A3B8; font-weight:600; font-size:11px;">(@${f.username})</span></div>
+              <div>${statusDot} • <span style="font-size:11px; color:#00BBF9;">👥 ${f.friendCount || 0} Takipçi</span></div>
+            </div>
           </div>
-          <div>${inviteBtnHtml}</div>
+          <div style="display:flex; gap:5px; flex-shrink:0;">
+            ${watchBtnHtml}
+            ${inviteBtnHtml}
+          </div>
         </div>`;
       }).join('');
     });
   }
 
-  window.inviteFriendByUsername = (username) => {
-    socket.emit('sendGameInvite', { targetUsername: username, roomId: currentRoomId || selectedModeId }, (res) => {
+  window.watchFriendFromList = (targetId, displayName, roomId) => {
+    friendsModal.style.display = 'none';
+    if (roomId && roomId !== currentRoomId) {
+      enterRoom(roomId);
+    }
+    if (targetId) {
+      setCameraFollowPlayer(targetId, displayName);
+    }
+  };
+
+  window.inviteFriendByUsername = (username, targetId = null) => {
+    socket.emit('sendGameInvite', { targetUsername: username, targetId, roomId: currentRoomId || selectedModeId }, (res) => {
       if (res && res.ok) {
         friendActionMsg.style.color = '#00F59B';
-        friendActionMsg.textContent = `✓ @${username} oyuncusuna davet gönderildi!`;
+        friendActionMsg.textContent = res.message || `✓ @${username} oyuncusuna davet gönderildi!`;
       } else {
         friendActionMsg.style.color = '#FF2A85';
         friendActionMsg.textContent = (res && res.error) || 'Davet gönderilemedi.';
@@ -626,21 +864,36 @@
     friendsModal.style.display = 'none';
   });
 
-  addFriendSubmitBtn.addEventListener('click', () => {
+  function submitAddFriendByInput() {
     const val = addFriendInput.value.trim().replace(/^@/, '');
     if (!val) return;
     socket.emit('addFriend', { targetUsername: val }, (res) => {
       if (res && res.ok) {
         addFriendInput.value = '';
+        if (currentUser) {
+          currentUser.friendCount = res.friendCount;
+          if (res.targetUsername && !(currentUser.friends || []).includes(res.targetUsername)) {
+            currentUser.friends = [...(currentUser.friends || []), res.targetUsername];
+          }
+          saveUserSessionToStorage(currentUser);
+        } else if (Array.isArray(res.friendsList)) {
+          guestFriends = res.friendsList;
+          saveGuestFriendsToStorage();
+        }
         friendActionMsg.style.color = '#00F59B';
-        friendActionMsg.textContent = `✓ ${res.targetDisplayName} arkadaş listene eklendi!`;
+        friendActionMsg.textContent = `✓ ${res.targetDisplayName} takip listene eklendi!`;
         refreshFriendsList();
         updateAuthUI();
       } else {
         friendActionMsg.style.color = '#FF2A85';
-        friendActionMsg.textContent = (res && res.error) || 'Eklenemedi.';
+        friendActionMsg.textContent = (res && res.error) || 'Oyuncu bulunamadı.';
       }
     });
+  }
+
+  addFriendSubmitBtn.addEventListener('click', submitAddFriendByInput);
+  addFriendInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitAddFriendByInput();
   });
 
   // Gelen Oyun Daveti (Toast)
@@ -977,12 +1230,27 @@
 
   window.addEventListener('contextmenu', (e) => e.preventDefault());
 
+  function findPlayerAtWorldPoint(wx, wy) {
+    let closest = null;
+    let bestDist = (config.PLAYER_RADIUS || 24) * 2.4;
+    for (const p of renderPlayers.values()) {
+      if (!p.alive) continue;
+      const d = Math.hypot((p.renderX || p.x) - wx, (p.renderY || p.y) - wy);
+      if (d <= bestDist) {
+        bestDist = d;
+        closest = p;
+      }
+    }
+    return closest;
+  }
+
   window.addEventListener('mousedown', (e) => {
     if (
       e.target.closest('button') ||
       e.target.closest('input') ||
       e.target.closest('.modal-backdrop') ||
       e.target.closest('#leaderboard') ||
+      e.target.closest('#camera-follow-banner') ||
       e.target.closest('#invite-toast')
     ) {
       return;
@@ -1002,6 +1270,16 @@
     updateMouseWorld();
 
     const me = renderPlayers.get(selfId);
+
+    // İzleyici modunda, yeniden doğuş beklerken veya Alt+Tık / Orta Tuş ile arenadaki bir Slime'a tıklanırsa profilini aç
+    if (!me || me.spectating || (!me.alive && !me.waitingForWall) || e.altKey || e.button === 1) {
+      const clickedPlayer = findPlayerAtWorldPoint(clickWorldX, clickWorldY);
+      if (clickedPlayer) {
+        window.inspectPlayerProfile(clickedPlayer.id, clickedPlayer.username || clickedPlayer.name);
+        return;
+      }
+    }
+
     if (!me || me.spectating) return;
 
     if (e.button === 0) {
@@ -1027,7 +1305,18 @@
 
       const me = renderPlayers.get(selfId);
       const touch = e.changedTouches[0];
-      if (!touch || !me || me.spectating) return;
+      if (!touch) return;
+
+      const tapWorldX = (touch.clientX - canvas.width / 2) / camera.zoom + camera.x;
+      const tapWorldY = (touch.clientY - canvas.height / 2) / camera.zoom + camera.y;
+
+      if (!me || me.spectating || (!me.alive && !me.waitingForWall)) {
+        const tappedPlayer = findPlayerAtWorldPoint(tapWorldX, tapWorldY);
+        if (tappedPlayer) {
+          window.inspectPlayerProfile(tappedPlayer.id, tappedPlayer.username || tappedPlayer.name);
+        }
+        return;
+      }
 
       if (me.waitingForWall) {
         joystick.active = false;
@@ -1048,8 +1337,6 @@
         joystick.currY = touch.clientY;
         sendMouseTarget(true);
       } else if (me.alive) {
-        const tapWorldX = (touch.clientX - canvas.width / 2) / camera.zoom + camera.x;
-        const tapWorldY = (touch.clientY - canvas.height / 2) / camera.zoom + camera.y;
         socket.emit('shootArrow', { x: tapWorldX, y: tapWorldY });
       }
     },
@@ -1289,7 +1576,7 @@
         const medal = idx === 0 ? '🥇 1.' : idx === 1 ? '🥈 2.' : idx === 2 ? '🥉 3.' : `${idx + 1}.`;
         const rowClass = p.id === selfId ? 'me-row' : '';
         const teamLabel = p.team === 'seferogullari' ? '🟢 ' : p.team === 'telliogullari' ? '🔴 ' : '';
-        return `<tr class="${rowClass}" style="cursor:pointer;" onclick="inspectPlayerProfile('${p.id}', '${p.username || ''}')">
+        return `<tr class="${rowClass}" data-player-id="${p.id}" data-username="${p.username || ''}" style="cursor:pointer;" onclick="inspectPlayerProfile('${p.id}', '${p.username || ''}')">
           <td>${medal}</td>
           <td style="text-align:left;">
             <span class="lb-dot" style="background:${p.color}; color:${p.color}; margin-right:6px;"></span>${teamLabel}${p.name}
@@ -1348,14 +1635,17 @@
 
       const seferPlayers = state.players.filter((p) => p.team === 'seferogullari');
       const telliPlayers = state.players.filter((p) => p.team === 'telliogullari');
+      const sig = `${state.teamSize}|${seferPlayers.map((p) => p.id + ':' + p.name).join(',')}|${telliPlayers.map((p) => p.id + ':' + p.name).join(',')}`;
+      if (sig === lastTeamSlotsSignature) return;
+      lastTeamSlotsSignature = sig;
 
       let seferHtml = '';
       for (let i = 0; i < state.teamSize; i++) {
         const p = seferPlayers[i];
         if (p) {
-          seferHtml += `<div class="team-slot" style="cursor:pointer;" onclick="inspectPlayerProfile('${p.id}','${p.username || ''}')">
+          seferHtml += `<div class="team-slot" data-player-id="${p.id}" data-username="${p.username || ''}" style="cursor:pointer;" onclick="inspectPlayerProfile('${p.id}','${p.username || ''}')">
             <span>🟢 ${p.name} ${p.id === selfId ? '(Sen)' : ''}</span>
-            <span style="color:#00F59B;">Hazır ✓</span>
+            <span style="color:#00F59B;">👤 Profil / Hazır ✓</span>
           </div>`;
         } else {
           seferHtml += `<div class="team-slot" style="color:#64748B;"><span>Boş Koltuk #${i + 1}</span><span>Bekleniyor...</span></div>`;
@@ -1367,9 +1657,9 @@
       for (let i = 0; i < state.teamSize; i++) {
         const p = telliPlayers[i];
         if (p) {
-          telliHtml += `<div class="team-slot" style="cursor:pointer;" onclick="inspectPlayerProfile('${p.id}','${p.username || ''}')">
+          telliHtml += `<div class="team-slot" data-player-id="${p.id}" data-username="${p.username || ''}" style="cursor:pointer;" onclick="inspectPlayerProfile('${p.id}','${p.username || ''}')">
             <span>🔴 ${p.name} ${p.id === selfId ? '(Sen)' : ''}</span>
-            <span style="color:#FF2A85;">Hazır ✓</span>
+            <span style="color:#FF2A85;">👤 Profil / Hazır ✓</span>
           </div>`;
         } else {
           telliHtml += `<div class="team-slot" style="color:#64748B;"><span>Boş Koltuk #${i + 1}</span><span>Bekleniyor...</span></div>`;
@@ -1447,6 +1737,9 @@
         if (justSpawned) {
           existing.renderX = p.x;
           existing.renderY = p.y;
+          if (p.id === selfId && followedPlayerId) {
+            setCameraFollowPlayer(null, '');
+          }
         }
       }
     }
@@ -1483,32 +1776,37 @@
       }
     }
 
-    const sorted = [...players]
-      .sort((a, b) => (b.score || 0) - (a.score || 0) || b.bands.length - a.bands.length)
-      .slice(0, 8);
-    const topScore = Math.max(100, sorted[0] ? sorted[0].score : 100);
+    const nowMs = performance.now();
+    if (nowMs - lastLeaderboardRenderAt >= 350 || !leaderboardListEl.innerHTML) {
+      lastLeaderboardRenderAt = nowMs;
+      const sorted = [...players]
+        .sort((a, b) => (b.score || 0) - (a.score || 0) || b.bands.length - a.bands.length)
+        .slice(0, 8);
+      const topScore = Math.max(100, sorted[0] ? sorted[0].score : 100);
 
-    leaderboardListEl.innerHTML = sorted
-      .map((p, idx) => {
-        const pct = Math.min(100, Math.round(((p.score || 0) / topScore) * 100));
-        const isMeClass = p.id === selfId ? 'lb-row is-me' : 'lb-row';
-        const ammo = Math.max(0, p.bands.length - 1);
-        const teamPrefix = p.team === 'seferogullari' ? '🟢 ' : p.team === 'telliogullari' ? '🔴 ' : '';
-        return `<li class="${isMeClass}" onclick="inspectPlayerProfile('${p.id}', '${p.username || ''}')">
-          <div class="lb-bar" style="width:${pct}%; background:${p.color};"></div>
-          <div class="lb-left">
-            <span>${idx + 1}.</span>
-            <span class="lb-dot" style="background:${p.color}; color:${p.color};"></span>
-            <span>${teamPrefix}${p.name}</span>
-          </div>
-          <div class="lb-right">
-            <span class="lb-badge-belt">🔗${p.bands.length} (🏹${ammo})</span>
-            <span class="lb-badge-cut">✂️${p.cuts || 0}</span>
-            <span class="lb-score">${p.score || 0}p</span>
-          </div>
-        </li>`;
-      })
-      .join('');
+      leaderboardListEl.innerHTML = sorted
+        .map((p, idx) => {
+          const pct = Math.min(100, Math.round(((p.score || 0) / topScore) * 100));
+          const isMeClass = p.id === selfId ? 'lb-row is-me' : 'lb-row';
+          const ammo = Math.max(0, p.bands.length - 1);
+          const teamPrefix = p.team === 'seferogullari' ? '🟢 ' : p.team === 'telliogullari' ? '🔴 ' : '';
+          const followBadge = followedPlayerId === p.id ? '🎥 ' : '';
+          return `<li class="${isMeClass}" data-player-id="${p.id}" data-username="${p.username || ''}" title="Profili Gör & Takip Et">
+            <div class="lb-bar" style="width:${pct}%; background:${p.color};"></div>
+            <div class="lb-left">
+              <span>${idx + 1}.</span>
+              <span class="lb-dot" style="background:${p.color}; color:${p.color};"></span>
+              <span>${followBadge}${teamPrefix}${p.name}</span>
+            </div>
+            <div class="lb-right">
+              <span class="lb-badge-belt">🔗${p.bands.length} (🏹${ammo})</span>
+              <span class="lb-badge-cut">✂️${p.cuts || 0}</span>
+              <span class="lb-score">${p.score || 0}p 👤</span>
+            </div>
+          </li>`;
+        })
+        .join('');
+    }
   });
 
   // --- BASIC 10 KOSTÜM ÇİZİM FONKSİYONU ---
@@ -1961,6 +2259,18 @@
     // Seçili Basic 10 Kostümünü Çiz
     drawSkinAccessory(ctx, player.skin || 'crown', baseR, time);
 
+    if (followedPlayerId && player.id === followedPlayerId) {
+      ctx.beginPath();
+      ctx.arc(0, 0, baseR + 10 + Math.sin(time * 0.01) * 3, 0, Math.PI * 2);
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([8, 5]);
+      ctx.strokeStyle = '#EC4899';
+      ctx.shadowColor = '#EC4899';
+      ctx.shadowBlur = 12;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
     const ammo = Math.max(0, player.bands.length - 1);
     const familyPrefix = player.team === 'seferogullari'
       ? '[SEFER] '
@@ -2069,7 +2379,17 @@
     }
 
     const me = renderPlayers.get(selfId);
-    if (me) {
+    const followedTarget = followedPlayerId ? renderPlayers.get(followedPlayerId) : null;
+
+    if (followedTarget && followedTarget.alive && (!me || !me.waitingForWall)) {
+      camera.zoom += (camera.targetGameplayZoom - camera.zoom) * 0.08;
+      camera.x += (followedTarget.renderX - camera.x) * 0.16;
+      camera.y += (followedTarget.renderY - camera.y) * 0.16;
+      updateMouseWorld();
+      if (me && me.alive && !me.spectating) {
+        sendMouseTarget();
+      }
+    } else if (me) {
       if (me.alive && !me.spectating && !me.waitingForWall) {
         camera.zoom += (camera.targetGameplayZoom - camera.zoom) * 0.08;
         camera.x += (me.renderX - camera.x) * 0.16;

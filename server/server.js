@@ -1826,63 +1826,110 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 5) Sosyal Sistem: Profil İnceleme, Arkadaş Ekleme, Oyuna Davet
-  socket.on('inspectProfile', ({ targetId, targetUsername }, ack) => {
+  // Yardımcı: Hedef oyuncuyu aktif odalarda (id, username veya görünen isim ile) bul
+  function findLivePlayerAcrossRooms(targetId, targetUsername) {
+    if (targetId) {
+      for (const r of rooms.values()) {
+        if (r.players.has(targetId)) {
+          return { player: r.players.get(targetId), room: r };
+        }
+      }
+    }
+    if (targetUsername) {
+      const clean = userStore.normalizeUsername(targetUsername);
+      const rawLower = String(targetUsername).trim().toLowerCase();
+      for (const r of rooms.values()) {
+        for (const p of r.players.values()) {
+          if (
+            (p.username && userStore.normalizeUsername(p.username) === clean) ||
+            (p.name && p.name.toLowerCase() === rawLower) ||
+            (clean && p.name && userStore.normalizeUsername(p.name) === clean)
+          ) {
+            return { player: p, room: r };
+          }
+        }
+      }
+    }
+    return { player: null, room: null };
+  }
+
+  // 5) Sosyal Sistem: Profil İnceleme, Takip Et / Arkadaş Ekleme, Oyuna Davet
+  socket.on('inspectProfile', ({ targetId, targetUsername, fallbackSelf } = {}, ack) => {
     if (typeof ack !== 'function') return;
+
+    const { player: livePlayer, room: liveRoom } = findLivePlayerAcrossRooms(targetId, targetUsername);
 
     let resolvedUser = null;
     if (targetUsername) {
       resolvedUser = userStore.getUserByUsername(targetUsername);
     }
+    if (!resolvedUser && livePlayer) {
+      resolvedUser = userStore.getUserByUsername(livePlayer.username || livePlayer.name);
+    }
 
-    let livePlayer = null;
-    if (targetId) {
-      for (const r of rooms.values()) {
-        if (r.players.has(targetId)) {
-          livePlayer = r.players.get(targetId);
-          break;
-        }
-      }
-    }
-    if (!resolvedUser && livePlayer && livePlayer.username) {
-      resolvedUser = userStore.getUserByUsername(livePlayer.username);
-    }
+    const myFriendsList = socket.user
+      ? socket.user.friends || []
+      : Array.from(socket.guestFriends || []);
 
     if (resolvedUser) {
       const targetSocketId = usernameToSocketId.get(resolvedUser.username);
       const targetSocket = targetSocketId ? connectedSockets.get(targetSocketId) : null;
-      const isFriend = Boolean(socket.user && (socket.user.friends || []).includes(resolvedUser.username));
+      const activeRoom = liveRoom || (targetSocket && targetSocket.currentRoomId ? rooms.get(targetSocket.currentRoomId) : null);
+      const isFriend = myFriendsList.includes(resolvedUser.username);
+      const isSelf =
+        (targetId && targetId === socket.id) ||
+        Boolean(socket.user && socket.user.username === resolvedUser.username);
+
+      const mergedStats = livePlayer && resolvedUser.isVirtualProfile
+        ? {
+            totalScore: Math.max((resolvedUser.stats && resolvedUser.stats.totalScore) || 0, livePlayer.score || 0),
+            totalCuts: Math.max((resolvedUser.stats && resolvedUser.stats.totalCuts) || 0, livePlayer.cuts || 0),
+            totalKills: Math.max((resolvedUser.stats && resolvedUser.stats.totalKills) || 0, livePlayer.kills || 0),
+            matchesPlayed: (resolvedUser.stats && resolvedUser.stats.matchesPlayed) || 1,
+            wins: (resolvedUser.stats && resolvedUser.stats.wins) || 0
+          }
+        : resolvedUser.stats;
 
       ack({
         ok: true,
         profile: {
-          isRegistered: true,
+          targetId: livePlayer ? livePlayer.id : (targetSocket ? targetSocket.id : targetId || null),
+          isSelf,
+          isRegistered: !resolvedUser.isVirtualProfile,
+          isBot: Boolean(resolvedUser.isBot || (livePlayer && livePlayer.isBot)),
           username: resolvedUser.username,
-          displayName: resolvedUser.displayName,
+          displayName: livePlayer ? livePlayer.name : resolvedUser.displayName,
           fullName: resolvedUser.fullName,
-          color: resolvedUser.color,
-          skin: resolvedUser.skin,
-          friendCount: resolvedUser.friendCount,
-          stats: resolvedUser.stats,
+          color: livePlayer ? livePlayer.color : resolvedUser.color,
+          skin: (livePlayer && livePlayer.skin) || resolvedUser.skin || 'crown',
+          friendCount: Math.max(resolvedUser.friendCount || 0, (livePlayer && livePlayer.followersCount) || 0),
+          stats: mergedStats,
           isFriend,
-          online: Boolean(targetSocket),
-          currentRoomId: targetSocket ? targetSocket.currentRoomId : null
+          online: Boolean(targetSocket || livePlayer),
+          currentRoomId: activeRoom ? activeRoom.id : null,
+          currentRoomName: activeRoom ? activeRoom.shortName : null
         }
       });
       return;
     }
 
     if (livePlayer) {
+      const handleKey = userStore.normalizeUsername(livePlayer.username || livePlayer.name || livePlayer.id);
+      const isFriend = Boolean(handleKey && myFriendsList.includes(handleKey));
+      const isSelf = livePlayer.id === socket.id;
+
       ack({
         ok: true,
         profile: {
+          targetId: livePlayer.id,
+          isSelf,
           isRegistered: false,
-          username: null,
+          username: handleKey || null,
           displayName: livePlayer.name,
           fullName: livePlayer.isBot ? 'Yapay Zeka (Bot)' : 'Misafir Oyuncu',
           color: livePlayer.color,
           skin: livePlayer.skin || 'crown',
-          friendCount: 0,
+          friendCount: livePlayer.followersCount || 0,
           stats: {
             totalScore: livePlayer.score || 0,
             totalCuts: livePlayer.cuts || 0,
@@ -1890,9 +1937,41 @@ io.on('connection', (socket) => {
             matchesPlayed: 1,
             wins: 0
           },
+          isFriend,
+          online: true,
+          isBot: Boolean(livePlayer.isBot),
+          currentRoomId: liveRoom ? liveRoom.id : null,
+          currentRoomName: liveRoom ? liveRoom.shortName : null
+        }
+      });
+      return;
+    }
+
+    // Oyuncu henüz bir odaya girmemişse ve kendi profiline ("👤 Profilim") tıkladıysa
+    if (!targetId || targetId === socket.id) {
+      const guestName = (fallbackSelf && fallbackSelf.name) || 'Misafir Slime';
+      const guestColor = (fallbackSelf && fallbackSelf.color) || '#00F5D4';
+      const guestSkin = (fallbackSelf && fallbackSelf.skin) || 'crown';
+      ack({
+        ok: true,
+        profile: {
+          targetId: socket.id,
+          isSelf: true,
+          isRegistered: Boolean(socket.user),
+          username: socket.user ? socket.user.username : userStore.normalizeUsername(guestName),
+          displayName: socket.user ? socket.user.displayName : guestName,
+          fullName: socket.user ? socket.user.fullName : 'Misafir Oyuncu (Lobide)',
+          color: socket.user ? socket.user.color : guestColor,
+          skin: socket.user ? socket.user.skin : guestSkin,
+          friendCount: socket.user ? socket.user.friendCount || 0 : (socket.guestFriends ? socket.guestFriends.size : 0),
+          stats: socket.user
+            ? socket.user.stats
+            : { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 },
           isFriend: false,
           online: true,
-          isBot: Boolean(livePlayer.isBot)
+          isBot: false,
+          currentRoomId: socket.currentRoomId || null,
+          currentRoomName: null
         }
       });
       return;
@@ -1901,78 +1980,204 @@ io.on('connection', (socket) => {
     ack({ ok: false, error: 'Oyuncu profili bulunamadı.' });
   });
 
-  socket.on('addFriend', ({ targetUsername }, ack) => {
-    if (!socket.user) {
-      if (typeof ack === 'function') ack({ ok: false, error: 'Arkadaş eklemek için lütfen üye girişi yapın!' });
+  socket.on('addFriend', ({ targetUsername, targetId } = {}, ack) => {
+    const { player: livePlayer } = findLivePlayerAcrossRooms(targetId, targetUsername);
+
+    const fallbackProfile = livePlayer
+      ? {
+          displayName: livePlayer.name,
+          fullName: livePlayer.isBot ? 'Yapay Zeka (Bot)' : 'Arena Oyuncusu',
+          color: livePlayer.color,
+          skin: livePlayer.skin || 'crown',
+          isBot: Boolean(livePlayer.isBot),
+          stats: {
+            totalScore: livePlayer.score || 0,
+            totalCuts: livePlayer.cuts || 0,
+            totalKills: livePlayer.kills || 0,
+            matchesPlayed: 1,
+            wins: 0
+          }
+        }
+      : null;
+
+    const queryKey = targetUsername || (livePlayer ? livePlayer.username || livePlayer.name : '');
+
+    // Üye girişi yapılmışsa kalıcı olarak (Supabase + userStore) takip et / arkadaş ekle
+    if (socket.user) {
+      const res = userStore.addFriend(socket.user.username, queryKey, fallbackProfile);
+      if (res.ok) {
+        socket.user = userStore.getUserByUsername(socket.user.username);
+        if (livePlayer) {
+          livePlayer.username = res.targetUsername;
+          livePlayer.followersCount = res.targetFriendCount;
+        }
+        const targetSid = usernameToSocketId.get(userStore.normalizeUsername(res.targetUsername));
+        if (targetSid && connectedSockets.has(targetSid)) {
+          const targetSock = connectedSockets.get(targetSid);
+          if (targetSock.user) {
+            targetSock.user = userStore.getUserByUsername(targetSock.user.username);
+          }
+          io.to(targetSid).emit('friendAddedNotification', {
+            fromUsername: socket.user.username,
+            fromDisplayName: socket.user.displayName
+          });
+        }
+      }
+      if (typeof ack === 'function') ack(res);
       return;
     }
-    const res = userStore.addFriend(socket.user.username, targetUsername);
-    if (res.ok) {
-      socket.user = userStore.getUserByUsername(socket.user.username);
-      const targetSid = usernameToSocketId.get(userStore.normalizeUsername(targetUsername));
-      if (targetSid && connectedSockets.has(targetSid)) {
-        const targetSock = connectedSockets.get(targetSid);
-        if (targetSock.user) {
-          targetSock.user = userStore.getUserByUsername(targetSock.user.username);
-        }
-        io.to(targetSid).emit('friendAddedNotification', {
-          fromUsername: socket.user.username,
-          fromDisplayName: socket.user.displayName
-        });
+
+    // Misafir oyuncu ise oturum boyunca takip listesine ekle
+    const targetRec = userStore.ensureProfileRecord(queryKey, fallbackProfile);
+    if (!targetRec) {
+      if (typeof ack === 'function') {
+        ack({ ok: false, error: 'Bu kullanıcı adına sahip bir oyuncu bulunamadı.' });
       }
+      return;
     }
-    if (typeof ack === 'function') ack(res);
+    if (livePlayer && livePlayer.id === socket.id) {
+      if (typeof ack === 'function') {
+        ack({ ok: false, error: 'Kendinizi takip edemezsiniz.' });
+      }
+      return;
+    }
+
+    if (!socket.guestFriends) socket.guestFriends = new Set();
+    const alreadyHad = socket.guestFriends.has(targetRec.username);
+    socket.guestFriends.add(targetRec.username);
+    if (!alreadyHad && livePlayer) {
+      livePlayer.followersCount = (livePlayer.followersCount || 0) + 1;
+    }
+
+    const targetSid = usernameToSocketId.get(targetRec.username);
+    if (targetSid && connectedSockets.has(targetSid)) {
+      io.to(targetSid).emit('friendAddedNotification', {
+        fromUsername: 'misafir_oyuncu',
+        fromDisplayName: 'Bir Oyuncu'
+      });
+    }
+
+    if (typeof ack === 'function') {
+      ack({
+        ok: true,
+        isGuestFollow: true,
+        friendCount: socket.guestFriends.size,
+        targetUsername: targetRec.username,
+        targetDisplayName: targetRec.displayName || targetRec.username,
+        friendsList: Array.from(socket.guestFriends)
+      });
+    }
   });
 
-  socket.on('getFriendsList', (ack) => {
-    if (typeof ack !== 'function') return;
-    if (!socket.user) {
-      ack({ ok: false, friends: [], friendCount: 0 });
+  socket.on('removeFriend', ({ targetUsername, targetId } = {}, ack) => {
+    const { player: livePlayer } = findLivePlayerAcrossRooms(targetId, targetUsername);
+    const queryKey = targetUsername || (livePlayer ? livePlayer.username || livePlayer.name : '');
+    const cleanKey = userStore.normalizeUsername(queryKey);
+
+    if (socket.user) {
+      const res = userStore.removeFriend(socket.user.username, cleanKey);
+      socket.user = userStore.getUserByUsername(socket.user.username);
+      if (livePlayer && typeof res.targetFriendCount === 'number') {
+        livePlayer.followersCount = res.targetFriendCount;
+      }
+      if (typeof ack === 'function') ack(res);
       return;
     }
-    const fresh = userStore.getUserByUsername(socket.user.username);
-    socket.user = fresh;
-    const detailed = (fresh.friends || []).map((fUsername) => {
+
+    if (socket.guestFriends && socket.guestFriends.has(cleanKey)) {
+      socket.guestFriends.delete(cleanKey);
+      if (livePlayer && livePlayer.followersCount > 0) {
+        livePlayer.followersCount -= 1;
+      }
+    }
+    if (typeof ack === 'function') {
+      ack({
+        ok: true,
+        isGuestFollow: true,
+        friendCount: socket.guestFriends ? socket.guestFriends.size : 0,
+        friendsList: socket.guestFriends ? Array.from(socket.guestFriends) : []
+      });
+    }
+  });
+
+  socket.on('getFriendsList', (payload, ack) => {
+    const callback = typeof payload === 'function' ? payload : ack;
+    if (typeof callback !== 'function') return;
+
+    let friendKeys = [];
+    if (socket.user) {
+      const fresh = userStore.getUserByUsername(socket.user.username);
+      socket.user = fresh;
+      friendKeys = (fresh && fresh.friends) || [];
+    } else {
+      if (payload && Array.isArray(payload.guestFriends)) {
+        if (!socket.guestFriends) socket.guestFriends = new Set();
+        payload.guestFriends.forEach((k) => {
+          const clean = userStore.normalizeUsername(k);
+          if (clean) socket.guestFriends.add(clean);
+        });
+      }
+      friendKeys = Array.from(socket.guestFriends || []);
+    }
+
+    const detailed = friendKeys.map((fUsername) => {
       const fUser = userStore.getUserByUsername(fUsername);
       const sid = usernameToSocketId.get(fUsername);
       const sock = sid ? connectedSockets.get(sid) : null;
-      const room = sock && sock.currentRoomId ? rooms.get(sock.currentRoomId) : null;
+      const { player: liveP, room: liveR } = findLivePlayerAcrossRooms(null, fUsername);
+      const room = liveR || (sock && sock.currentRoomId ? rooms.get(sock.currentRoomId) : null);
+
       return {
+        targetId: liveP ? liveP.id : (sock ? sock.id : null),
         username: fUsername,
-        displayName: fUser ? fUser.displayName : fUsername,
-        fullName: fUser ? fUser.fullName : '',
-        color: fUser ? fUser.color : '#00F5D4',
-        skin: fUser ? fUser.skin : 'crown',
-        friendCount: fUser ? fUser.friendCount : 0,
-        online: Boolean(sock),
+        displayName: liveP ? liveP.name : (fUser ? fUser.displayName : fUsername),
+        fullName: fUser ? fUser.fullName : (liveP && liveP.isBot ? 'Yapay Zeka (Bot)' : 'Oyuncu'),
+        color: liveP ? liveP.color : (fUser ? fUser.color : '#00F5D4'),
+        skin: (liveP && liveP.skin) || (fUser ? fUser.skin : 'crown'),
+        friendCount: Math.max(fUser ? fUser.friendCount : 0, (liveP && liveP.followersCount) || 0),
+        online: Boolean(sock || liveP),
+        isBot: Boolean((fUser && fUser.isBot) || (liveP && liveP.isBot)),
         roomId: room ? room.id : null,
         roomName: room ? room.shortName : null
       };
     });
-    ack({ ok: true, friendCount: detailed.length, friends: detailed });
+
+    callback({ ok: true, friendCount: detailed.length, friends: detailed });
   });
 
-  socket.on('sendGameInvite', ({ targetUsername, roomId }, ack) => {
-    if (!socket.user) {
-      if (typeof ack === 'function') ack({ ok: false, error: 'Davet göndermek için üye girişi yapmalısınız.' });
+  socket.on('sendGameInvite', ({ targetUsername, targetId, roomId } = {}, ack) => {
+    const { player: livePlayer } = findLivePlayerAcrossRooms(targetId, targetUsername);
+
+    if (livePlayer && livePlayer.isBot) {
+      if (typeof ack === 'function') {
+        ack({ ok: true, isBot: true, message: `🤖 ${livePlayer.name} (Bot) davetinizi aldı ve arenada sizi bekliyor!` });
+      }
       return;
     }
-    const cleanTarget = userStore.normalizeUsername(targetUsername);
-    const targetSid = usernameToSocketId.get(cleanTarget);
+
+    const cleanTarget = userStore.normalizeUsername(targetUsername || (livePlayer && livePlayer.username) || '');
+    let targetSid = cleanTarget ? usernameToSocketId.get(cleanTarget) : null;
+    if (!targetSid && livePlayer && connectedSockets.has(livePlayer.id)) {
+      targetSid = livePlayer.id;
+    }
+
     if (!targetSid || !connectedSockets.has(targetSid)) {
       if (typeof ack === 'function') ack({ ok: false, error: 'Bu oyuncu şu an çevrimiçi değil.' });
       return;
     }
 
-    const useRoomId = roomId || socket.currentRoomId || 'team_2v2';
+    const useRoomId = roomId || socket.currentRoomId || 'ffa';
     const room = rooms.get(useRoomId);
     const myPlayer = room ? room.players.get(socket.id) : null;
+    const senderName = socket.user
+      ? socket.user.username
+      : (myPlayer ? myPlayer.name : 'Bir Oyuncu');
 
     io.to(targetSid).emit('gameInviteReceived', {
-      fromUsername: socket.user.username,
-      fromDisplayName: socket.user.displayName,
+      fromUsername: senderName,
+      fromDisplayName: socket.user ? socket.user.displayName : senderName,
       roomId: useRoomId,
-      roomName: room ? room.name : 'Takım Savaşı',
+      roomName: room ? room.name : 'Savaş Arenası',
       preferredTeam: myPlayer ? myPlayer.team : 'seferogullari'
     });
 

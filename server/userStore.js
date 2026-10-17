@@ -239,13 +239,14 @@ function registerUser({ fullName, username, password, color, skin }) {
   if (rawPass.length < 4) {
     return { ok: false, error: 'Şifre en az 4 karakter olmalıdır.' };
   }
-  if (usersDb[cleanUser]) {
+  if (usersDb[cleanUser] && !usersDb[cleanUser].isVirtualProfile) {
     return { ok: false, error: 'Bu kullanıcı adı zaten alınmış! Giriş yapabilir veya başka ad seçebilirsiniz.' };
   }
 
   const { salt, hash } = hashPassword(rawPass);
   const chosenColor = isValidColor(color) ? color : SLIME_COLORS[0].id;
   const chosenSkin = isValidSkin(skin) ? skin : BASIC_10_SKINS[0].id;
+  const prevFriends = usersDb[cleanUser] && Array.isArray(usersDb[cleanUser].friends) ? usersDb[cleanUser].friends : [];
 
   const newUser = {
     username: cleanUser,
@@ -255,7 +256,7 @@ function registerUser({ fullName, username, password, color, skin }) {
     passwordHash: hash,
     color: chosenColor,
     skin: chosenSkin,
-    friends: [],
+    friends: prevFriends,
     stats: {
       totalScore: 0,
       totalCuts: 0,
@@ -275,7 +276,7 @@ function registerUser({ fullName, username, password, color, skin }) {
 function loginUser({ username, password }) {
   const cleanUser = normalizeUsername(username);
   const record = usersDb[cleanUser];
-  if (!record) {
+  if (!record || record.isVirtualProfile) {
     return { ok: false, error: 'Kullanıcı bulunamadı. Lütfen kullanıcı adınızı kontrol edin veya kayıt olun.' };
   }
 
@@ -295,7 +296,7 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
   }
 
   const existing = usersDb[cleanUser];
-  if (existing) {
+  if (existing && !existing.isVirtualProfile) {
     const { hash } = hashPassword(rawPass, existing.salt);
     if (hash !== existing.passwordHash) {
       return { ok: false, error: 'Hatalı şifre!' };
@@ -353,18 +354,77 @@ function updateUserCustomization(username, { color, skin }) {
   return { ok: true, user: sanitizeUser(record) };
 }
 
-function addFriend(myUsername, targetUsername) {
-  const meKey = normalizeUsername(myUsername);
-  const targetKey = normalizeUsername(targetUsername);
+function findUserRecord(query) {
+  if (!query) return null;
+  const key = normalizeUsername(query);
+  if (key && usersDb[key]) return usersDb[key];
+  const rawLower = String(query).trim().toLowerCase();
+  for (const u of Object.values(usersDb)) {
+    if (
+      (u.displayName && u.displayName.toLowerCase() === rawLower) ||
+      (u.username && u.username.toLowerCase() === rawLower) ||
+      (key && normalizeUsername(u.displayName) === key)
+    ) {
+      return u;
+    }
+  }
+  return null;
+}
 
-  if (!meKey || !targetKey || meKey === targetKey) {
-    return { ok: false, error: 'Kendinizi arkadaş olarak ekleyemezsiniz.' };
+function ensureProfileRecord(targetUsernameOrName, fallbackProfile) {
+  let target = findUserRecord(targetUsernameOrName);
+  if (target) {
+    if (fallbackProfile && target.isVirtualProfile) {
+      if (fallbackProfile.color) target.color = fallbackProfile.color;
+      if (fallbackProfile.skin) target.skin = fallbackProfile.skin;
+      if (fallbackProfile.stats) target.stats = fallbackProfile.stats;
+    }
+    return target;
+  }
+  if (!fallbackProfile) return null;
+
+  const cleanKey = normalizeUsername(targetUsernameOrName || fallbackProfile.displayName || 'oyuncu');
+  if (!cleanKey) return null;
+
+  const virtualRecord = {
+    username: cleanKey,
+    displayName: String(fallbackProfile.displayName || targetUsernameOrName || cleanKey).trim().substring(0, 16),
+    fullName: String(fallbackProfile.fullName || (fallbackProfile.isBot ? 'Yapay Zeka (Bot)' : 'Arena Oyuncusu')).trim().substring(0, 36),
+    salt: '',
+    passwordHash: '',
+    isVirtualProfile: true,
+    isBot: Boolean(fallbackProfile.isBot),
+    color: isValidColor(fallbackProfile.color) ? fallbackProfile.color : (fallbackProfile.color || SLIME_COLORS[0].id),
+    skin: isValidSkin(fallbackProfile.skin) ? fallbackProfile.skin : 'crown',
+    friends: [],
+    stats: fallbackProfile.stats || {
+      totalScore: 0,
+      totalCuts: 0,
+      totalKills: 0,
+      matchesPlayed: 1,
+      wins: 0
+    },
+    createdAt: Date.now()
+  };
+
+  usersDb[cleanKey] = virtualRecord;
+  return virtualRecord;
+}
+
+function addFriend(myUsername, targetUsername, fallbackProfile = null) {
+  const meKey = normalizeUsername(myUsername);
+  const me = usersDb[meKey];
+  if (!me) return { ok: false, error: 'Önce üye girişi yapmalısınız.' };
+
+  const target = ensureProfileRecord(targetUsername, fallbackProfile);
+  if (!target) {
+    return { ok: false, error: 'Bu kullanıcı adına sahip bir oyuncu bulunamadı.' };
   }
 
-  const me = usersDb[meKey];
-  const target = usersDb[targetKey];
-  if (!me) return { ok: false, error: 'Önce üye girişi yapmalısınız.' };
-  if (!target) return { ok: false, error: 'Bu kullanıcı adına sahip bir üye bulunamadı.' };
+  const targetKey = target.username;
+  if (!meKey || !targetKey || meKey === targetKey) {
+    return { ok: false, error: 'Kendinizi takip edemez / arkadaş ekleyemezsiniz.' };
+  }
 
   if (!Array.isArray(me.friends)) me.friends = [];
   if (!Array.isArray(target.friends)) target.friends = [];
@@ -380,23 +440,30 @@ function addFriend(myUsername, targetUsername) {
   return {
     ok: true,
     friendCount: me.friends.length,
-    targetDisplayName: target.displayName || target.username
+    targetUsername: target.username,
+    targetDisplayName: target.displayName || target.username,
+    targetFriendCount: target.friends.length
   };
 }
 
 function removeFriend(myUsername, targetUsername) {
   const meKey = normalizeUsername(myUsername);
-  const targetKey = normalizeUsername(targetUsername);
   const me = usersDb[meKey];
-  const target = usersDb[targetKey];
   if (!me) return { ok: false };
+
+  const target = findUserRecord(targetUsername);
+  const targetKey = target ? target.username : normalizeUsername(targetUsername);
 
   me.friends = (me.friends || []).filter((u) => u !== targetKey);
   if (target && Array.isArray(target.friends)) {
     target.friends = target.friends.filter((u) => u !== meKey);
   }
   saveUsers();
-  return { ok: true, friendCount: me.friends.length };
+  return {
+    ok: true,
+    friendCount: me.friends.length,
+    targetFriendCount: target && Array.isArray(target.friends) ? target.friends.length : 0
+  };
 }
 
 function recordMatchStats(username, { score = 0, cuts = 0, kills = 0, won = false }) {
@@ -422,6 +489,8 @@ function sanitizeUser(u) {
     fullName: u.fullName,
     color: u.color || SLIME_COLORS[0].id,
     skin: u.skin || BASIC_10_SKINS[0].id,
+    isBot: Boolean(u.isBot),
+    isVirtualProfile: Boolean(u.isVirtualProfile),
     friendCount: Array.isArray(u.friends) ? u.friends.length : 0,
     friends: Array.isArray(u.friends) ? u.friends : [],
     stats: u.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
@@ -429,12 +498,12 @@ function sanitizeUser(u) {
 }
 
 function getUserByUsername(username) {
-  const key = normalizeUsername(username);
-  return sanitizeUser(usersDb[key]);
+  const rec = findUserRecord(username);
+  return sanitizeUser(rec);
 }
 
 function getTotalRegisteredCount() {
-  return Object.keys(usersDb).length;
+  return Object.values(usersDb).filter((u) => !u.isVirtualProfile).length;
 }
 
 module.exports = {
@@ -443,6 +512,7 @@ module.exports = {
   loginUser,
   restoreOrLoginUser,
   updateUserCustomization,
+   ensureProfileRecord,
   addFriend,
   removeFriend,
   recordMatchStats,
