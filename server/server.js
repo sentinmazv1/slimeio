@@ -1099,8 +1099,15 @@ function startNewMatch(room) {
     p.score = 0;
     p.cuts = 0;
     p.kills = 0;
-    p.spectating = false; // Bekleyen tüm oyuncular yeni turda eşit olarak oyuna dahil olur!
     clearPlayerPhysics(room, p);
+    if (p.watchOnly) {
+      p.spectating = true;
+      p.waitingForWall = false;
+      p.alive = false;
+      p.respawnAt = 0;
+      continue;
+    }
+    p.spectating = false; // Bekleyen tüm oyuncular yeni turda eşit olarak oyuna dahil olur!
     if (p.isBot) {
       spawnBotAtRandomWall(room, p);
     } else {
@@ -1124,6 +1131,7 @@ function triggerMatchEnd(room) {
   let telliScore = 0;
 
   const standings = [...room.players.values()]
+    .filter((p) => !p.watchOnly)
     .map((p) => {
       const sc = p.score || 0;
       if (p.team === 'seferogullari') seferScore += sc;
@@ -1151,7 +1159,7 @@ function triggerMatchEnd(room) {
 
   // Kayıtlı üyelerin istatistiklerini kaydet
   for (const p of room.players.values()) {
-    if (!p.isBot && p.username) {
+    if (!p.isBot && !p.watchOnly && p.username) {
       const won = room.isTeam ? p.team === winningTeam : winner.id === p.id;
       userStore.recordMatchStats(p.username, {
         score: p.score || 0,
@@ -1315,11 +1323,11 @@ setInterval(() => {
     let telliCount = 0;
 
     for (const p of room.players.values()) {
-      if (!p.isBot) humanCount++;
-      if (p.team === 'seferogullari') {
+      if (!p.isBot && !p.watchOnly) humanCount++;
+      if (!p.watchOnly && p.team === 'seferogullari') {
         seferCount++;
         seferScore += p.score || 0;
-      } else if (p.team === 'telliogullari') {
+      } else if (!p.watchOnly && p.team === 'telliogullari') {
         telliCount++;
         telliScore += p.score || 0;
       }
@@ -1332,6 +1340,7 @@ setInterval(() => {
         skin: p.skin || 'crown',
         team: p.team || null,
         isBot: Boolean(p.isBot),
+        watchOnly: Boolean(p.watchOnly),
         alive: p.alive,
         waitingForWall: Boolean(p.waitingForWall),
         spectating: Boolean(p.spectating),
@@ -1600,22 +1609,22 @@ io.on('connection', (socket) => {
     if (typeof ack === 'function') ack(res);
   });
 
-  // 3) Odaya Katılma (Misafir veya Üye)
+  // 3) Odaya Katılma veya Maçı Canlı İzleme (Misafir veya Üye)
   socket.on('joinRoom', (payload, ack) => {
-    const { roomId = 'ffa', guestName = '', preferredTeam = null } = payload || {};
+    const { roomId = 'ffa', guestName = '', preferredTeam = null, watchOnly = false } = payload || {};
     const room = rooms.get(roomId);
     if (!room) {
       if (typeof ack === 'function') ack({ ok: false, error: 'Oda bulunamadı.' });
       return;
     }
 
-    // Takım odaları sadece üyelere açıktır
-    if (room.isTeam && !socket.user) {
+    // Sadece "Maça Katıl" (oyuncu olarak giriş) durumunda takım odaları üyelik gerektirir; "Maçı İzle" herkese açıktır!
+    if (!watchOnly && room.isTeam && !socket.user) {
       if (typeof ack === 'function') {
         ack({
           ok: false,
           requireAuth: true,
-          error: 'Takım kurmak, Seferoğulları / Tellioğulları maçlarına girmek ve kostüm seçmek için lütfen hızlı üye olun veya giriş yapın!'
+          error: 'Takım kurmak, Seferoğulları / Tellioğulları maçlarına katılmak ve kostüm seçmek için lütfen hızlı üye olun veya giriş yapın! (Üye olmadan izlemek için "👀 İzle" butonunu kullanabilirsiniz.)'
         });
       }
       return;
@@ -1625,6 +1634,8 @@ io.on('connection', (socket) => {
     let displayName = '';
     if (socket.user) {
       displayName = socket.user.displayName || socket.user.username;
+    } else if (watchOnly) {
+      displayName = String(guestName || '').trim().substring(0, 14) || 'İzleyici';
     } else {
       displayName = String(guestName || '').trim().substring(0, 14);
       if (displayName.length < 2) {
@@ -1637,13 +1648,81 @@ io.on('connection', (socket) => {
 
     leaveCurrentRoom(socket);
 
+    // Eğer kullanıcı "👀 Maçı İzle" (watchOnly) seçtiyse:
+    if (watchOnly) {
+      // Eğer izlenmek istenen takım odasında henüz maç başlamamışsa eksik koltukları botlarla tamamlayıp maçı başlat ki izleyici canlı maç izleyebilsin
+      if (room.isTeam && room.status !== 'playing') {
+        const counts = getTeamCounts(room);
+        const missingSefer = Math.max(0, room.teamSize - counts.seferCount);
+        const missingTelli = Math.max(0, room.teamSize - counts.telliCount);
+        for (let i = 0; i < missingSefer; i++) {
+          createBotInRoom(room, { team: 'seferogullari' });
+        }
+        for (let i = 0; i < missingTelli; i++) {
+          createBotInRoom(room, { team: 'telliogullari' });
+        }
+        startNewMatch(room);
+      } else if (!room.isTeam && room.players.size === 0) {
+        for (let i = 0; i < 4; i++) {
+          createBotInRoom(room, {});
+        }
+        startNewMatch(room);
+      }
+
+      const watcher = {
+        id: socket.id,
+        roomId: room.id,
+        name: displayName,
+        username: socket.user ? socket.user.username : null,
+        color: socket.user ? socket.user.color : '#00F5D4',
+        skin: socket.user ? socket.user.skin : 'crown',
+        team: null,
+        isBot: false,
+        isGuest: !socket.user,
+        watchOnly: true,
+        alive: false,
+        waitingForWall: false,
+        spectating: true,
+        body: null,
+        prevPos: { x: 0, y: 0 },
+        bands: [],
+        hasHadBands: false,
+        lastBandTime: 0,
+        lastArrowTime: 0,
+        respawnAt: 0,
+        score: 0,
+        cuts: 0,
+        kills: 0,
+        input: { targetX: 0, targetY: 0 }
+      };
+
+      room.players.set(socket.id, watcher);
+      socket.join(room.id);
+      socket.currentRoomId = room.id;
+
+      if (typeof ack === 'function') {
+        ack({
+          ok: true,
+          roomId: room.id,
+          roomName: room.name,
+          isTeam: room.isTeam,
+          teamSize: room.teamSize,
+          team: null,
+          spectating: true,
+          watchOnly: true,
+          roomStatus: room.status
+        });
+      }
+      return;
+    }
+
     // Takım odasında takım ataması
     let assignedTeam = null;
     if (room.isTeam) {
       const { seferCount, telliCount } = getTeamCounts(room);
       if (seferCount >= room.teamSize && telliCount >= room.teamSize && room.status === 'playing') {
         if (typeof ack === 'function') {
-          ack({ ok: false, error: 'Bu takım odası şu an dolu! Başka bir oda seçebilir veya turun bitmesini bekleyebilirsiniz.' });
+          ack({ ok: false, error: 'Bu takım odası şu an dolu! "👀 İzle" butonuyla maçı canlı izleyebilir veya başka oda seçebilirsiniz.' });
         }
         return;
       }
@@ -1675,7 +1754,7 @@ io.on('connection', (socket) => {
     if (!room.isTeam) {
       let activeHumansInRoom = 0;
       for (const existingP of room.players.values()) {
-        if (!existingP.isBot && !existingP.spectating && existingP.id !== socket.id) {
+        if (!existingP.isBot && !existingP.spectating && !existingP.watchOnly && existingP.id !== socket.id) {
           activeHumansInRoom++;
         }
       }
@@ -1716,6 +1795,7 @@ io.on('connection', (socket) => {
       team: assignedTeam,
       isBot: false,
       isGuest: !socket.user,
+      watchOnly: false,
       alive: false,
       waitingForWall: isWaitingForWall,
       spectating: isSpectating,
@@ -1749,6 +1829,7 @@ io.on('connection', (socket) => {
         teamSize: room.teamSize,
         team: assignedTeam,
         spectating: isSpectating,
+        watchOnly: false,
         roomStatus: room.status
       });
     }

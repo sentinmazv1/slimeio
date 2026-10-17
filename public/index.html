@@ -669,6 +669,14 @@
     👀 İZLEYİCİ MODU — Oyuna başlamak için turun bitmesini bekleyiniz! Yeni turda herkesle eşit başlayacaksın.
   </div>
 
+  <!-- Canlı Maç İzleme (Spectator) Kontrol Çubuğu -->
+  <div id="spectator-controls-bar" style="position:fixed; top:112px; left:50%; transform:translateX(-50%); background:rgba(13,18,30,0.92); backdrop-filter:blur(10px); padding:7px 14px; border-radius:999px; z-index:19; display:none; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center; border:1.5px solid rgba(0,245,212,0.5); box-shadow:0 0 24px rgba(0,245,212,0.25);">
+    <button id="spec-prev-btn" style="background:rgba(255,255,255,0.1); color:#FFF; border:1px solid rgba(255,255,255,0.2); padding:5px 11px; border-radius:999px; font-size:11.5px; font-weight:800; cursor:pointer;">◀ Önceki Oyuncu</button>
+    <button id="spec-overview-btn" style="background:rgba(0,245,212,0.16); color:#00F5D4; border:1px solid #00F5D4; padding:5px 11px; border-radius:999px; font-size:11.5px; font-weight:800; cursor:pointer;">🗺️ Tüm Harita</button>
+    <button id="spec-next-btn" style="background:rgba(255,255,255,0.1); color:#FFF; border:1px solid rgba(255,255,255,0.2); padding:5px 11px; border-radius:999px; font-size:11.5px; font-weight:800; cursor:pointer;">Sonraki Oyuncu ▶</button>
+    <button id="spec-join-play-btn" style="background:linear-gradient(135deg,#FF2A85,#FF6B00); color:#FFF; border:none; padding:5px 13px; border-radius:999px; font-size:11.5px; font-weight:900; cursor:pointer; box-shadow:0 0 12px rgba(255,42,133,0.4);">🚀 Maça Katıl (Oyna)</button>
+  </div>
+
   <!-- Kamera Oyuncu Takip (İzleme) Barı -->
   <div id="camera-follow-banner" style="position:fixed; top:68px; left:50%; transform:translateX(-50%); background:linear-gradient(135deg,#8B5CF6,#EC4899); color:#FFFFFF; padding:8px 18px; border-radius:999px; font-weight:900; font-size:13px; z-index:19; display:none; align-items:center; gap:10px; box-shadow:0 0 24px rgba(236,72,153,0.55); border:1.5px solid #FFFFFF;">
     <span id="camera-follow-text">🎥 Takip Ediliyor: Oyuncu</span>
@@ -818,9 +826,14 @@
             • <strong>Kemer Koparma:</strong> Sağ Tık veya <strong>E / Shift / Q</strong>
           </div>
 
-          <button id="join-game-btn" style="margin-top:auto; background:linear-gradient(135deg, #FF2A85, #FF6B00); color:#FFF; border:none; border-radius:14px; padding:14px; font-size:16px; font-weight:900; cursor:pointer; box-shadow:0 0 25px rgba(255,42,133,0.45);">
-            🚀 SAVAŞA KATIL!
-          </button>
+          <div style="display:flex; gap:8px; margin-top:auto;">
+            <button id="join-game-btn" style="flex:1.35; background:linear-gradient(135deg, #FF2A85, #FF6B00); color:#FFF; border:none; border-radius:14px; padding:13px 10px; font-size:15px; font-weight:900; cursor:pointer; box-shadow:0 0 25px rgba(255,42,133,0.45);">
+              🚀 MAÇA KATIL!
+            </button>
+            <button id="watch-game-btn" style="flex:1; background:linear-gradient(135deg, #8B5CF6, #00BBF9); color:#FFF; border:none; border-radius:14px; padding:13px 10px; font-size:14px; font-weight:900; cursor:pointer; box-shadow:0 0 20px rgba(139,92,246,0.4);">
+              👀 MAÇI İZLE
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -952,9 +965,9 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/vendor/matter.min.js"></script>
-  <script src="/shared/constants.js?v=2.4"></script>
-  <script src="/shared/geometry.js?v=2.4"></script>
-  <script src="/js/audio.js?v=2.4"></script>
-  <script src="/js/client.js?v=2.4"></script>
+  <script src="/shared/constants.js?v=2.5"></script>
+  <script src="/shared/geometry.js?v=2.5"></script>
+  <script src="/js/audio.js?v=2.5"></script>
+  <script src="/js/client.js?v=2.5"></script>
 </body>
 </html>

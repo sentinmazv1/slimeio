@@ -69,6 +69,14 @@
   const skinsGridContainer = document.getElementById('skins-grid-container');
   const modesListContainer = document.getElementById('modes-list-container');
   const joinGameBtn = document.getElementById('join-game-btn');
+  const watchGameBtn = document.getElementById('watch-game-btn');
+
+  // İzleyici (Spectator) Kontrol Çubuğu
+  const spectatorControlsBarEl = document.getElementById('spectator-controls-bar');
+  const specPrevBtn = document.getElementById('spec-prev-btn');
+  const specOverviewBtn = document.getElementById('spec-overview-btn');
+  const specNextBtn = document.getElementById('spec-next-btn');
+  const specJoinPlayBtn = document.getElementById('spec-join-play-btn');
 
   // Takım Bekleme Odası Elementleri
   const teamWaitingModal = document.getElementById('team-waiting-modal');
@@ -425,24 +433,42 @@
           <span style="font-size:11px; color:#00F5D4;">${badgeText}</span>
         </div>
         <div class="mode-card-desc">${m.desc}</div>
+        <div style="display:flex; gap:6px; margin-top:7px;">
+          <button type="button" class="mode-quick-join-btn" data-mode="${m.id}" style="flex:1; background:rgba(255,42,133,0.22); color:#FF70A6; border:1px solid #FF2A85; border-radius:7px; padding:4px 8px; font-size:11px; font-weight:800; cursor:pointer;">🚀 Maça Katıl</button>
+          <button type="button" class="mode-quick-watch-btn" data-mode="${m.id}" style="flex:1; background:rgba(139,92,246,0.24); color:#C4B5FD; border:1px solid #8B5CF6; border-radius:7px; padding:4px 8px; font-size:11px; font-weight:800; cursor:pointer;">👀 Maçı İzle</button>
+        </div>
       </div>`;
     }).join('');
 
     modesListContainer.querySelectorAll('.mode-card').forEach((el) => {
-      el.addEventListener('click', () => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
         const modeId = el.dataset.mode;
-        const modeObj = availableModes.find((m) => m.id === modeId);
-        if (modeObj && modeObj.isTeam && !currentUser) {
-          switchAuthTab('register');
-          authFeedback.style.color = '#FFB800';
-          authFeedback.textContent = '⚔️ Seferoğulları / Tellioğulları takım odalarına girmek için lütfen hızlı üye olun!';
-          return;
-        }
         selectedModeId = modeId;
         try {
           localStorage.setItem('slimeio_selected_mode', selectedModeId);
         } catch (_e) {}
         renderModesList();
+      });
+    });
+
+    modesListContainer.querySelectorAll('.mode-quick-join-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const modeId = btn.dataset.mode;
+        selectedModeId = modeId;
+        renderModesList();
+        enterRoom(modeId, null, false);
+      });
+    });
+
+    modesListContainer.querySelectorAll('.mode-quick-watch-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const modeId = btn.dataset.mode;
+        selectedModeId = modeId;
+        renderModesList();
+        enterRoom(modeId, null, true);
       });
     });
   }
@@ -497,9 +523,10 @@
     updateAuthUI();
   });
 
-  // Odaya Katılma
-  function enterRoom(roomId, preferredTeam = null) {
+  // Odaya Katılma veya Maçı Canlı İzleme
+  function enterRoom(roomId, preferredTeam = null, watchOnly = false) {
     window.soundManager.init();
+    window.soundManager.playUiPop();
     const guestName = guestNameInput.value.trim();
     if (!currentUser && guestName) {
       localStorage.setItem('slimeio_guest_name', guestName);
@@ -508,7 +535,8 @@
     socket.emit('joinRoom', {
       roomId,
       guestName,
-      preferredTeam
+      preferredTeam,
+      watchOnly: Boolean(watchOnly)
     }, (res) => {
       if (!res || !res.ok) {
         if (res && res.requireAuth) {
@@ -528,7 +556,9 @@
       }
       window.focus();
 
-      if (res.isTeam && res.roomStatus === 'waiting_for_teams') {
+      if (res.watchOnly) {
+        teamWaitingModal.style.display = 'none';
+      } else if (res.isTeam && res.roomStatus === 'waiting_for_teams') {
         teamWaitingModal.style.display = 'flex';
       } else {
         teamWaitingModal.style.display = 'none';
@@ -536,12 +566,52 @@
     });
   }
 
+  function cycleSpectatedPlayer(direction = 1) {
+    const aliveList = [...renderPlayers.values()].filter((p) => p.alive && !p.watchOnly && p.id !== selfId);
+    if (aliveList.length === 0) {
+      setCameraFollowPlayer(null, '');
+      return;
+    }
+    const currIdx = aliveList.findIndex((p) => p.id === followedPlayerId);
+    const nextIdx = (currIdx + direction + aliveList.length) % aliveList.length;
+    const chosen = aliveList[nextIdx];
+    if (chosen) {
+      setCameraFollowPlayer(chosen.id, chosen.name);
+      window.soundManager.playUiPop();
+    }
+  }
+
+  if (specPrevBtn) {
+    specPrevBtn.addEventListener('click', () => cycleSpectatedPlayer(-1));
+  }
+  if (specNextBtn) {
+    specNextBtn.addEventListener('click', () => cycleSpectatedPlayer(1));
+  }
+  if (specOverviewBtn) {
+    specOverviewBtn.addEventListener('click', () => {
+      setCameraFollowPlayer(null, '');
+      window.soundManager.playUiPop();
+    });
+  }
+  if (specJoinPlayBtn) {
+    specJoinPlayBtn.addEventListener('click', () => {
+      setCameraFollowPlayer(null, '');
+      enterRoom(currentRoomId || selectedModeId, null, false);
+    });
+  }
+
   joinGameBtn.addEventListener('click', () => {
-    enterRoom(selectedModeId);
+    enterRoom(selectedModeId, null, false);
   });
 
+  if (watchGameBtn) {
+    watchGameBtn.addEventListener('click', () => {
+      enterRoom(selectedModeId, null, true);
+    });
+  }
+
   guestNameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') enterRoom(selectedModeId);
+    if (e.key === 'Enter') enterRoom(selectedModeId, null, false);
   });
 
   // Takım Bekleme Odası Butonları
@@ -901,7 +971,7 @@
     pendingInviteData = data;
     inviteToastText.textContent = `@${data.fromUsername} seni [${data.roomName}] odasına davet ediyor!`;
     inviteToast.style.display = 'block';
-    window.soundManager.playWallAttachScream();
+    window.soundManager.playUiPop();
   });
 
   inviteAcceptBtn.addEventListener('click', () => {
@@ -1465,36 +1535,48 @@
   });
 
   socket.on('teamMatchCountdown', ({ seconds, message }) => {
-    window.soundManager.playWallAttachScream();
+    window.soundManager.playUiPop();
     teamLobbyStatusEl.style.color = '#00F59B';
     teamLobbyStatusEl.textContent = `${message} (${seconds} sn)`;
   });
 
   socket.on('returnedToTeamLobby', () => {
     matchEndModal.style.display = 'none';
-    teamWaitingModal.style.display = 'flex';
+    const me = renderPlayers.get(selfId);
+    if (me && me.watchOnly) {
+      teamWaitingModal.style.display = 'none';
+    } else {
+      teamWaitingModal.style.display = 'flex';
+    }
   });
 
   socket.on('bandAttached', ({ playerId }) => {
+    const p = renderPlayers.get(playerId);
     if (playerId === selfId) {
       window.soundManager.playWallAttachScream();
-      const me = renderPlayers.get(selfId);
-      if (me) me.impactPulse = 1.0;
+      if (p) p.impactPulse = 1.0;
+    } else if (p && followedPlayerId === playerId) {
+      window.soundManager.playWallAttachScream(p.renderX, p.renderY, camera.x, camera.y);
+      p.impactPulse = 1.0;
     }
   });
 
   socket.on('arrowShot', ({ playerId }) => {
+    const p = renderPlayers.get(playerId);
     if (playerId === selfId) {
       window.soundManager.playArrowShoot();
+    } else if (p) {
+      window.soundManager.playArrowShoot(p.renderX, p.renderY, camera.x, camera.y);
     }
   });
 
   socket.on('arrowSplat', ({ x, y, color }) => {
+    window.soundManager.playSlimeSplat(x, y, camera.x, camera.y);
     splatEffects.push({ x, y, color: color || '#00F5D4', radius: 7, alpha: 1.0 });
   });
 
   socket.on('bandSnapped', ({ snapX, snapY }) => {
-    window.soundManager.playBandSnap();
+    window.soundManager.playBandSnap(snapX, snapY, camera.x, camera.y);
     snapEffects.push({ x: snapX, y: snapY, radius: 8, alpha: 1.0 });
   });
 
@@ -1543,6 +1625,8 @@
       joystick.active = false;
       joystick.touchId = null;
       window.soundManager.playDeathPop();
+    } else if (followedPlayerId === victimId) {
+      window.soundManager.playDeathPop();
     }
   });
 
@@ -1563,7 +1647,7 @@
     overlayEl.style.display = 'none';
     spectatorBannerEl.style.display = 'none';
     matchEndModal.style.display = 'flex';
-    window.soundManager.playWallAttachScream();
+    window.soundManager.playUiPop();
 
     winnerTitleEl.textContent = `👑 Şampiyon: ${winnerName}`;
     winnerSubtitleEl.textContent = isTeam
@@ -1610,7 +1694,8 @@
   });
 
   function updateTeamWaitingRoomUI(state) {
-    if (!state.isTeam) {
+    const meInState = (state.players || []).find((p) => p.id === selfId);
+    if (!state.isTeam || (meInState && meInState.watchOnly)) {
       teamWaitingModal.style.display = 'none';
       return;
     }
@@ -1725,6 +1810,7 @@
         existing.alive = p.alive;
         existing.waitingForWall = p.waitingForWall;
         existing.spectating = p.spectating;
+        existing.watchOnly = p.watchOnly;
         existing.score = p.score;
         existing.cuts = p.cuts;
         existing.kills = p.kills;
@@ -1754,32 +1840,46 @@
       const slimeAmmo = Math.max(0, count - 1);
       myScoreEl.textContent = `Puan: ${me.score || 0}`;
 
-      if (me.spectating) {
+      if (me.watchOnly || me.spectating) {
         overlayEl.style.display = 'none';
         spectatorBannerEl.style.display = 'block';
-        spectatorBannerEl.textContent = `👀 İZLEYİCİ MODU — Oyuna başlamak için turun bitmesini bekleyiniz! Yeni turda herkesle eşit başlayacaksın (Kalan: ${mins}:${secs})`;
-        myBandsEl.textContent = '⏳ Sonraki Tur Bekleniyor';
+        if (spectatorControlsBarEl && lobbyModal.style.display === 'none') {
+          spectatorControlsBarEl.style.display = 'flex';
+        }
+        if (me.watchOnly) {
+          spectatorBannerEl.textContent = `👀 CANLI MAÇ İZLEME MODU (${mins}:${secs}) — Oyunculara tıklayıp kamerayla takip edebilir veya "🚀 Maça Katıl" ile oyuna girebilirsin!`;
+          myBandsEl.textContent = '👀 Canlı İzleyici Modu';
+        } else {
+          spectatorBannerEl.textContent = `👀 İZLEYİCİ MODU — Oyuna başlamak için turun bitmesini bekleyiniz! Yeni turda herkesle eşit başlayacaksın (Kalan: ${mins}:${secs})`;
+          myBandsEl.textContent = '⏳ Sonraki Tur Bekleniyor';
+        }
       } else if (me.waitingForWall) {
+        if (spectatorControlsBarEl) spectatorControlsBarEl.style.display = 'none';
         overlayEl.style.display = 'none';
         spectatorBannerEl.style.display = 'block';
         spectatorBannerEl.textContent = '🎯 DUVAR SEÇİMİ — Doğmak istediğin duvara/kayaya Sol Tıkla veya Klavyede [WASD / Yön Tuşları + Space] bas!';
         myBandsEl.textContent = '🎯 Doğmak İçin Duvara Tıkla / Space Bas!';
       } else if (me.alive) {
+        if (spectatorControlsBarEl) spectatorControlsBarEl.style.display = 'none';
         spectatorBannerEl.style.display = 'none';
         overlayEl.style.display = 'none';
         myBandsEl.textContent = `🔗 ${count} | 🏹 ${slimeAmmo}`;
       } else {
+        if (spectatorControlsBarEl) spectatorControlsBarEl.style.display = 'none';
         spectatorBannerEl.style.display = 'none';
         overlayEl.style.display = 'block';
         overlayTitleEl.textContent = 'Son Kemerin Koptu!';
         overlaySubEl.textContent = `5 sn sonra duvar seçip doğacaksın: ${(me.respawnRemaining / 1000).toFixed(1)} sn`;
       }
+    } else if (spectatorControlsBarEl) {
+      spectatorControlsBarEl.style.display = 'none';
     }
 
     const nowMs = performance.now();
     if (nowMs - lastLeaderboardRenderAt >= 350 || !leaderboardListEl.innerHTML) {
       lastLeaderboardRenderAt = nowMs;
       const sorted = [...players]
+        .filter((p) => !p.watchOnly || p.id === selfId)
         .sort((a, b) => (b.score || 0) - (a.score || 0) || b.bands.length - a.bands.length)
         .slice(0, 8);
       const topScore = Math.max(100, sorted[0] ? sorted[0].score : 100);
