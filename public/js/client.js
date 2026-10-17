@@ -183,6 +183,55 @@
     btn.addEventListener('click', () => switchAuthTab(btn.dataset.tab));
   });
 
+  function saveUserSessionToStorage(userObj, rawPassword) {
+    if (!userObj || !userObj.username) return;
+    try {
+      const prevRaw = localStorage.getItem('slimeio_creds');
+      const prev = prevRaw ? JSON.parse(prevRaw) : {};
+      const passwordToKeep = rawPassword || prev.password || '';
+      localStorage.setItem('slimeio_creds', JSON.stringify({
+        username: userObj.username,
+        displayName: userObj.displayName || userObj.username,
+        fullName: userObj.fullName || userObj.username,
+        password: passwordToKeep,
+        color: userObj.color || selectedColor,
+        skin: userObj.skin || selectedSkin,
+        friendCount: userObj.friendCount || 0,
+        friends: userObj.friends || [],
+        stats: userObj.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
+      }));
+    } catch (_e) {}
+  }
+
+  function restoreLocalUserSessionImmediately() {
+    try {
+      const savedGuest = localStorage.getItem('slimeio_guest_name');
+      if (savedGuest && guestNameInput) guestNameInput.value = savedGuest;
+
+      const savedMode = localStorage.getItem('slimeio_selected_mode');
+      if (savedMode) selectedModeId = savedMode;
+
+      const savedCredsRaw = localStorage.getItem('slimeio_creds');
+      if (savedCredsRaw) {
+        const creds = JSON.parse(savedCredsRaw);
+        if (creds && creds.username && creds.password) {
+          currentUser = {
+            username: creds.username,
+            displayName: creds.displayName || creds.username,
+            fullName: creds.fullName || creds.username,
+            color: creds.color || selectedColor,
+            skin: creds.skin || selectedSkin,
+            friendCount: creds.friendCount || 0,
+            friends: creds.friends || [],
+            stats: creds.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
+          };
+          selectedColor = currentUser.color;
+          selectedSkin = currentUser.skin;
+        }
+      }
+    } catch (_e) {}
+  }
+
   function updateAuthUI() {
     if (currentUser) {
       authGuestOrMemberBox.style.display = 'none';
@@ -202,6 +251,7 @@
       myFriendCountBadge.textContent = '0';
       skinLockBadge.textContent = '🔒 Üyelere Özel';
       skinLockBadge.style.color = '#FFB800';
+      if (selectedModeId !== 'ffa') selectedModeId = 'ffa';
     }
     renderColorAndSkinSelectors();
     renderModesList();
@@ -223,8 +273,14 @@
         }
         selectedColor = el.dataset.color;
         currentUser.color = selectedColor;
+        saveUserSessionToStorage(currentUser);
         renderColorAndSkinSelectors();
-        socket.emit('updateCustomization', { color: selectedColor, skin: selectedSkin });
+        socket.emit('updateCustomization', { color: selectedColor, skin: selectedSkin }, (res) => {
+          if (res && res.ok && res.user) {
+            currentUser = res.user;
+            saveUserSessionToStorage(currentUser);
+          }
+        });
       });
     });
 
@@ -246,8 +302,14 @@
         }
         selectedSkin = el.dataset.skin;
         currentUser.skin = selectedSkin;
+        saveUserSessionToStorage(currentUser);
         renderColorAndSkinSelectors();
-        socket.emit('updateCustomization', { color: selectedColor, skin: selectedSkin });
+        socket.emit('updateCustomization', { color: selectedColor, skin: selectedSkin }, (res) => {
+          if (res && res.ok && res.user) {
+            currentUser = res.user;
+            saveUserSessionToStorage(currentUser);
+          }
+        });
       });
     });
   }
@@ -285,10 +347,17 @@
           return;
         }
         selectedModeId = modeId;
+        try {
+          localStorage.setItem('slimeio_selected_mode', selectedModeId);
+        } catch (_e) {}
         renderModesList();
       });
     });
   }
+
+  // Sayfa yüklenir yüklenmez kayıtlı oturumu ve kostümü anında yükle
+  restoreLocalUserSessionImmediately();
+  updateAuthUI();
 
   // Üye Giriş / Kayıt İşlemleri
   doLoginBtn.addEventListener('click', () => {
@@ -297,7 +366,7 @@
     socket.emit('authLogin', { username, password }, (res) => {
       if (res && res.ok) {
         currentUser = res.user;
-        localStorage.setItem('slimeio_creds', JSON.stringify({ username, password }));
+        saveUserSessionToStorage(currentUser, password);
         updateAuthUI();
       } else {
         authFeedback.style.color = '#FF2A85';
@@ -319,7 +388,7 @@
     }, (res) => {
       if (res && res.ok) {
         currentUser = res.user;
-        localStorage.setItem('slimeio_creds', JSON.stringify({ username, password }));
+        saveUserSessionToStorage(currentUser, password);
         updateAuthUI();
       } else {
         authFeedback.style.color = '#FF2A85';
@@ -331,6 +400,7 @@
   logoutBtn.addEventListener('click', () => {
     currentUser = null;
     localStorage.removeItem('slimeio_creds');
+    localStorage.setItem('slimeio_selected_mode', 'ffa');
     selectedModeId = 'ffa';
     updateAuthUI();
   });
@@ -880,27 +950,25 @@
     mapObstacles = data.obstacles || [];
     roomsSummary = data.roomsSummary || [];
 
-    const savedGuestName = localStorage.getItem('slimeio_guest_name');
-    if (savedGuestName) guestNameInput.value = savedGuestName;
+    resizeCanvas();
+    restoreLocalUserSessionImmediately();
+    updateAuthUI();
 
     const savedCredsRaw = localStorage.getItem('slimeio_creds');
     if (savedCredsRaw) {
       try {
         const creds = JSON.parse(savedCredsRaw);
         if (creds && creds.username && creds.password) {
-          socket.emit('authLogin', creds, (res) => {
-            if (res && res.ok) {
+          socket.emit('authRestoreSession', { ...creds, autoRestore: true }, (res) => {
+            if (res && res.ok && res.user) {
               currentUser = res.user;
+              saveUserSessionToStorage(currentUser, creds.password);
             }
             updateAuthUI();
           });
-          return;
         }
       } catch (_e) {}
     }
-
-    updateAuthUI();
-    resizeCanvas();
   });
 
   socket.on('roomsSummary', (list) => {

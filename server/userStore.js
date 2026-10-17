@@ -5,12 +5,18 @@ const { SLIME_COLORS, BASIC_10_SKINS } = require('../shared/constants');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const ADMIN_SETTINGS_FILE = path.join(DATA_DIR, 'admin_settings.json');
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
 let usersDb = {};
+let adminSettingsDb = {
+  initialized: false,
+  updatedAt: 0,
+  roomBots: null
+};
 
 function loadUsers() {
   try {
@@ -32,7 +38,40 @@ function saveUsers() {
   }
 }
 
+function loadAdminSettings() {
+  try {
+    if (fs.existsSync(ADMIN_SETTINGS_FILE)) {
+      const raw = fs.readFileSync(ADMIN_SETTINGS_FILE, 'utf8');
+      const parsed = JSON.parse(raw || '{}');
+      if (parsed && parsed.roomBots) {
+        adminSettingsDb = parsed;
+      }
+    }
+  } catch (err) {
+    console.error('[UserStore] Admin ayarları okunurken hata:', err.message);
+  }
+}
+
+function saveAdminSettings(roomBotsMap) {
+  try {
+    adminSettingsDb = {
+      initialized: true,
+      updatedAt: Date.now(),
+      roomBots: roomBotsMap
+    };
+    fs.writeFileSync(ADMIN_SETTINGS_FILE, JSON.stringify(adminSettingsDb, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[UserStore] Admin ayarları kaydedilirken hata:', err.message);
+  }
+  return adminSettingsDb;
+}
+
+function getAdminSettings() {
+  return adminSettingsDb;
+}
+
 loadUsers();
+loadAdminSettings();
 
 function hashPassword(password, salt) {
   const usedSalt = salt || crypto.randomBytes(12).toString('hex');
@@ -116,6 +155,60 @@ function loginUser({ username, password }) {
   }
 
   return { ok: true, user: sanitizeUser(record) };
+}
+
+function restoreOrLoginUser({ username, password, fullName, displayName, color, skin, friends, stats }) {
+  const cleanUser = normalizeUsername(username);
+  const rawPass = String(password || '').trim();
+  if (!cleanUser || cleanUser.length < 3 || rawPass.length < 4) {
+    return { ok: false, error: 'Geçersiz oturum bilgisi.' };
+  }
+
+  const existing = usersDb[cleanUser];
+  if (existing) {
+    const { hash } = hashPassword(rawPass, existing.salt);
+    if (hash !== existing.passwordHash) {
+      return { ok: false, error: 'Hatalı şifre!' };
+    }
+    let changed = false;
+    if (color && isValidColor(color) && existing.color !== color) {
+      existing.color = color;
+      changed = true;
+    }
+    if (skin && isValidSkin(skin) && existing.skin !== skin) {
+      existing.skin = skin;
+      changed = true;
+    }
+    if (changed) saveUsers();
+    return { ok: true, user: sanitizeUser(existing) };
+  }
+
+  // Sunucu yeniden başlatılmışsa (Render redeploy vb.) kullanıcının tarayıcı yedeklerinden hesabını otomatik geri yükle
+  const { salt, hash } = hashPassword(rawPass);
+  const restored = {
+    username: cleanUser,
+    displayName: String(displayName || username).trim().substring(0, 16),
+    fullName: String(fullName || displayName || username).trim().substring(0, 36),
+    salt,
+    passwordHash: hash,
+    color: isValidColor(color) ? color : SLIME_COLORS[0].id,
+    skin: isValidSkin(skin) ? skin : BASIC_10_SKINS[0].id,
+    friends: Array.isArray(friends) ? friends.map((f) => normalizeUsername(f)).filter(Boolean) : [],
+    stats: stats && typeof stats === 'object'
+      ? {
+          totalScore: Number(stats.totalScore) || 0,
+          totalCuts: Number(stats.totalCuts) || 0,
+          totalKills: Number(stats.totalKills) || 0,
+          matchesPlayed: Number(stats.matchesPlayed) || 0,
+          wins: Number(stats.wins) || 0
+        }
+      : { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 },
+    createdAt: Date.now()
+  };
+
+  usersDb[cleanUser] = restored;
+  saveUsers();
+  return { ok: true, user: sanitizeUser(restored) };
 }
 
 function updateUserCustomization(username, { color, skin }) {
@@ -218,10 +311,13 @@ module.exports = {
   normalizeUsername,
   registerUser,
   loginUser,
+  restoreOrLoginUser,
   updateUserCustomization,
   addFriend,
   removeFriend,
   recordMatchStats,
   getUserByUsername,
-  getTotalRegisteredCount
+  getTotalRegisteredCount,
+  getAdminSettings,
+  saveAdminSettings
 };

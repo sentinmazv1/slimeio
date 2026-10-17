@@ -249,7 +249,13 @@
         <h1>🛡️ Slime.io — Canlı Admin Kontrol Paneli</h1>
         <span style="font-size:12px; color:#94A3B8;">Anlık Oda, Oyuncu, Seferoğulları/Tellioğulları ve Bot Yönetim Merkezi</span>
       </div>
-      <a href="/" target="_blank">🎮 Oyuna Git (slimeio.com)</a>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span id="save-status-badge" style="background:rgba(0,245,155,0.16); color:#00F59B; border:1px solid #00F59B; padding:7px 12px; border-radius:10px; font-size:12px; font-weight:800;">
+          💾 Tüm Ayarlar Otomatik Kayıtlı
+        </span>
+        <button id="manual-save-btn" style="background:#00F59B; color:#080B12;">💾 Ayarları Şimdi Kaydet</button>
+        <a href="/" target="_blank">🎮 Oyuna Git (slimeio.com)</a>
+      </div>
     </header>
 
     <div class="stats-grid">
@@ -272,7 +278,7 @@
     </div>
 
     <div class="bot-launcher">
-      <h2>🤖 Özel Bot Oluştur ve Odaya Gönder (Eksik Kadro Tamamlama)</h2>
+      <h2>🤖 Özel Bot Oluştur ve Odaya Gönder (Eksik Kadro Tamamlama — Kalıcı Kaydedilir)</h2>
       <div class="launcher-form">
         <input id="bot-name-input" type="text" placeholder="Bot İsmi (Örn: Korkusuz_Efe)" maxlength="16" />
         <select id="bot-room-select">
@@ -298,7 +304,7 @@
           <option value="headset">🎧 Pro Oyuncu</option>
           <option value="fez">🎩 Tosun Paşa Fesi</option>
         </select>
-        <button id="send-bot-btn" style="background:#FF2A85; color:#FFF;">🚀 Botu Odaya Gönder</button>
+        <button id="send-bot-btn" style="background:#FF2A85; color:#FFF;">🚀 Botu Odaya Gönder & Kaydet</button>
       </div>
     </div>
 
@@ -307,13 +313,19 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    const socket = io({ transports: ['websocket', 'polling'] });
+    const socket = io({
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 500
+    });
 
     const loginBox = document.getElementById('login-box');
     const dashboard = document.getElementById('dashboard');
     const passInput = document.getElementById('admin-pass');
     const loginBtn = document.getElementById('login-btn');
     const loginErr = document.getElementById('login-err');
+    const saveStatusBadge = document.getElementById('save-status-badge');
+    const manualSaveBtn = document.getElementById('manual-save-btn');
 
     const statClients = document.getElementById('stat-clients');
     const statHumans = document.getElementById('stat-humans');
@@ -327,30 +339,119 @@
     const botSkinSelect = document.getElementById('bot-skin-select');
     const sendBotBtn = document.getElementById('send-bot-btn');
 
+    // Form seçimlerini (oda, takım, kostüm, isim) localStorage'a kaydet ve sayfa yenilendiğinde koru
+    function saveFormSelections() {
+      try {
+        localStorage.setItem('slimeio_admin_form', JSON.stringify({
+          room: botRoomSelect.value,
+          team: botTeamSelect.value,
+          skin: botSkinSelect.value,
+          name: botNameInput.value
+        }));
+      } catch (_e) {}
+    }
+
+    function restoreFormSelections() {
+      try {
+        const raw = localStorage.getItem('slimeio_admin_form');
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (parsed.room) botRoomSelect.value = parsed.room;
+        if (parsed.team) botTeamSelect.value = parsed.team;
+        if (parsed.skin) botSkinSelect.value = parsed.skin;
+        if (parsed.name) botNameInput.value = parsed.name;
+      } catch (_e) {}
+    }
+
+    restoreFormSelections();
+    botRoomSelect.addEventListener('change', saveFormSelections);
+    botTeamSelect.addEventListener('change', saveFormSelections);
+    botSkinSelect.addEventListener('change', saveFormSelections);
+    botNameInput.addEventListener('input', saveFormSelections);
+
+    function flashSavedBadge(msg = '✅ Tüm Bot ve Oda Ayarları Kaydedildi!') {
+      if (!saveStatusBadge) return;
+      saveStatusBadge.textContent = msg;
+      saveStatusBadge.style.background = 'rgba(0, 245, 155, 0.28)';
+      setTimeout(() => {
+        saveStatusBadge.textContent = '💾 Tüm Ayarlar Otomatik Kayıtlı';
+        saveStatusBadge.style.background = 'rgba(0, 245, 155, 0.16)';
+      }, 2200);
+    }
+
+    function persistBotConfigLocally(botConfig) {
+      if (!botConfig) return;
+      try {
+        localStorage.setItem('slimeio_admin_bot_config', JSON.stringify(botConfig));
+      } catch (_e) {}
+    }
+
+    function getLocallySavedBotConfig() {
+      try {
+        const raw = localStorage.getItem('slimeio_admin_bot_config');
+        return raw ? JSON.parse(raw) : null;
+      } catch (_e) {
+        return null;
+      }
+    }
+
+    // Sayfa yenilendiğinde şifre kayıtlıysa giriş kutusunu hiç göstermeden direkt paneli aç
+    const initialSavedPass = localStorage.getItem('slimeio_admin_pass');
+    if (initialSavedPass) {
+      passInput.value = initialSavedPass;
+      loginBox.style.display = 'none';
+      dashboard.style.display = 'block';
+    }
+
+    // Önceki son ekran görüntüsünü anında yükle (yenilemede sıfırlanma hissini tamamen önler)
+    try {
+      const cachedSnap = localStorage.getItem('slimeio_admin_last_snap');
+      if (cachedSnap && initialSavedPass) {
+        renderDashboard(JSON.parse(cachedSnap));
+      }
+    } catch (_e) {}
+
     function tryLogin(password) {
-      socket.emit('adminAuth', { password }, (res) => {
+      if (!password) return;
+      socket.emit('adminAuth', {
+        password,
+        clientSavedBotConfig: getLocallySavedBotConfig()
+      }, (res) => {
         if (res && res.ok) {
           localStorage.setItem('slimeio_admin_pass', password);
           loginBox.style.display = 'none';
           dashboard.style.display = 'block';
           renderDashboard(res.snapshot);
         } else {
+          localStorage.removeItem('slimeio_admin_pass');
+          dashboard.style.display = 'none';
+          loginBox.style.display = 'block';
           loginErr.style.display = 'block';
           loginErr.textContent = (res && res.error) || 'Giriş başarısız!';
         }
       });
     }
 
+    socket.on('connect', () => {
+      const savedPass = localStorage.getItem('slimeio_admin_pass');
+      if (savedPass) {
+        tryLogin(savedPass);
+      }
+    });
+
     loginBtn.addEventListener('click', () => tryLogin(passInput.value));
     passInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') tryLogin(passInput.value);
     });
 
-    const savedPass = localStorage.getItem('slimeio_admin_pass');
-    if (savedPass) {
-      passInput.value = savedPass;
-      tryLogin(savedPass);
-    }
+    manualSaveBtn.addEventListener('click', () => {
+      socket.emit('adminSaveSettings', {}, (res) => {
+        if (res && res.savedBotConfig) {
+          persistBotConfigLocally(res.savedBotConfig);
+        }
+        flashSavedBadge('✅ Ayarlar Sunucuya ve Tarayıcıya Kaydedildi!');
+      });
+    });
 
     sendBotBtn.addEventListener('click', () => {
       socket.emit('adminAddBot', {
@@ -358,8 +459,11 @@
         name: botNameInput.value.trim(),
         team: botTeamSelect.value,
         skin: botSkinSelect.value
-      }, () => {
+      }, (res) => {
         botNameInput.value = '';
+        saveFormSelections();
+        if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
+        flashSavedBadge('✅ Yeni Bot Eklendi ve Kaydedildi!');
       });
     });
 
@@ -387,22 +491,41 @@
     window.quickAddBot = (roomId, team) => {
       const customName = prompt('Gönderilecek botun ismini yazın (boş bırakılırsa otomatik isim verilir):', '');
       if (customName === null) return;
-      socket.emit('adminAddBot', { roomId, name: customName, team });
+      socket.emit('adminAddBot', { roomId, name: customName, team }, (res) => {
+        if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
+        flashSavedBadge('✅ Bot Eklendi ve Kaydedildi!');
+      });
     };
 
     window.fillRoomWithBots = (roomId) => {
-      socket.emit('adminFillRoomWithBots', { roomId });
+      socket.emit('adminFillRoomWithBots', { roomId }, (res) => {
+        if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
+        flashSavedBadge('✅ Eksik Koltuklar Botla Dolduruldu ve Kaydedildi!');
+      });
     };
 
     window.renameBot = (roomId, botId, currentName) => {
       const nextName = prompt('Bot için yeni isim girin:', currentName);
       if (nextName && nextName.trim()) {
-        socket.emit('adminRenameBot', { roomId, botId, newName: nextName.trim() });
+        socket.emit('adminRenameBot', { roomId, botId, newName: nextName.trim() }, (res) => {
+          if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
+          flashSavedBadge('✅ Bot İsmi Güncellendi ve Kaydedildi!');
+        });
       }
     };
 
     window.removeBot = (roomId, botId) => {
-      socket.emit('adminRemoveBot', { roomId, botId });
+      socket.emit('adminRemoveBot', { roomId, botId }, (res) => {
+        if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
+        flashSavedBadge('✅ Bot Çıkarıldı ve Kaydedildi!');
+      });
+    };
+
+    window.clearRoomBots = (roomId) => {
+      socket.emit('adminClearRoomBots', { roomId }, (res) => {
+        if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
+        flashSavedBadge('✅ Odadaki Botlar Temizlendi ve Kaydedildi!');
+      });
     };
 
     window.forceStartRoom = (roomId) => {
@@ -415,6 +538,13 @@
 
     function renderDashboard(snap) {
       if (!snap) return;
+      if (snap.savedBotConfig) {
+        persistBotConfigLocally(snap.savedBotConfig);
+      }
+      try {
+        localStorage.setItem('slimeio_admin_last_snap', JSON.stringify(snap));
+      } catch (_e) {}
+
       statClients.textContent = snap.connectedClients;
       statHumans.textContent = snap.totalHumansInRooms;
       statBots.textContent = snap.totalBotsInRooms;
@@ -461,6 +591,7 @@
           <div class="room-actions">
             <button style="background:#00F59B;" onclick="quickAddBot('${room.id}', 'auto')">+ İsimli Bot Ekle</button>
             ${room.isTeam ? `<button style="background:#FFE066;" onclick="fillRoomWithBots('${room.id}')">⚡ Eksik Koltukları Botla Doldur</button>` : ''}
+            ${room.bots > 0 ? `<button style="background:#FF2A85; color:#FFF;" onclick="clearRoomBots('${room.id}')">🗑️ Botları Temizle</button>` : ''}
             <button style="background:#00BBF9;" onclick="forceStartRoom('${room.id}')">🔄 Yeni Tur Başlat</button>
             <button style="background:#9B5DE5; color:#FFF;" onclick="forceEndRoom('${room.id}')">🏁 Turu Bitir</button>
           </div>

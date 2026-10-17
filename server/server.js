@@ -769,10 +769,60 @@ function updateBotAI(room, bot, now) {
   }
 }
 
-// FFA odasına başlangıç için 5 bot ekle
-const ffaRoom = rooms.get('ffa');
-for (let i = 0; i < 5; i++) {
-  createBotInRoom(ffaRoom);
+function exportAllRoomsBotConfig() {
+  const result = {};
+  for (const [roomId, room] of rooms.entries()) {
+    const bots = [];
+    for (const p of room.players.values()) {
+      if (p.isBot) {
+        bots.push({
+          name: p.name,
+          team: p.team || null,
+          color: p.color,
+          skin: p.skin || 'crown'
+        });
+      }
+    }
+    result[roomId] = bots;
+  }
+  return result;
+}
+
+function persistCurrentAdminBotSettings() {
+  return userStore.saveAdminSettings(exportAllRoomsBotConfig());
+}
+
+function applySavedBotConfigToRooms(roomBotsMap) {
+  if (!roomBotsMap || typeof roomBotsMap !== 'object') return;
+  for (const [roomId, room] of rooms.entries()) {
+    // Mevcut botları temizle
+    for (const [pid, p] of [...room.players.entries()]) {
+      if (p.isBot) {
+        clearPlayerPhysics(room, p);
+        room.players.delete(pid);
+      }
+    }
+    const desiredBots = Array.isArray(roomBotsMap[roomId]) ? roomBotsMap[roomId] : [];
+    for (const bConf of desiredBots) {
+      createBotInRoom(room, {
+        name: bConf.name,
+        team: bConf.team,
+        color: bConf.color,
+        skin: bConf.skin
+      });
+    }
+  }
+}
+
+// Sunucu açılışında kaydedilmiş admin bot ayarları varsa yükle, yoksa FFA'ya varsayılan 5 bot ekle
+const initialAdminSettings = userStore.getAdminSettings();
+if (initialAdminSettings && initialAdminSettings.initialized && initialAdminSettings.roomBots) {
+  applySavedBotConfigToRooms(initialAdminSettings.roomBots);
+} else {
+  const ffaRoom = rooms.get('ffa');
+  for (let i = 0; i < 5; i++) {
+    createBotInRoom(ffaRoom);
+  }
 }
 
 // --- ENGEL & OK ÇARPIŞMASI ---
@@ -1414,11 +1464,14 @@ function buildAdminSnapshot() {
     });
   }
 
+  const adminSettings = userStore.getAdminSettings();
   return {
     connectedClients: connectedSockets.size,
     totalHumansInRooms,
     totalBotsInRooms,
     registeredUsersCount: userStore.getTotalRegisteredCount(),
+    settingsUpdatedAt: adminSettings ? adminSettings.updatedAt || 0 : 0,
+    savedBotConfig: exportAllRoomsBotConfig(),
     rooms: detailedRooms
   };
 }
@@ -1483,7 +1536,7 @@ io.on('connection', (socket) => {
     if (typeof ack === 'function') ack(clientTime);
   });
 
-  // 2) Üyelik Kayıt & Giriş
+  // 2) Üyelik Kayıt, Giriş & Otomatik Oturum Geri Yükleme
   socket.on('authRegister', (payload, ack) => {
     const res = userStore.registerUser(payload || {});
     if (res.ok) {
@@ -1494,7 +1547,18 @@ io.on('connection', (socket) => {
   });
 
   socket.on('authLogin', (payload, ack) => {
-    const res = userStore.loginUser(payload || {});
+    const res = payload && payload.autoRestore
+      ? userStore.restoreOrLoginUser(payload)
+      : userStore.loginUser(payload || {});
+    if (res.ok) {
+      socket.user = res.user;
+      usernameToSocketId.set(res.user.username, socket.id);
+    }
+    if (typeof ack === 'function') ack(res);
+  });
+
+  socket.on('authRestoreSession', (payload, ack) => {
+    const res = userStore.restoreOrLoginUser(payload || {});
     if (res.ok) {
       socket.user = res.user;
       usernameToSocketId.set(res.user.username, socket.id);
@@ -1903,9 +1967,17 @@ io.on('connection', (socket) => {
   });
 
   // --- 6) ADMİN KONTROL PANELİ OLAYLARI ---
-  socket.on('adminAuth', ({ password }, ack) => {
+  socket.on('adminAuth', ({ password, clientSavedBotConfig }, ack) => {
     if (String(password || '').trim() === ADMIN_PASSWORD) {
       adminSockets.add(socket.id);
+
+      // Sunucu konteyneri yeniden başlamışsa ve admin tarayıcısında kayıtlı bot ayarları varsa geri yükle
+      const currentSettings = userStore.getAdminSettings();
+      if ((!currentSettings || !currentSettings.initialized) && clientSavedBotConfig && typeof clientSavedBotConfig === 'object') {
+        applySavedBotConfigToRooms(clientSavedBotConfig);
+        persistCurrentAdminBotSettings();
+      }
+
       if (typeof ack === 'function') {
         ack({ ok: true, snapshot: buildAdminSnapshot() });
       }
@@ -1927,9 +1999,10 @@ io.on('connection', (socket) => {
       return;
     }
     const bot = createBotInRoom(room, { name, team, color, skin });
+    persistCurrentAdminBotSettings();
     const snap = buildAdminSnapshot();
     for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
-    if (typeof ack === 'function') ack({ ok: true, botId: bot ? bot.id : null });
+    if (typeof ack === 'function') ack({ ok: true, botId: bot ? bot.id : null, savedBotConfig: snap.savedBotConfig });
   });
 
   socket.on('adminFillRoomWithBots', ({ roomId }, ack) => {
@@ -1949,9 +2022,10 @@ io.on('connection', (socket) => {
       }
       if (added > 20) break;
     }
+    persistCurrentAdminBotSettings();
     const snap = buildAdminSnapshot();
     for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
-    if (typeof ack === 'function') ack({ ok: true, added });
+    if (typeof ack === 'function') ack({ ok: true, added, savedBotConfig: snap.savedBotConfig });
   });
 
   socket.on('adminRenameBot', ({ roomId, botId, newName }, ack) => {
@@ -1961,18 +2035,45 @@ io.on('connection', (socket) => {
     if (bot && bot.isBot && newName && String(newName).trim()) {
       bot.name = String(newName).trim().substring(0, 16);
     }
+    persistCurrentAdminBotSettings();
     const snap = buildAdminSnapshot();
     for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
-    if (typeof ack === 'function') ack({ ok: true });
+    if (typeof ack === 'function') ack({ ok: true, savedBotConfig: snap.savedBotConfig });
   });
 
   socket.on('adminRemoveBot', ({ roomId, botId }, ack) => {
     if (!adminSockets.has(socket.id)) return;
     const room = rooms.get(roomId || 'ffa');
     const removed = removeBotFromRoom(room, botId);
+    persistCurrentAdminBotSettings();
     const snap = buildAdminSnapshot();
     for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
-    if (typeof ack === 'function') ack({ ok: removed });
+    if (typeof ack === 'function') ack({ ok: removed, savedBotConfig: snap.savedBotConfig });
+  });
+
+  socket.on('adminClearRoomBots', ({ roomId }, ack) => {
+    if (!adminSockets.has(socket.id)) return;
+    const room = rooms.get(roomId || 'ffa');
+    if (room) {
+      for (const [pid, p] of [...room.players.entries()]) {
+        if (p.isBot) {
+          clearPlayerPhysics(room, p);
+          room.players.delete(pid);
+        }
+      }
+    }
+    persistCurrentAdminBotSettings();
+    const snap = buildAdminSnapshot();
+    for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
+    if (typeof ack === 'function') ack({ ok: true, savedBotConfig: snap.savedBotConfig });
+  });
+
+  socket.on('adminSaveSettings', (_payload, ack) => {
+    if (!adminSockets.has(socket.id)) return;
+    persistCurrentAdminBotSettings();
+    const snap = buildAdminSnapshot();
+    for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
+    if (typeof ack === 'function') ack({ ok: true, savedBotConfig: snap.savedBotConfig });
   });
 
   socket.on('adminForceStartMatch', ({ roomId }, ack) => {
