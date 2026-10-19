@@ -38,6 +38,50 @@ app.get('/admin', (_req, res) => {
   res.sendFile(path.join(__dirname, '../public/admin.html'));
 });
 
+// Sosyal Medya (WhatsApp, Instagram, Telegram, Discord, X) Paylaşım Afişi & Favicon
+app.get(['/favicon.ico', '/favicon.svg'], (_req, res) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+    <rect width="64" height="64" rx="16" fill="#080B12"/>
+    <circle cx="32" cy="36" r="20" fill="#00F5D4" stroke="#FFFFFF" stroke-width="2.5"/>
+    <path d="M18 18 L22 8 L28 15 L32 6 L36 15 L42 8 L46 18 Z" fill="#FFD700" stroke="#B45309" stroke-width="1.5"/>
+    <circle cx="25" cy="33" r="4" fill="#FFFFFF"/><circle cx="26" cy="33" r="2" fill="#080B12"/>
+    <circle cx="39" cy="33" r="4" fill="#FFFFFF"/><circle cx="40" cy="33" r="2" fill="#080B12"/>
+  </svg>`;
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.status(200).send(svg);
+});
+
+app.get('/og-banner.svg', (_req, res) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#060911"/>
+        <stop offset="50%" stop-color="#0D1528"/>
+        <stop offset="100%" stop-color="#130B24"/>
+      </linearGradient>
+    </defs>
+    <rect width="1200" height="630" fill="url(#bg)"/>
+    <rect x="28" y="28" width="1144" height="574" rx="32" fill="none" stroke="#00F5D4" stroke-width="4" stroke-opacity="0.6"/>
+    <line x1="160" y1="150" x2="310" y2="310" stroke="#00F59B" stroke-width="8" stroke-dasharray="16 8"/>
+    <line x1="1040" y1="160" x2="890" y2="310" stroke="#FF2A85" stroke-width="8" stroke-dasharray="16 8"/>
+    <circle cx="310" cy="310" r="78" fill="#00F59B" stroke="#FFFFFF" stroke-width="5"/>
+    <circle cx="288" cy="298" r="14" fill="#FFFFFF"/><circle cx="292" cy="298" r="7" fill="#080B12"/>
+    <circle cx="334" cy="298" r="14" fill="#FFFFFF"/><circle cx="338" cy="298" r="7" fill="#080B12"/>
+    <circle cx="890" cy="310" r="78" fill="#FF2A85" stroke="#FFFFFF" stroke-width="5"/>
+    <circle cx="868" cy="298" r="14" fill="#FFFFFF"/><circle cx="864" cy="298" r="7" fill="#080B12"/>
+    <circle cx="914" cy="298" r="14" fill="#FFFFFF"/><circle cx="910" cy="298" r="7" fill="#080B12"/>
+    <text x="600" y="235" text-anchor="middle" fill="#00F5D4" font-family="Segoe UI, Arial, sans-serif" font-size="88" font-weight="900">SLIME.IO</text>
+    <text x="600" y="305" text-anchor="middle" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="800">NEON AÇIK DÜNYA &amp; TAKIM SAVAŞ ARENASI</text>
+    <text x="600" y="375" text-anchor="middle" fill="#FFE066" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="800">🟢 Seferoğulları vs 🔴 Tellioğulları • 2v2 / 4v4 / 8v8 / Herkes Tek</text>
+    <rect x="370" y="435" width="460" height="76" rx="38" fill="#FF2A85"/>
+    <text x="600" y="484" text-anchor="middle" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="32" font-weight="900">🚀 HEMEN ÜCRETSİZ OYNA: SLIMEIO.COM</text>
+  </svg>`;
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.status(200).send(svg);
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 app.use('/shared', express.static(path.join(__dirname, '../shared')));
 app.use('/vendor', express.static(path.join(__dirname, '../node_modules/matter-js/build')));
@@ -605,11 +649,36 @@ function cutOwnBeltInDirection(room, player, targetWorldX, targetWorldY) {
 function getTeamCounts(room) {
   let seferCount = 0;
   let telliCount = 0;
+  let seferHumans = 0;
+  let telliHumans = 0;
+  let seferBots = 0;
+  let telliBots = 0;
+
   for (const p of room.players.values()) {
-    if (p.team === 'seferogullari') seferCount++;
-    else if (p.team === 'telliogullari') telliCount++;
+    if (p.watchOnly) continue;
+    if (p.team === 'seferogullari') {
+      seferCount++;
+      if (p.isBot) seferBots++;
+      else seferHumans++;
+    } else if (p.team === 'telliogullari') {
+      telliCount++;
+      if (p.isBot) telliBots++;
+      else telliHumans++;
+    }
   }
-  return { seferCount, telliCount };
+  return { seferCount, telliCount, seferHumans, telliHumans, seferBots, telliBots };
+}
+
+function removeOneBotFromTeam(room, teamId = null) {
+  if (!room) return false;
+  for (const [id, p] of room.players.entries()) {
+    if (p.isBot && (!teamId || p.team === teamId)) {
+      clearPlayerPhysics(room, p);
+      room.players.delete(id);
+      return true;
+    }
+  }
+  return false;
 }
 
 function checkTeamRoomReady(room) {
@@ -651,8 +720,9 @@ function createBotInRoom(room, options = {}) {
     : SLIME_COLORS[room.players.size % SLIME_COLORS.length].id;
   const color = options.color || defaultColor;
   const skin = options.skin || BASIC_10_SKINS[botCounter % BASIC_10_SKINS.length].id;
-  const customName = options.name && String(options.name).trim()
-    ? String(options.name).trim().substring(0, 16)
+  const cleanCustom = userStore.sanitizeText(options.name || '', 16);
+  const customName = cleanCustom
+    ? cleanCustom
     : `[BOT] ${BOT_NAMES[(botCounter - 2) % BOT_NAMES.length]}`;
 
   const bot = {
@@ -1408,9 +1478,9 @@ function getLobbyRoomsSummary() {
     let telliCount = 0;
     for (const p of room.players.values()) {
       if (p.isBot) bots++;
-      else humans++;
-      if (p.team === 'seferogullari') seferCount++;
-      if (p.team === 'telliogullari') telliCount++;
+      else if (!p.watchOnly) humans++;
+      if (!p.watchOnly && p.team === 'seferogullari') seferCount++;
+      if (!p.watchOnly && p.team === 'telliogullari') telliCount++;
     }
     list.push({
       id: room.id,
@@ -1451,14 +1521,15 @@ function buildAdminSnapshot() {
         roomHumans++;
         totalHumansInRooms++;
       }
-      if (p.team === 'seferogullari') seferCount++;
-      if (p.team === 'telliogullari') telliCount++;
+      if (!p.watchOnly && p.team === 'seferogullari') seferCount++;
+      if (!p.watchOnly && p.team === 'telliogullari') telliCount++;
 
       playerList.push({
         id: p.id,
         name: p.name,
         username: p.username || null,
         isBot: Boolean(p.isBot),
+        watchOnly: Boolean(p.watchOnly),
         team: p.team || null,
         color: p.color,
         skin: p.skin,
@@ -1534,6 +1605,14 @@ function leaveCurrentRoom(socket) {
     socket.leave(roomId);
   }
   socket.currentRoomId = null;
+}
+
+function isValidCoordPair(pt) {
+  return Boolean(pt && typeof pt.x === 'number' && typeof pt.y === 'number' && Number.isFinite(pt.x) && Number.isFinite(pt.y));
+}
+
+function clampCoord(val, maxAbs = 4000) {
+  return Math.max(-maxAbs, Math.min(maxAbs, val));
 }
 
 // --- SOCKET.IO BAĞLANTI YÖNETİMİ ---
@@ -1630,14 +1709,14 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // İsim kontrolü
+    // İsim kontrolü ve XSS temizliği
     let displayName = '';
     if (socket.user) {
-      displayName = socket.user.displayName || socket.user.username;
+      displayName = userStore.sanitizeText(socket.user.displayName || socket.user.username, 16);
     } else if (watchOnly) {
-      displayName = String(guestName || '').trim().substring(0, 14) || 'İzleyici';
+      displayName = userStore.sanitizeText(guestName, 14) || 'İzleyici';
     } else {
-      displayName = String(guestName || '').trim().substring(0, 14);
+      displayName = userStore.sanitizeText(guestName, 14);
       if (displayName.length < 2) {
         if (typeof ack === 'function') {
           ack({ ok: false, error: 'Oyuna girmek için lütfen en az 2 harfli bir Slime Adı yazın!' });
@@ -1716,24 +1795,31 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Takım odasında takım ataması
+    // Takım odasında takım ataması (Gerçek oyuncular her zaman botların koltuğunu devralabilir!)
     let assignedTeam = null;
     if (room.isTeam) {
-      const { seferCount, telliCount } = getTeamCounts(room);
-      if (seferCount >= room.teamSize && telliCount >= room.teamSize && room.status === 'playing') {
+      const counts = getTeamCounts(room);
+      if (counts.seferHumans >= room.teamSize && counts.telliHumans >= room.teamSize) {
         if (typeof ack === 'function') {
-          ack({ ok: false, error: 'Bu takım odası şu an dolu! "👀 İzle" butonuyla maçı canlı izleyebilir veya başka oda seçebilirsiniz.' });
+          ack({ ok: false, error: 'Bu takım odası şu an gerçek oyuncularla dolu! "👀 İzle" butonuyla maçı canlı izleyebilir veya başka oda seçebilirsiniz.' });
         }
         return;
       }
-      if (preferredTeam === 'seferogullari' && seferCount < room.teamSize) {
+
+      if (preferredTeam === 'seferogullari' && counts.seferHumans < room.teamSize) {
         assignedTeam = 'seferogullari';
-      } else if (preferredTeam === 'telliogullari' && telliCount < room.teamSize) {
+      } else if (preferredTeam === 'telliogullari' && counts.telliHumans < room.teamSize) {
         assignedTeam = 'telliogullari';
-      } else if (seferCount <= telliCount && seferCount < room.teamSize) {
+      } else if (counts.seferHumans <= counts.telliHumans && counts.seferHumans < room.teamSize) {
         assignedTeam = 'seferogullari';
       } else {
         assignedTeam = 'telliogullari';
+      }
+
+      // Seçilen takımda bot yüzünden koltuk doluysa 1 botu çıkarıp koltuğu gerçek oyuncuya ver
+      const currentTeamTotal = assignedTeam === 'seferogullari' ? counts.seferCount : counts.telliCount;
+      if (currentTeamTotal >= room.teamSize) {
+        removeOneBotFromTeam(room, assignedTeam);
       }
     }
 
@@ -1745,9 +1831,7 @@ io.on('connection', (socket) => {
 
     const playerSkin = socket.user ? socket.user.skin : 'crown';
 
-    // ADİL BAŞLANGIÇ KURALI:
-    // Odada başka aktif gerçek oyuncu varsa (ve tur yeni başlamadıysa) yeni gelen kişi turun bitmesini bekler (spectating = true).
-    // Ancak odada sadece botlar varsa bekletmeden turu sıfırlar ve hemen Duvar Seçimi (waitingForWall = true) açılır!
+    // "🚀 Maça Katıl" seçen oyuncu bekletilmeden doğrudan duvar seçimine (waitingForWall = true) alınır!
     let isSpectating = false;
     let isWaitingForWall = false;
 
@@ -1760,7 +1844,7 @@ io.on('connection', (socket) => {
       }
 
       if (room.status === 'playing' && activeHumansInRoom === 0) {
-        // Odada sadece botlar var: tur süresini sıfırla ve oyuncuyu hemen duvar seçimine al!
+        // Odada sadece botlar varsa tur süresini ve bot skorlarını sıfırla
         room.matchStartTime = Date.now();
         room.matchEndTime = Date.now() + GAME_CONFIG.MATCH_DURATION_SEC * 1000;
         for (const botP of room.players.values()) {
@@ -1770,17 +1854,13 @@ io.on('connection', (socket) => {
             botP.kills = 0;
           }
         }
-        isSpectating = false;
-        isWaitingForWall = true;
-      } else if (room.status === 'playing' && activeHumansInRoom > 0) {
-        isSpectating = true;
-        isWaitingForWall = false;
-      } else {
-        isSpectating = false;
-        isWaitingForWall = true;
+      } else if (room.status !== 'playing') {
+        startNewMatch(room);
       }
+      isSpectating = false;
+      isWaitingForWall = true;
     } else {
-      // Takım odasında kadro dolana kadar beklenir, oynanıyorsa duvar seçimine geçer
+      // Takım odasında maç oynanıyorsa doğrudan duvar seçimine geçer, bekleniyorsa kadro ekranı açılır
       isSpectating = false;
       isWaitingForWall = room.status === 'playing';
     }
@@ -1848,14 +1928,26 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const { seferCount, telliCount } = getTeamCounts(room);
-    if (teamId === 'seferogullari' && seferCount >= room.teamSize) {
-      if (typeof ack === 'function') ack({ ok: false, error: 'Seferoğulları kadrosu dolu!' });
+    const counts = getTeamCounts(room);
+    const targetHumanCount = teamId === 'seferogullari' ? counts.seferHumans : counts.telliHumans;
+    const targetTotalCount = teamId === 'seferogullari' ? counts.seferCount : counts.telliCount;
+
+    if (targetHumanCount >= room.teamSize) {
+      if (typeof ack === 'function') {
+        ack({ ok: false, error: `${teamId === 'seferogullari' ? 'Seferoğulları' : 'Tellioğulları'} kadrosu gerçek oyuncularla dolu!` });
+      }
       return;
     }
-    if (teamId === 'telliogullari' && telliCount >= room.teamSize) {
-      if (typeof ack === 'function') ack({ ok: false, error: 'Tellioğulları kadrosu dolu!' });
-      return;
+
+    // Hedef takımda bot yüzünden yer yoksa 1 botu oyuncunun eski takımına kaydır
+    if (targetTotalCount >= room.teamSize) {
+      for (const p of room.players.values()) {
+        if (p.isBot && p.team === teamId) {
+          p.team = player.team;
+          p.color = TEAMS[player.team].color;
+          break;
+        }
+      }
     }
 
     player.team = teamId;
@@ -1865,17 +1957,39 @@ io.on('connection', (socket) => {
     if (typeof ack === 'function') ack({ ok: true, team: teamId });
   });
 
+  // Takım Bekleme Odasında "⚡ Eksik Kadroyu Botlarla Tamamla & Başlat"
+  socket.on('fillTeamRoomWithBotsAndStart', (_payload, ack) => {
+    const room = socket.currentRoomId ? rooms.get(socket.currentRoomId) : null;
+    if (!room || !room.isTeam) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Takım odasında değilsiniz.' });
+      return;
+    }
+    const counts = getTeamCounts(room);
+    const missingSefer = Math.max(0, room.teamSize - counts.seferCount);
+    const missingTelli = Math.max(0, room.teamSize - counts.telliCount);
+    for (let i = 0; i < missingSefer; i++) {
+      createBotInRoom(room, { team: 'seferogullari' });
+    }
+    for (let i = 0; i < missingTelli; i++) {
+      createBotInRoom(room, { team: 'telliogullari' });
+    }
+    if (room.status !== 'playing') {
+      startNewMatch(room);
+    }
+    if (typeof ack === 'function') ack({ ok: true });
+  });
+
   socket.on('leaveRoom', () => {
     leaveCurrentRoom(socket);
   });
 
-  // 4) Oyun İçi Aksiyonlar
+  // 4) Oyun İçi Aksiyonlar (NaN/Infinity Korumalı)
   socket.on('spawnAtWall', (point) => {
     const room = socket.currentRoomId ? rooms.get(socket.currentRoomId) : null;
     if (!room || room.status !== 'playing') return;
     const player = room.players.get(socket.id);
-    if (player && !player.spectating && player.waitingForWall && point && typeof point.x === 'number' && typeof point.y === 'number') {
-      spawnPlayerAtWallPoint(room, player, point.x, point.y);
+    if (player && !player.spectating && player.waitingForWall && isValidCoordPair(point)) {
+      spawnPlayerAtWallPoint(room, player, clampCoord(point.x), clampCoord(point.y));
     }
   });
 
@@ -1883,8 +1997,8 @@ io.on('connection', (socket) => {
     const room = socket.currentRoomId ? rooms.get(socket.currentRoomId) : null;
     if (!room || room.status !== 'playing') return;
     const player = room.players.get(socket.id);
-    if (player && player.alive && target && typeof target.x === 'number' && typeof target.y === 'number') {
-      shootSlimeArrow(room, player, target.x, target.y);
+    if (player && player.alive && isValidCoordPair(target)) {
+      shootSlimeArrow(room, player, clampCoord(target.x), clampCoord(target.y));
     }
   });
 
@@ -1892,8 +2006,8 @@ io.on('connection', (socket) => {
     const room = socket.currentRoomId ? rooms.get(socket.currentRoomId) : null;
     if (!room || room.status !== 'playing') return;
     const player = room.players.get(socket.id);
-    if (player && player.alive && target && typeof target.x === 'number' && typeof target.y === 'number') {
-      cutOwnBeltInDirection(room, player, target.x, target.y);
+    if (player && player.alive && isValidCoordPair(target)) {
+      cutOwnBeltInDirection(room, player, clampCoord(target.x), clampCoord(target.y));
     }
   });
 
@@ -1901,9 +2015,9 @@ io.on('connection', (socket) => {
     const room = socket.currentRoomId ? rooms.get(socket.currentRoomId) : null;
     if (!room) return;
     const player = room.players.get(socket.id);
-    if (player && target && typeof target.x === 'number' && typeof target.y === 'number') {
-      player.input.targetX = target.x;
-      player.input.targetY = target.y;
+    if (player && isValidCoordPair(target)) {
+      player.input.targetX = clampCoord(target.x);
+      player.input.targetY = clampCoord(target.y);
     }
   });
 
@@ -2331,8 +2445,9 @@ io.on('connection', (socket) => {
     if (!adminSockets.has(socket.id)) return;
     const room = rooms.get(roomId);
     const bot = room ? room.players.get(botId) : null;
-    if (bot && bot.isBot && newName && String(newName).trim()) {
-      bot.name = String(newName).trim().substring(0, 16);
+    const cleanNewName = userStore.sanitizeText(newName || '', 16);
+    if (bot && bot.isBot && cleanNewName) {
+      bot.name = cleanNewName;
     }
     persistCurrentAdminBotSettings();
     const snap = buildAdminSnapshot();

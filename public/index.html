@@ -6,7 +6,25 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#080B12" />
-  <title>Slime.io - Neon Açık Dünya & Takım Savaş Arenası</title>
+  <title>Slime.io — Neon Açık Dünya & Seferoğulları vs Tellioğulları Savaş Arenası</title>
+  <meta name="description" content="Slime.io online çok oyunculu neon savaş arenası! İsmini yaz, kostümünü seç, Herkes Tek açık dünyada veya Seferoğulları vs Tellioğulları (2v2, 4v4, 8v8) takım savaşlarında kapış!" />
+  <meta name="keywords" content="slime.io, slime io, online oyun, tarayıcı oyunu, io oyunları, seferoğulları tellioğulları, çok oyunculu oyun" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="canonical" href="https://slimeio.com/" />
+
+  <!-- Sosyal Medya (WhatsApp, Instagram, TikTok, Discord, Telegram, Facebook) Paylaşım Kartı -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Slime.io" />
+  <meta property="og:url" content="https://slimeio.com/" />
+  <meta property="og:title" content="🟢 Slime.io — Neon Açık Dünya & Takım Savaş Arenası" />
+  <meta property="og:description" content="Kemerlerini bağla, Slime oklarını fırlat! Herkes Tek Açık Dünya veya 🟢 Seferoğulları vs 🔴 Tellioğulları (2v2, 4v4, 8v8) maçlarına ücretsiz katıl ya da canlı izle!" />
+  <meta property="og:image" content="https://slimeio.com/og-banner.svg" />
+
+  <!-- X (Twitter) Paylaşım Kartı -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="🟢 Slime.io — Neon Açık Dünya & Takım Savaş Arenası" />
+  <meta name="twitter:description" content="Kemerlerini bağla, Slime oklarını fırlat! Açık Dünya ve 2v2/4v4/8v8 Takım Savaşlarına hemen katıl!" />
+  <meta name="twitter:image" content="https://slimeio.com/og-banner.svg" />
   <style>
     * {
       box-sizing: border-box;
@@ -92,15 +110,15 @@
     /* İzleyici (Spectator) Tur Bekleme Banner'ı */
     #spectator-banner {
       position: fixed;
-      top: 64px;
+      top: 58px;
       left: 50%;
       transform: translateX(-50%);
-      background: linear-gradient(135deg, rgba(255, 184, 0, 0.92), rgba(255, 42, 133, 0.92));
+      background: linear-gradient(135deg, rgba(255, 184, 0, 0.94), rgba(255, 42, 133, 0.94));
       color: #080B12;
-      padding: 10px 22px;
+      padding: 8px 18px;
       border-radius: 14px;
       font-weight: 900;
-      font-size: 14px;
+      font-size: 13px;
       z-index: 18;
       display: none;
       text-align: center;
@@ -315,6 +333,8 @@
       max-width: 98vw;
       max-height: 94vh;
       overflow-y: auto;
+      touch-action: pan-y;
+      -webkit-overflow-scrolling: touch;
       background: #0D1322;
       border: 2px solid #00F5D4;
       border-radius: 24px;
@@ -666,11 +686,11 @@
 
   <!-- İzleyici (Spectator) Tur Bekleme Uyarısı -->
   <div id="spectator-banner">
-    👀 İZLEYİCİ MODU — Oyuna başlamak için turun bitmesini bekleyiniz! Yeni turda herkesle eşit başlayacaksın.
+    👀 İZLEYİCİ MODU — Oyunculara tıklayıp kamerayla takip edebilir veya "🚀 Maça Katıl" ile oyuna girebilirsin!
   </div>
 
-  <!-- Canlı Maç İzleme (Spectator) Kontrol Çubuğu -->
-  <div id="spectator-controls-bar" style="position:fixed; top:112px; left:50%; transform:translateX(-50%); background:rgba(13,18,30,0.92); backdrop-filter:blur(10px); padding:7px 14px; border-radius:999px; z-index:19; display:none; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center; border:1.5px solid rgba(0,245,212,0.5); box-shadow:0 0 24px rgba(0,245,212,0.25);">
+  <!-- Canlı Maç İzleme (Spectator) Kontrol Çubuğu (Alt menünün hemen üstünde, asla çakışmaz) -->
+  <div id="spectator-controls-bar" style="position:fixed; bottom:62px; left:50%; transform:translateX(-50%); background:rgba(13,18,30,0.94); backdrop-filter:blur(10px); padding:7px 14px; border-radius:999px; z-index:19; display:none; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center; border:1.5px solid rgba(0,245,212,0.55); box-shadow:0 0 24px rgba(0,245,212,0.28); max-width:96vw;">
     <button id="spec-prev-btn" style="background:rgba(255,255,255,0.1); color:#FFF; border:1px solid rgba(255,255,255,0.2); padding:5px 11px; border-radius:999px; font-size:11.5px; font-weight:800; cursor:pointer;">◀ Önceki Oyuncu</button>
     <button id="spec-overview-btn" style="background:rgba(0,245,212,0.16); color:#00F5D4; border:1px solid #00F5D4; padding:5px 11px; border-radius:999px; font-size:11.5px; font-weight:800; cursor:pointer;">🗺️ Tüm Harita</button>
     <button id="spec-next-btn" style="background:rgba(255,255,255,0.1); color:#FFF; border:1px solid rgba(255,255,255,0.2); padding:5px 11px; border-radius:999px; font-size:11.5px; font-weight:800; cursor:pointer;">Sonraki Oyuncu ▶</button>
@@ -678,7 +698,7 @@
   </div>
 
   <!-- Kamera Oyuncu Takip (İzleme) Barı -->
-  <div id="camera-follow-banner" style="position:fixed; top:68px; left:50%; transform:translateX(-50%); background:linear-gradient(135deg,#8B5CF6,#EC4899); color:#FFFFFF; padding:8px 18px; border-radius:999px; font-weight:900; font-size:13px; z-index:19; display:none; align-items:center; gap:10px; box-shadow:0 0 24px rgba(236,72,153,0.55); border:1.5px solid #FFFFFF;">
+  <div id="camera-follow-banner" style="position:fixed; top:104px; left:50%; transform:translateX(-50%); background:linear-gradient(135deg,#8B5CF6,#EC4899); color:#FFFFFF; padding:7px 16px; border-radius:999px; font-weight:900; font-size:12.5px; z-index:19; display:none; align-items:center; gap:10px; box-shadow:0 0 24px rgba(236,72,153,0.55); border:1.5px solid #FFFFFF; max-width:94vw;">
     <span id="camera-follow-text">🎥 Takip Ediliyor: Oyuncu</span>
     <button id="camera-unfollow-btn" style="background:#080B12; color:#00F5D4; border:1px solid #00F5D4; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:900; cursor:pointer;">✕ Takibi Bırak</button>
   </div>
@@ -704,11 +724,12 @@
     </button>
   </div>
 
-  <!-- Alt Oyuncu Barı (Bot Ekleme/Çıkarma Kaldırıldı) -->
+  <!-- Alt Oyuncu Barı -->
   <div id="bottom-menu-bar">
     <button id="open-lobby-btn">🏠 Lobi / Mod Seç</button>
     <button id="open-friends-btn">👥 Arkadaşlar (<span id="my-friend-count-badge">0</span>)</button>
     <button id="open-my-profile-btn">👤 Profilim</button>
+    <button id="share-bottom-btn" title="Oyunu Arkadaşlarınla Paylaş">🔗 Paylaş</button>
     <button id="mute-btn">🔊 Ses</button>
   </div>
 
@@ -716,7 +737,12 @@
   <div id="lobby-modal" class="modal-backdrop">
     <div class="lobby-container">
       <div class="lobby-header">
-        <h1>🟢 SLIME.IO — SAVAŞ ARENASI</h1>
+        <div style="display:flex; justify-content:center; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h1>🟢 SLIME.IO — SAVAŞ ARENASI</h1>
+          <button id="share-game-btn" type="button" style="background:rgba(0,245,155,0.16); color:#00F59B; border:1.5px solid #00F59B; border-radius:999px; padding:6px 14px; font-size:12px; font-weight:900; cursor:pointer;">
+            🔗 Arkadaşını Çağır / Linki Paylaş
+          </button>
+        </div>
         <p>İsmini gir, kostümünü kuşan, Seferoğulları veya Tellioğulları takımını kur ya da Açık Dünyada tek başına kapış!</p>
       </div>
 
@@ -740,8 +766,8 @@
                 <input id="guest-name-input" type="text" placeholder="Örn: NeonAvcı..." maxlength="14" />
               </div>
               <div style="font-size:11.5px; color:#94A3B8; background:rgba(255,184,0,0.1); border:1px solid rgba(255,184,0,0.35); padding:9px; border-radius:10px;">
-                💡 <strong>Bilgi:</strong> Üye olmadan tek maçta <strong>Herkes Tek</strong> modunda oynayabilirsin.<br/>
-                <strong>Takım kurmak (2v2, 4v4, 8v8)</strong>, <strong>10 kostüm/renk seçmek</strong> ve <strong>arkadaş eklemek</strong> için yukarıdan <em>Hızlı Üye Ol</em>!
+                💡 <strong>Bilgi:</strong> Üye olmadan tek maçta <strong>Herkes Tek</strong> modunda oynayabilir veya tüm maçları <strong>👀 Canlı İzleyebilirsin</strong>.<br/>
+                <strong>Takım kurmak (2v2, 4v4, 8v8)</strong> ve <strong>10 kostüm/renk seçmek</strong> için yukarıdan <em>Hızlı Üye Ol</em>!
               </div>
             </div>
 
@@ -811,7 +837,7 @@
           <div id="color-palette-container" class="color-palette"></div>
 
           <div style="font-size:11px; color:#94A3B8; font-weight:700;">Basic 10 Kostüm Seç:</div>
-          <div id="skins-grid-container" class="skins-grid"></div>
+          <div id="skins-grid-container" class="skins-grid" style="touch-action:pan-y; -webkit-overflow-scrolling:touch;"></div>
         </div>
 
         <!-- SAĞ KOLON: OYUN MODU & TAKIM ODALARI -->
@@ -841,7 +867,7 @@
 
   <!-- 2) SEFEROĞULLARI vs TELLİOĞULLARI TAKIM BEKLEME ODASI -->
   <div id="team-waiting-modal" class="modal-backdrop">
-    <div class="team-lobby-card">
+    <div class="team-lobby-card" style="max-height:92vh; overflow-y:auto; touch-action:pan-y; -webkit-overflow-scrolling:touch;">
       <h2 id="team-lobby-title" style="color:#00F5D4; font-size:24px; font-weight:900;">⚔️ 2v2 TAKIM SAVAŞI LOBİSİ</h2>
       <p id="team-lobby-status" style="color:#FFE066; font-size:14px; font-weight:800; margin-top:6px;">
         ⏳ Takımların dolması bekleniyor... Kadrolar dolduğunda maç otomatik başlayacak!
@@ -874,10 +900,13 @@
       </div>
 
       <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <button id="team-lobby-back-btn" style="background:rgba(255,255,255,0.1); color:#FFF; border:none; padding:10px 18px; border-radius:10px; font-weight:800; cursor:pointer;">
+        <button id="team-lobby-back-btn" style="background:rgba(255,255,255,0.1); color:#FFF; border:none; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer;">
           🔙 Lobiye Dön
         </button>
-        <button id="team-lobby-invite-btn" style="background:#00BBF9; color:#080B12; border:none; padding:10px 18px; border-radius:10px; font-weight:900; cursor:pointer;">
+        <button id="team-lobby-fill-bots-btn" style="background:linear-gradient(135deg,#FF2A85,#FF6B00); color:#FFF; border:none; padding:10px 16px; border-radius:10px; font-weight:900; cursor:pointer; box-shadow:0 0 18px rgba(255,42,133,0.4);">
+          ⚡ Eksik Kadroyu Botla Doldur &amp; Hemen Başlat!
+        </button>
+        <button id="team-lobby-invite-btn" style="background:#00BBF9; color:#080B12; border:none; padding:10px 16px; border-radius:10px; font-weight:900; cursor:pointer;">
           💌 Arkadaşını Odaya Davet Et
         </button>
       </div>
@@ -911,7 +940,7 @@
       </div>
       <p id="friend-action-msg" style="font-size:12px; color:#00F59B; min-height:16px; margin-bottom:6px;"></p>
 
-      <div id="friends-list-box" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; text-align:left;"></div>
+      <div id="friends-list-box" style="max-height:240px; overflow-y:auto; touch-action:pan-y; -webkit-overflow-scrolling:touch; display:flex; flex-direction:column; gap:6px; text-align:left;"></div>
 
       <button id="friends-close-btn" style="margin-top:14px; width:100%; background:rgba(255,255,255,0.12); color:#FFF; border:none; padding:9px; border-radius:10px; font-weight:800; cursor:pointer;">Kapat</button>
     </div>
@@ -935,7 +964,7 @@
 
   <!-- Maç Sonu Skor Tablosu Ekranı -->
   <div id="match-end-modal">
-    <div class="scoreboard-card">
+    <div class="scoreboard-card" style="touch-action:pan-y; -webkit-overflow-scrolling:touch;">
       <h2 style="color:#00F5D4; font-size:22px; font-weight:900;">⏱️ SÜRE BİTTİ - MAÇ SONUCU</h2>
       <div class="winner-banner">
         <h3 id="winner-title">👑 Şampiyon: Slime</h3>
@@ -965,9 +994,9 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/vendor/matter.min.js"></script>
-  <script src="/shared/constants.js?v=2.5"></script>
-  <script src="/shared/geometry.js?v=2.5"></script>
-  <script src="/js/audio.js?v=2.5"></script>
-  <script src="/js/client.js?v=2.5"></script>
+  <script src="/shared/constants.js?v=2.6"></script>
+  <script src="/shared/geometry.js?v=2.6"></script>
+  <script src="/js/audio.js?v=2.6"></script>
+  <script src="/js/client.js?v=2.6"></script>
 </body>
 </html>

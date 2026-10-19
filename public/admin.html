@@ -536,6 +536,15 @@
       socket.emit('adminForceEndMatch', { roomId });
     };
 
+    function escapeHtml(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function renderDashboard(snap) {
       if (!snap) return;
       if (snap.savedBotConfig) {
@@ -558,6 +567,8 @@
           : `<div style="font-size:12px; color:#94A3B8;">🧑 Gerçek: ${room.humans} | 🤖 Bot: ${room.bots}</div>`;
 
         const rows = (room.players || []).map((p) => {
+          const safeName = escapeHtml(p.name || 'Slime');
+          const safeUser = escapeHtml(p.username || '');
           const badge = p.isBot
             ? '<span class="tag-bot">BOT</span>'
             : `<span class="tag-human">${p.spectating ? 'İZLEYİCİ' : 'OYUNCU'}</span>`;
@@ -568,12 +579,12 @@
               : '-';
 
           const actions = p.isBot
-            ? `<button class="btn-sm" style="background:#00BBF9; color:#080B12;" onclick="renameBot('${room.id}','${p.id}','${p.name.replace(/'/g, '')}')">✏️ İsim</button>
+            ? `<button class="btn-sm" style="background:#00BBF9; color:#080B12;" onclick="renameBot('${room.id}','${p.id}','${safeName}')">✏️ İsim</button>
                <button class="btn-sm" style="background:#FF2A85; color:#FFF;" onclick="removeBot('${room.id}','${p.id}')">❌ Çıkar</button>`
-            : `<span style="color:#64748B; font-size:11px;">${p.username ? '@' + p.username : 'Misafir'}</span>`;
+            : `<span style="color:#64748B; font-size:11px;">${safeUser ? '@' + safeUser : 'Misafir'}</span>`;
 
           return `<tr>
-            <td>${badge} <strong>${p.name}</strong></td>
+            <td>${badge} <strong>${safeName}</strong></td>
             <td>${teamTag}</td>
             <td>🔗 ${p.bandsCount} | 🏆 ${p.score}p</td>
             <td style="text-align:right;">${actions}</td>

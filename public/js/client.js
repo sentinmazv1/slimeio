@@ -1,5 +1,28 @@
 // Slime.io v2.0 - Lobi, Üyelik, Basic 10 Kostüm, Seferoğulları vs Tellioğulları Takım Odaları, Sosyal & Mobil İstemci
 (() => {
+  // Eski mobil tarayıcılar (iOS/Android WebView) için roundRect polyfill
+  if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      const radius = Math.min(Number(r) || 0, w / 2, h / 2);
+      this.moveTo(x + radius, y);
+      this.arcTo(x + w, y, x + w, y + h, radius);
+      this.arcTo(x + w, y + h, x, y + h, radius);
+      this.arcTo(x, y + h, x, y, radius);
+      this.arcTo(x, y, x + w, y, radius);
+      this.closePath();
+      return this;
+    };
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   const socket = io({
     transports: ['websocket', 'polling'],
     reconnection: true,
@@ -26,11 +49,13 @@
   const overlayTitleEl = document.getElementById('overlay-title');
   const overlaySubEl = document.getElementById('overlay-sub');
 
-  // Alt Menü Butonları
+  // Alt Menü & Paylaşım Butonları
   const openLobbyBtn = document.getElementById('open-lobby-btn');
   const openFriendsBtn = document.getElementById('open-friends-btn');
   const myFriendCountBadge = document.getElementById('my-friend-count-badge');
   const openMyProfileBtn = document.getElementById('open-my-profile-btn');
+  const shareGameBtn = document.getElementById('share-game-btn');
+  const shareBottomBtn = document.getElementById('share-bottom-btn');
   const muteBtn = document.getElementById('mute-btn');
 
   // Mobil Butonlar
@@ -89,6 +114,7 @@
   const joinSeferBtn = document.getElementById('join-sefer-btn');
   const joinTelliBtn = document.getElementById('join-telli-btn');
   const teamLobbyBackBtn = document.getElementById('team-lobby-back-btn');
+  const teamLobbyFillBotsBtn = document.getElementById('team-lobby-fill-bots-btn');
   const teamLobbyInviteBtn = document.getElementById('team-lobby-invite-btn');
 
   // Profil & Arkadaş Modalları + Kamera Takip Barı
@@ -558,6 +584,11 @@
 
       if (res.watchOnly) {
         teamWaitingModal.style.display = 'none';
+        setTimeout(() => {
+          if (!followedPlayerId) {
+            cycleSpectatedPlayer(1);
+          }
+        }, 320);
       } else if (res.isTeam && res.roomStatus === 'waiting_for_teams') {
         teamWaitingModal.style.display = 'flex';
       } else {
@@ -627,6 +658,18 @@
     });
   });
 
+  if (teamLobbyFillBotsBtn) {
+    teamLobbyFillBotsBtn.addEventListener('click', () => {
+      window.soundManager.init();
+      window.soundManager.playUiPop();
+      socket.emit('fillTeamRoomWithBotsAndStart', {}, (res) => {
+        if (res && !res.ok && res.error) {
+          alert(res.error);
+        }
+      });
+    });
+  }
+
   teamLobbyBackBtn.addEventListener('click', () => {
     socket.emit('leaveRoom');
     teamWaitingModal.style.display = 'none';
@@ -645,6 +688,39 @@
     matchEndModal.style.display = 'none';
     lobbyModal.style.display = 'flex';
   });
+
+  function shareGameLink(btnEl) {
+    window.soundManager.init();
+    window.soundManager.playUiPop();
+    const shareUrl = window.location.origin || 'https://slimeio.com';
+    const shareText = 'Slime.io v2.0 — Gel arenada kemerleri koparalım! Seferoğulları vs Tellioğulları ve Açık Dünya seni bekliyor!';
+    if (navigator.share && isTouchDevice) {
+      navigator.share({
+        title: 'Slime.io v2.0 — Online Multiplayer',
+        text: shareText,
+        url: shareUrl
+      }).catch(() => {});
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(`${shareText} ${shareUrl}`).then(() => {
+        if (btnEl) {
+          const orig = btnEl.textContent;
+          btnEl.textContent = '✓ Link Kopyalandı!';
+          setTimeout(() => {
+            btnEl.textContent = orig;
+          }, 2000);
+        }
+      }).catch(() => {});
+    }
+  }
+
+  if (shareGameBtn) {
+    shareGameBtn.addEventListener('click', () => shareGameLink(shareGameBtn));
+  }
+  if (shareBottomBtn) {
+    shareBottomBtn.addEventListener('click', () => shareGameLink(shareBottomBtn));
+  }
 
   muteBtn.addEventListener('click', () => {
     const isMuted = window.soundManager.toggleMute();
@@ -677,22 +753,22 @@
           : `<span style="background:rgba(255,184,0,0.2); color:#FFE066; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:800;">⚡ MİSAFİR</span>`;
 
       const onlineText = pf.online
-        ? `<span style="color:#00F59B; font-weight:800;">● Çevrimiçi${pf.currentRoomName ? ' (' + pf.currentRoomName + ')' : ''}</span>`
+        ? `<span style="color:#00F59B; font-weight:800;">● Çevrimiçi${pf.currentRoomName ? ' (' + escapeHtml(pf.currentRoomName) + ')' : ''}</span>`
         : `<span style="color:#64748B;">○ Çevrimdışı</span>`;
 
       profileContent.innerHTML = `
         <div style="display:flex; align-items:center; justify-content:flex-start; gap:14px; background:rgba(255,255,255,0.04); padding:14px; border-radius:16px; border:1px solid rgba(255,255,255,0.08);">
-          <div style="width:58px; height:58px; border-radius:50%; background:${pf.color}; display:flex; align-items:center; justify-content:center; font-size:30px; box-shadow:0 0 18px ${pf.color}; border:2.5px solid #FFF; flex-shrink:0;">
+          <div style="width:58px; height:58px; border-radius:50%; background:${escapeHtml(pf.color)}; display:flex; align-items:center; justify-content:center; font-size:30px; box-shadow:0 0 18px ${escapeHtml(pf.color)}; border:2.5px solid #FFF; flex-shrink:0;">
             ${skinObj.icon}
           </div>
           <div style="text-align:left; flex:1; overflow:hidden;">
             <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span style="font-size:18px; font-weight:900; color:#FFF;">${pf.displayName}</span>
+              <span style="font-size:18px; font-weight:900; color:#FFF;">${escapeHtml(pf.displayName)}</span>
               ${badgeRole}
             </div>
-            <div style="font-size:12px; color:#94A3B8; margin-top:2px;">${pf.fullName} ${pf.username ? '(@' + pf.username + ')' : ''}</div>
+            <div style="font-size:12px; color:#94A3B8; margin-top:2px;">${escapeHtml(pf.fullName)} ${pf.username ? '(@' + escapeHtml(pf.username) + ')' : ''}</div>
             <div style="font-size:11px; margin-top:4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-              <span style="color:#00F5D4;">Kostüm: ${skinObj.icon} ${skinObj.name}</span>
+              <span style="color:#00F5D4;">Kostüm: ${skinObj.icon} ${escapeHtml(skinObj.name)}</span>
               <span>•</span>
               ${onlineText}
             </div>
@@ -876,25 +952,29 @@
 
       friendsListBox.innerHTML = res.friends.map((f) => {
         const skinObj = availableSkins.find((s) => s.id === f.skin) || { icon: '👑', name: 'Klasik' };
+        const safeUsername = escapeHtml(f.username || '');
+        const safeDisplayName = escapeHtml(f.displayName || f.username || '');
+        const safeTargetId = escapeHtml(f.targetId || '');
+        const safeRoomId = escapeHtml(f.roomId || '');
         const statusDot = f.online
-          ? `<span style="color:#00F59B; font-size:11px; font-weight:800;">● Çevrimiçi ${f.roomName ? '(' + f.roomName + ')' : ''}</span>`
+          ? `<span style="color:#00F59B; font-size:11px; font-weight:800;">● Çevrimiçi ${f.roomName ? '(' + escapeHtml(f.roomName) + ')' : ''}</span>`
           : `<span style="color:#64748B; font-size:11px;">○ Çevrimdışı</span>`;
 
         const watchBtnHtml = f.online && f.targetId
-          ? `<button class="btn-primary" style="padding:5px 9px; font-size:11px; background:linear-gradient(135deg,#8B5CF6,#EC4899); color:#FFF;" onclick="watchFriendFromList('${f.targetId || ''}', '${(f.displayName || f.username).replace(/'/g, '')}', '${f.roomId || ''}')">🎥 İzle</button>`
+          ? `<button class="btn-primary" style="padding:5px 9px; font-size:11px; background:linear-gradient(135deg,#8B5CF6,#EC4899); color:#FFF;" onclick="watchFriendFromList('${safeTargetId}', '${safeDisplayName}', '${safeRoomId}')">🎥 İzle</button>`
           : '';
 
         const inviteBtnHtml = f.online
-          ? `<button class="btn-primary" style="padding:5px 9px; font-size:11px;" onclick="inviteFriendByUsername('${f.username}', '${f.targetId || ''}')">📩 Davet</button>`
+          ? `<button class="btn-primary" style="padding:5px 9px; font-size:11px;" onclick="inviteFriendByUsername('${safeUsername}', '${safeTargetId}')">📩 Davet</button>`
           : '';
 
         return `<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; background:rgba(255,255,255,0.05); padding:8px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.06);">
-          <div style="display:flex; align-items:center; gap:10px; cursor:pointer; flex:1; overflow:hidden;" onclick="inspectPlayerProfile('${f.targetId || ''}', '${f.username}')">
-            <div style="width:34px; height:34px; border-radius:50%; background:${f.color || '#00F5D4'}; display:flex; align-items:center; justify-content:center; font-size:17px; border:1.5px solid #FFF; flex-shrink:0;">
+          <div style="display:flex; align-items:center; gap:10px; cursor:pointer; flex:1; overflow:hidden;" onclick="inspectPlayerProfile('${safeTargetId}', '${safeUsername}')">
+            <div style="width:34px; height:34px; border-radius:50%; background:${escapeHtml(f.color || '#00F5D4')}; display:flex; align-items:center; justify-content:center; font-size:17px; border:1.5px solid #FFF; flex-shrink:0;">
               ${skinObj.icon}
             </div>
             <div style="overflow:hidden;">
-              <div style="font-weight:900; font-size:13px; color:#FFF; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${f.displayName || f.username} <span style="color:#94A3B8; font-weight:600; font-size:11px;">(@${f.username})</span></div>
+              <div style="font-weight:900; font-size:13px; color:#FFF; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safeDisplayName} <span style="color:#94A3B8; font-weight:600; font-size:11px;">(@${safeUsername})</span></div>
               <div>${statusDot} • <span style="font-size:11px; color:#00BBF9;">👥 ${f.friendCount || 0} Takipçi</span></div>
             </div>
           </div>
@@ -1660,10 +1740,14 @@
         const medal = idx === 0 ? '🥇 1.' : idx === 1 ? '🥈 2.' : idx === 2 ? '🥉 3.' : `${idx + 1}.`;
         const rowClass = p.id === selfId ? 'me-row' : '';
         const teamLabel = p.team === 'seferogullari' ? '🟢 ' : p.team === 'telliogullari' ? '🔴 ' : '';
-        return `<tr class="${rowClass}" data-player-id="${p.id}" data-username="${p.username || ''}" style="cursor:pointer;" onclick="inspectPlayerProfile('${p.id}', '${p.username || ''}')">
+        const safeId = escapeHtml(p.id || '');
+        const safeUser = escapeHtml(p.username || '');
+        const safeName = escapeHtml(p.name || 'Slime');
+        const safeColor = escapeHtml(p.color || '#00F5D4');
+        return `<tr class="${rowClass}" data-player-id="${safeId}" data-username="${safeUser}" style="cursor:pointer;" onclick="inspectPlayerProfile('${safeId}', '${safeUser}')">
           <td>${medal}</td>
           <td style="text-align:left;">
-            <span class="lb-dot" style="background:${p.color}; color:${p.color}; margin-right:6px;"></span>${teamLabel}${p.name}
+            <span class="lb-dot" style="background:${safeColor}; color:${safeColor}; margin-right:6px;"></span>${teamLabel}${safeName}
           </td>
           <td>${p.bandsCount}</td>
           <td>✂️ ${p.cuts}</td>
@@ -1708,11 +1792,13 @@
       if (state.roomStatus === 'starting_countdown') {
         teamLobbyStatusEl.style.color = '#00F59B';
         teamLobbyStatusEl.textContent = `🔥 TAKIMLAR HAZIR! MAÇ ${state.remainingSec} SANİYE İÇİNDE BAŞLIYOR!`;
+        if (teamLobbyFillBotsBtn) teamLobbyFillBotsBtn.style.display = 'none';
       } else {
         const totalCap = state.teamSize * 2;
         const curr = state.seferCount + state.telliCount;
         teamLobbyStatusEl.style.color = '#FFE066';
         teamLobbyStatusEl.textContent = `⏳ Takımların dolması bekleniyor (${curr}/${totalCap})... Dolduğunda maç otomatik başlar!`;
+        if (teamLobbyFillBotsBtn) teamLobbyFillBotsBtn.style.display = 'inline-block';
       }
 
       seferCountBadgeEl.textContent = `${state.seferCount}/${state.teamSize}`;
@@ -1728,8 +1814,11 @@
       for (let i = 0; i < state.teamSize; i++) {
         const p = seferPlayers[i];
         if (p) {
-          seferHtml += `<div class="team-slot" data-player-id="${p.id}" data-username="${p.username || ''}" style="cursor:pointer;" onclick="inspectPlayerProfile('${p.id}','${p.username || ''}')">
-            <span>🟢 ${p.name} ${p.id === selfId ? '(Sen)' : ''}</span>
+          const safeId = escapeHtml(p.id || '');
+          const safeUser = escapeHtml(p.username || '');
+          const safeName = escapeHtml(p.name || 'Slime');
+          seferHtml += `<div class="team-slot" data-player-id="${safeId}" data-username="${safeUser}" style="cursor:pointer;" onclick="inspectPlayerProfile('${safeId}','${safeUser}')">
+            <span>🟢 ${safeName} ${p.id === selfId ? '(Sen)' : ''}</span>
             <span style="color:#00F59B;">👤 Profil / Hazır ✓</span>
           </div>`;
         } else {
@@ -1742,8 +1831,11 @@
       for (let i = 0; i < state.teamSize; i++) {
         const p = telliPlayers[i];
         if (p) {
-          telliHtml += `<div class="team-slot" data-player-id="${p.id}" data-username="${p.username || ''}" style="cursor:pointer;" onclick="inspectPlayerProfile('${p.id}','${p.username || ''}')">
-            <span>🔴 ${p.name} ${p.id === selfId ? '(Sen)' : ''}</span>
+          const safeId = escapeHtml(p.id || '');
+          const safeUser = escapeHtml(p.username || '');
+          const safeName = escapeHtml(p.name || 'Slime');
+          telliHtml += `<div class="team-slot" data-player-id="${safeId}" data-username="${safeUser}" style="cursor:pointer;" onclick="inspectPlayerProfile('${safeId}','${safeUser}')">
+            <span>🔴 ${safeName} ${p.id === selfId ? '(Sen)' : ''}</span>
             <span style="color:#FF2A85;">👤 Profil / Hazır ✓</span>
           </div>`;
         } else {
@@ -1891,12 +1983,16 @@
           const ammo = Math.max(0, p.bands.length - 1);
           const teamPrefix = p.team === 'seferogullari' ? '🟢 ' : p.team === 'telliogullari' ? '🔴 ' : '';
           const followBadge = followedPlayerId === p.id ? '🎥 ' : '';
-          return `<li class="${isMeClass}" data-player-id="${p.id}" data-username="${p.username || ''}" title="Profili Gör & Takip Et">
-            <div class="lb-bar" style="width:${pct}%; background:${p.color};"></div>
+          const safeId = escapeHtml(p.id || '');
+          const safeUser = escapeHtml(p.username || '');
+          const safeName = escapeHtml(p.name || 'Slime');
+          const safeColor = escapeHtml(p.color || '#00F5D4');
+          return `<li class="${isMeClass}" data-player-id="${safeId}" data-username="${safeUser}" title="Profili Gör & Takip Et">
+            <div class="lb-bar" style="width:${pct}%; background:${safeColor};"></div>
             <div class="lb-left">
               <span>${idx + 1}.</span>
-              <span class="lb-dot" style="background:${p.color}; color:${p.color};"></span>
-              <span>${followBadge}${teamPrefix}${p.name}</span>
+              <span class="lb-dot" style="background:${safeColor}; color:${safeColor};"></span>
+              <span>${followBadge}${teamPrefix}${safeName}</span>
             </div>
             <div class="lb-right">
               <span class="lb-badge-belt">🔗${p.bands.length} (🏹${ammo})</span>

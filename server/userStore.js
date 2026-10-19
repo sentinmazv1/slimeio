@@ -217,6 +217,24 @@ function normalizeUsername(u) {
     .substring(0, 16);
 }
 
+function sanitizeText(str, maxLen = 24) {
+  return String(str || '')
+    .replace(/[<>"'`\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .substring(0, maxLen);
+}
+
+function pruneExcessVirtualProfiles() {
+  const virtualKeys = Object.keys(usersDb).filter((k) => usersDb[k] && usersDb[k].isVirtualProfile);
+  if (virtualKeys.length <= 300) return;
+  virtualKeys.sort((a, b) => ((usersDb[a] && usersDb[a].createdAt) || 0) - ((usersDb[b] && usersDb[b].createdAt) || 0));
+  const toRemove = virtualKeys.slice(0, virtualKeys.length - 300);
+  for (const k of toRemove) {
+    delete usersDb[k];
+  }
+}
+
 function isValidColor(color) {
   return SLIME_COLORS.some((c) => c.id === color);
 }
@@ -227,7 +245,8 @@ function isValidSkin(skin) {
 
 function registerUser({ fullName, username, password, color, skin }) {
   const cleanUser = normalizeUsername(username);
-  const cleanFullName = String(fullName || '').trim().substring(0, 36);
+  const cleanFullName = sanitizeText(fullName, 36);
+  const cleanDisplayName = sanitizeText(username, 16) || cleanUser;
   const rawPass = String(password || '').trim();
 
   if (!cleanFullName || cleanFullName.length < 2) {
@@ -250,7 +269,7 @@ function registerUser({ fullName, username, password, color, skin }) {
 
   const newUser = {
     username: cleanUser,
-    displayName: String(username).trim().substring(0, 16),
+    displayName: cleanDisplayName,
     fullName: cleanFullName,
     salt,
     passwordHash: hash,
@@ -318,8 +337,8 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
   const { salt, hash } = hashPassword(rawPass);
   const restored = {
     username: cleanUser,
-    displayName: String(displayName || username).trim().substring(0, 16),
-    fullName: String(fullName || displayName || username).trim().substring(0, 36),
+    displayName: sanitizeText(displayName || username, 16) || cleanUser,
+    fullName: sanitizeText(fullName || displayName || username, 36) || cleanUser,
     salt,
     passwordHash: hash,
     color: isValidColor(color) ? color : SLIME_COLORS[0].id,
@@ -388,8 +407,8 @@ function ensureProfileRecord(targetUsernameOrName, fallbackProfile) {
 
   const virtualRecord = {
     username: cleanKey,
-    displayName: String(fallbackProfile.displayName || targetUsernameOrName || cleanKey).trim().substring(0, 16),
-    fullName: String(fallbackProfile.fullName || (fallbackProfile.isBot ? 'Yapay Zeka (Bot)' : 'Arena Oyuncusu')).trim().substring(0, 36),
+    displayName: sanitizeText(fallbackProfile.displayName || targetUsernameOrName || cleanKey, 16) || cleanKey,
+    fullName: sanitizeText(fallbackProfile.fullName || (fallbackProfile.isBot ? 'Yapay Zeka (Bot)' : 'Arena Oyuncusu'), 36),
     salt: '',
     passwordHash: '',
     isVirtualProfile: true,
@@ -408,6 +427,7 @@ function ensureProfileRecord(targetUsernameOrName, fallbackProfile) {
   };
 
   usersDb[cleanKey] = virtualRecord;
+  pruneExcessVirtualProfiles();
   return virtualRecord;
 }
 
@@ -508,11 +528,12 @@ function getTotalRegisteredCount() {
 
 module.exports = {
   normalizeUsername,
+  sanitizeText,
   registerUser,
   loginUser,
   restoreOrLoginUser,
   updateUserCustomization,
-   ensureProfileRecord,
+  ensureProfileRecord,
   addFriend,
   removeFriend,
   recordMatchStats,
