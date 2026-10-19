@@ -2094,25 +2094,55 @@
     targetCtx.stroke();
     targetCtx.shadowBlur = 0;
 
-    // 3) Kafa Üstü Kostüm Işık Yansıması (Görseldeki altın halenin jöle kafaya vurduğu parlak halka yansıma)
-    if (skinId === 'angel' || skinId === 'crown' || skinId === 'wizard') {
-      targetCtx.save();
+    // 3) Kafa Üstü 3D Kostüm Işık Yansıması & Gölgesi (Tüm 10 Kostüm İçin Özel 3D Etkileşim)
+    targetCtx.save();
+    if (skinId === 'angel') {
       targetCtx.rotate(-0.12);
       targetCtx.beginPath();
-      targetCtx.ellipse(0, -baseR * 0.62, baseR * 0.42, baseR * 0.12, 0, 0, Math.PI * 2);
-      targetCtx.strokeStyle = 'rgba(255, 230, 102, 0.68)';
-      targetCtx.lineWidth = Math.max(2, baseR * 0.085);
+      targetCtx.ellipse(0, -baseR * 0.62, baseR * 0.44, baseR * 0.13, 0, 0, Math.PI * 2);
+      targetCtx.strokeStyle = 'rgba(255, 230, 102, 0.75)';
+      targetCtx.lineWidth = Math.max(2.2, baseR * 0.095);
       targetCtx.shadowColor = '#FFE066';
-      targetCtx.shadowBlur = 8;
+      targetCtx.shadowBlur = 10;
       targetCtx.stroke();
-      targetCtx.restore();
+    } else if (skinId === 'crown') {
+      targetCtx.beginPath();
+      targetCtx.ellipse(0, -baseR * 0.68, baseR * 0.56, baseR * 0.16, 0, 0, Math.PI * 2);
+      targetCtx.fillStyle = 'rgba(250, 204, 21, 0.34)';
+      targetCtx.shadowColor = '#FACC15';
+      targetCtx.shadowBlur = 10;
+      targetCtx.fill();
+    } else if (skinId === 'devil') {
+      for (const s of [-1, 1]) {
+        targetCtx.beginPath();
+        targetCtx.ellipse(s * baseR * 0.46, -baseR * 0.64, baseR * 0.22, baseR * 0.11, s * 0.35, 0, Math.PI * 2);
+        targetCtx.fillStyle = 'rgba(255, 42, 133, 0.45)';
+        targetCtx.shadowColor = '#FF2A85';
+        targetCtx.shadowBlur = 10;
+        targetCtx.fill();
+      }
     } else if (skinId === 'cyber' || skinId === 'headset') {
       targetCtx.beginPath();
-      targetCtx.ellipse(0, -baseR * 0.64, baseR * 0.40, baseR * 0.11, 0, 0, Math.PI * 2);
-      targetCtx.strokeStyle = 'rgba(0, 245, 212, 0.52)';
-      targetCtx.lineWidth = Math.max(1.8, baseR * 0.075);
+      targetCtx.ellipse(0, -baseR * 0.60, baseR * 0.48, baseR * 0.13, 0, 0, Math.PI * 2);
+      targetCtx.strokeStyle = 'rgba(0, 245, 212, 0.58)';
+      targetCtx.lineWidth = Math.max(2, baseR * 0.08);
+      targetCtx.shadowColor = '#00F5D4';
+      targetCtx.shadowBlur = 8;
       targetCtx.stroke();
+    } else if (skinId === 'wizard') {
+      targetCtx.beginPath();
+      targetCtx.ellipse(0, -baseR * 0.68, baseR * 0.66, baseR * 0.18, 0, 0, Math.PI * 2);
+      targetCtx.fillStyle = 'rgba(168, 85, 247, 0.38)';
+      targetCtx.shadowColor = '#C084FC';
+      targetCtx.shadowBlur = 10;
+      targetCtx.fill();
+    } else if (skinId === 'pirate' || skinId === 'viking' || skinId === 'fez' || skinId === 'ninja') {
+      targetCtx.beginPath();
+      targetCtx.ellipse(0, -baseR * 0.68, baseR * 0.58, baseR * 0.16, 0, 0, Math.PI * 2);
+      targetCtx.fillStyle = 'rgba(8, 11, 18, 0.32)';
+      targetCtx.fill();
     }
+    targetCtx.restore();
 
     // 4) Sol-Üst 3D Cam / Jöle Parlama (Specular Highlight) + İkincil Su Damlası Parıltısı
     const specGrad = targetCtx.createLinearGradient(
@@ -2284,219 +2314,748 @@
     targetCtx.restore();
   }
 
-  // --- BASIC 10 KOSTÜM ÇİZİM FONKSİYONU (3D NEON & PARLAK EFEKTLİ) ---
+  // --- BASIC 10 KOSTÜM ÇİZİM FONKSİYONU (TAM 3D HACİMLİ, NEON & MÜCEVHER DETAYLI) ---
   function drawSkinAccessory(targetCtx, skinId, baseR, time) {
     targetCtx.save();
     switch (skinId) {
       case 'crown': {
-        // 3D Altın Kral Tacı + Mücevher Parıltısı
-        const crownGrad = targetCtx.createLinearGradient(0, -baseR - 16, 0, -baseR + 4);
-        crownGrad.addColorStop(0, '#FEF08A');
-        crownGrad.addColorStop(0.5, '#FACC15');
-        crownGrad.addColorStop(1, '#CA8A04');
-        targetCtx.fillStyle = crownGrad;
-        targetCtx.strokeStyle = '#FEF9C3';
-        targetCtx.shadowColor = '#FACC15';
-        targetCtx.shadowBlur = 10;
-        targetCtx.lineWidth = 1.8;
+        // 👑 TAM 3D KRAL TACI: Kavisli 3D altın taban halkası, 5 boyutlu taç tepesi, inciler ve 3D yakut/safir/zümrüt taşlar
+        const yBase = -baseR + 3;
+        // 1) Alt 3D gölge halkası
         targetCtx.beginPath();
-        targetCtx.moveTo(-14, -baseR + 4);
-        targetCtx.lineTo(-16, -baseR - 12);
-        targetCtx.lineTo(-6, -baseR - 4);
-        targetCtx.lineTo(0, -baseR - 16);
-        targetCtx.lineTo(6, -baseR - 4);
-        targetCtx.lineTo(16, -baseR - 12);
-        targetCtx.lineTo(14, -baseR + 4);
+        targetCtx.ellipse(0, yBase + 1.5, 15.5, 4.2, 0, 0, Math.PI * 2);
+        targetCtx.fillStyle = 'rgba(8, 11, 18, 0.45)';
+        targetCtx.fill();
+
+        // 2) Tacın arka iç altın haznesi (3D derinlik)
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, yBase - 4, 14.5, 5, 0, Math.PI, Math.PI * 2);
+        targetCtx.fillStyle = '#92400E';
+        targetCtx.fill();
+
+        // 3) Tacın iç kadife kırmızı kubbesi
+        const velvetGrad = targetCtx.createRadialGradient(-3, yBase - 10, 2, 0, yBase - 6, 14);
+        velvetGrad.addColorStop(0, '#FF2A85');
+        velvetGrad.addColorStop(0.6, '#DC2626');
+        velvetGrad.addColorStop(1, '#7F1D1D');
+        targetCtx.beginPath();
+        targetCtx.arc(0, yBase - 2, 12.5, Math.PI, 0);
+        targetCtx.fillStyle = velvetGrad;
+        targetCtx.fill();
+
+        // 4) 3D Metalik Altın Gövde ve Sivri Uçlar
+        const crownGrad = targetCtx.createLinearGradient(-16, yBase - 18, 16, yBase + 2);
+        crownGrad.addColorStop(0, '#FEF9C3');
+        crownGrad.addColorStop(0.28, '#FDE047');
+        crownGrad.addColorStop(0.55, '#FACC15');
+        crownGrad.addColorStop(0.82, '#CA8A04');
+        crownGrad.addColorStop(1, '#854D0E');
+
+        targetCtx.fillStyle = crownGrad;
+        targetCtx.strokeStyle = '#FEF08A';
+        targetCtx.shadowColor = '#FACC15';
+        targetCtx.shadowBlur = 14;
+        targetCtx.lineWidth = 1.6;
+
+        targetCtx.beginPath();
+        targetCtx.moveTo(-14.5, yBase);
+        targetCtx.lineTo(-17, yBase - 13);
+        targetCtx.lineTo(-9, yBase - 5.5);
+        targetCtx.lineTo(-5.5, yBase - 16);
+        targetCtx.lineTo(0, yBase - 6.5);
+        targetCtx.lineTo(0, yBase - 19);
+        targetCtx.lineTo(0, yBase - 6.5);
+        targetCtx.lineTo(5.5, yBase - 16);
+        targetCtx.lineTo(9, yBase - 5.5);
+        targetCtx.lineTo(17, yBase - 13);
+        targetCtx.lineTo(14.5, yBase);
+        targetCtx.quadraticCurveTo(0, yBase + 5, -14.5, yBase);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        // Orta ana tepe üçgeni
+        targetCtx.beginPath();
+        targetCtx.moveTo(-5, yBase - 5);
+        targetCtx.lineTo(0, yBase - 19.5);
+        targetCtx.lineTo(5, yBase - 5);
         targetCtx.closePath();
         targetCtx.fill();
         targetCtx.stroke();
         targetCtx.shadowBlur = 0;
 
-        // Orta yakut taş
+        // 5) Alt 3D Altın Şerit ve Mücevherler (Yakut, Safir, Zümrüt)
         targetCtx.beginPath();
-        targetCtx.arc(0, -baseR - 2, 2.6, 0, Math.PI * 2);
-        targetCtx.fillStyle = '#FF2A85';
-        targetCtx.fill();
+        targetCtx.ellipse(0, yBase - 0.5, 14.5, 3.4, 0, 0, Math.PI);
+        targetCtx.strokeStyle = '#FEF9C3';
+        targetCtx.lineWidth = 2;
+        targetCtx.stroke();
+
+        const tips = [
+          { x: -17, y: yBase - 13.5, r: 2.1 },
+          { x: -5.5, y: yBase - 16.5, r: 2.2 },
+          { x: 0, y: yBase - 20, r: 2.7 },
+          { x: 5.5, y: yBase - 16.5, r: 2.2 },
+          { x: 17, y: yBase - 13.5, r: 2.1 }
+        ];
+        for (const pt of tips) {
+          targetCtx.beginPath();
+          targetCtx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
+          targetCtx.fillStyle = '#FFFBEB';
+          targetCtx.shadowColor = '#FFE066';
+          targetCtx.shadowBlur = 8;
+          targetCtx.fill();
+        }
+        targetCtx.shadowBlur = 0;
+
+        // Mücevherler
+        const gems = [
+          { x: -8.5, y: yBase - 2.2, c: '#00BBF9', r: 2.1 },
+          { x: 0, y: yBase - 2.5, c: '#FF2A85', r: 3.0 },
+          { x: 8.5, y: yBase - 2.2, c: '#00F59B', r: 2.1 }
+        ];
+        for (const gm of gems) {
+          targetCtx.beginPath();
+          targetCtx.arc(gm.x, gm.y, gm.r, 0, Math.PI * 2);
+          targetCtx.fillStyle = gm.c;
+          targetCtx.shadowColor = gm.c;
+          targetCtx.shadowBlur = 6;
+          targetCtx.fill();
+          targetCtx.shadowBlur = 0;
+          targetCtx.beginPath();
+          targetCtx.arc(gm.x - gm.r * 0.3, gm.y - gm.r * 0.3, gm.r * 0.35, 0, Math.PI * 2);
+          targetCtx.fillStyle = '#FFFFFF';
+          targetCtx.fill();
+        }
         break;
       }
       case 'ninja': {
-        // 3D Kırmızı Ninja Bandı ve Metal Plakası
-        targetCtx.fillStyle = '#DC2626';
+        // 🥷 TAM 3D GÖLGE NİNJA: Kavisli 3D İpek Kuşak, Parlak Çelik Alın Plakası, Perçinler ve Dalgalanan Çift Kuşak
+        const bandY = -baseR * 0.56;
+        const w = baseR * 0.96;
+
+        // 1) Rüzgarda dalgalanan 3D çift katmanlı ipek düğüm uçları (Sol arkada)
+        const wave1 = Math.sin(time * 0.012) * 4.5;
+        const wave2 = Math.cos(time * 0.010) * 4.5;
+
+        targetCtx.save();
+        targetCtx.fillStyle = '#991B1B';
+        targetCtx.beginPath();
+        targetCtx.moveTo(-w + 2, bandY + 2);
+        targetCtx.quadraticCurveTo(-w - 9, bandY - 8 + wave2, -w - 18, bandY - 3 + wave2);
+        targetCtx.lineTo(-w - 15, bandY + 4 + wave2);
+        targetCtx.quadraticCurveTo(-w - 7, bandY + 1, -w + 2, bandY + 6);
+        targetCtx.closePath();
+        targetCtx.fill();
+
+        const ribbonGrad = targetCtx.createLinearGradient(-w, bandY, -w - 18, bandY - 12);
+        ribbonGrad.addColorStop(0, '#EF4444');
+        ribbonGrad.addColorStop(1, '#F87171');
+        targetCtx.fillStyle = ribbonGrad;
         targetCtx.shadowColor = '#EF4444';
         targetCtx.shadowBlur = 8;
         targetCtx.beginPath();
-        targetCtx.roundRect(-baseR + 2, -baseR * 0.58, (baseR - 2) * 2, 7.5, 3);
+        targetCtx.moveTo(-w + 2, bandY);
+        targetCtx.quadraticCurveTo(-w - 10, bandY - 14 + wave1, -w - 20, bandY - 10 + wave1);
+        targetCtx.lineTo(-w - 17, bandY - 3 + wave1);
+        targetCtx.quadraticCurveTo(-w - 8, bandY - 6 + wave1, -w + 2, bandY + 4);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.restore();
+
+        // 2) Kafa etrafını 3D saran kavisli kırmızı kumaş bant
+        const clothGrad = targetCtx.createLinearGradient(-w, bandY, w, bandY);
+        clothGrad.addColorStop(0, '#991B1B');
+        clothGrad.addColorStop(0.25, '#EF4444');
+        clothGrad.addColorStop(0.5, '#F87171');
+        clothGrad.addColorStop(0.75, '#DC2626');
+        clothGrad.addColorStop(1, '#7F1D1D');
+
+        targetCtx.fillStyle = clothGrad;
+        targetCtx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+        targetCtx.shadowBlur = 5;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-w, bandY);
+        targetCtx.quadraticCurveTo(0, bandY - 5.5, w, bandY);
+        targetCtx.lineTo(w, bandY + 8.5);
+        targetCtx.quadraticCurveTo(0, bandY + 3.5, -w, bandY + 8.5);
+        targetCtx.closePath();
         targetCtx.fill();
         targetCtx.shadowBlur = 0;
 
-        targetCtx.fillStyle = '#E2E8F0';
-        targetCtx.fillRect(-7, -baseR * 0.55, 14, 5);
+        // 3) 3D Fırçalanmış Çelik Shinobi Alın Plakası + Neon Sembol
+        const plateGrad = targetCtx.createLinearGradient(-10, bandY - 3, 10, bandY + 7);
+        plateGrad.addColorStop(0, '#F8FAFC');
+        plateGrad.addColorStop(0.45, '#CBD5E1');
+        plateGrad.addColorStop(0.55, '#64748B');
+        plateGrad.addColorStop(1, '#E2E8F0');
 
-        targetCtx.fillStyle = '#EF4444';
+        targetCtx.fillStyle = plateGrad;
+        targetCtx.strokeStyle = '#1E293B';
+        targetCtx.lineWidth = 1.3;
         targetCtx.beginPath();
-        targetCtx.moveTo(-baseR + 2, -baseR * 0.45);
-        targetCtx.lineTo(-baseR - 13, -baseR * 0.68 + Math.sin(time * 0.012) * 4);
-        targetCtx.lineTo(-baseR - 10, -baseR * 0.25 + Math.sin(time * 0.012) * 4);
-        targetCtx.closePath();
+        targetCtx.roundRect(-10.5, bandY - 1.5, 21, 7.2, 2.5);
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        // Plaka üstü neon turkuaz shuriken/spiral sembolü ve 2 yan perçin
+        targetCtx.fillStyle = '#00F5D4';
+        targetCtx.shadowColor = '#00F5D4';
+        targetCtx.shadowBlur = 6;
+        targetCtx.beginPath();
+        targetCtx.arc(0, bandY + 2.1, 1.9, 0, Math.PI * 2);
+        targetCtx.fill();
+        targetCtx.shadowBlur = 0;
+
+        targetCtx.fillStyle = '#334155';
+        targetCtx.beginPath();
+        targetCtx.arc(-7.5, bandY + 2.1, 1.1, 0, Math.PI * 2);
+        targetCtx.arc(7.5, bandY + 2.1, 1.1, 0, Math.PI * 2);
         targetCtx.fill();
         break;
       }
       case 'cyber': {
-        // 3D Siber Lazer Vizör Gözlük
-        const visorGrad = targetCtx.createLinearGradient(-16, -8, 16, 2);
+        // 🕶️ TAM 3D SİBER VİZÖR: Kavisli Holografik Lazer Gözlük, Hareketli Tarayıcı Işık ve Yan Siber Kulak Modülleri
+        const vy = -5.5;
+        // 1) Yan Siber Kulak Modülleri (3D kapsüller)
+        targetCtx.fillStyle = '#1E293B';
+        targetCtx.strokeStyle = '#00F5D4';
+        targetCtx.lineWidth = 1.5;
+        for (const s of [-1, 1]) {
+          targetCtx.beginPath();
+          targetCtx.roundRect(s * 17 - 2.5, vy - 2, 5, 9, 2);
+          targetCtx.fill();
+          targetCtx.stroke();
+        }
+
+        // 2) Kavisli 3D Holografik Cam Gövdesi
+        const visorGrad = targetCtx.createLinearGradient(-18, vy - 5, 18, vy + 8);
         visorGrad.addColorStop(0, '#00F5D4');
-        visorGrad.addColorStop(0.5, '#FFFFFF');
-        visorGrad.addColorStop(1, '#00BBF9');
+        visorGrad.addColorStop(0.35, '#00BBF9');
+        visorGrad.addColorStop(0.7, '#3B82F6');
+        visorGrad.addColorStop(1, '#FF2A85');
+
+        targetCtx.save();
         targetCtx.fillStyle = visorGrad;
         targetCtx.shadowColor = '#00F5D4';
-        targetCtx.shadowBlur = 14;
+        targetCtx.shadowBlur = 16;
+
         targetCtx.beginPath();
-        targetCtx.roundRect(-16, -7.5, 32, 8.5, 4);
+        targetCtx.moveTo(-18, vy - 2);
+        targetCtx.quadraticCurveTo(0, vy - 6.5, 18, vy - 2);
+        targetCtx.lineTo(16.5, vy + 6.5);
+        targetCtx.quadraticCurveTo(0, vy + 3, -16.5, vy + 6.5);
+        targetCtx.closePath();
         targetCtx.fill();
+
+        // Cam içi animasyonlu lazer tarayıcı çizgi (Knight Rider / Cyberpunk tarayıcı)
+        targetCtx.clip();
+        const scanX = Math.sin(time * 0.005) * 12;
+        const scanGrad = targetCtx.createLinearGradient(scanX - 5, vy, scanX + 5, vy);
+        scanGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+        scanGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.95)');
+        scanGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        targetCtx.fillStyle = scanGrad;
+        targetCtx.fillRect(scanX - 6, vy - 8, 12, 18);
+
+        // Sol üst diyagonal parlak cam yansıması
+        targetCtx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+        targetCtx.beginPath();
+        targetCtx.moveTo(-14, vy - 4);
+        targetCtx.lineTo(-6, vy - 4);
+        targetCtx.lineTo(-10, vy + 6);
+        targetCtx.lineTo(-16, vy + 6);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.restore();
+
+        // 3) Üst 3D Metalik Çerçeve Barı
         targetCtx.strokeStyle = '#FFFFFF';
-        targetCtx.lineWidth = 1.5;
+        targetCtx.shadowColor = '#00F5D4';
+        targetCtx.shadowBlur = 8;
+        targetCtx.lineWidth = 2;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-18.5, vy - 2);
+        targetCtx.quadraticCurveTo(0, vy - 6.8, 18.5, vy - 2);
         targetCtx.stroke();
         break;
       }
       case 'pirate': {
-        // 3D Korsan Kaptan Şapkası
-        targetCtx.fillStyle = '#0F172A';
-        targetCtx.strokeStyle = '#FBBF24';
-        targetCtx.shadowColor = '#F59E0B';
-        targetCtx.shadowBlur = 8;
-        targetCtx.lineWidth = 2.2;
+        // 🏴‍☠️ TAM 3D KORSAN KAPTAN: Kırmızı Bandana, 3D Kıvrımlı Altın İşlemeli Kaptan Şapkası, Kuru Kafa ve Dalgalanan Tüy
+        const yB = -baseR + 4;
+
+        // 1) Şapka altı kırmızı korsan bandanası
         targetCtx.beginPath();
-        targetCtx.moveTo(-21, -baseR + 4);
-        targetCtx.quadraticCurveTo(0, -baseR - 19, 21, -baseR + 4);
+        targetCtx.ellipse(0, yB + 1, 16, 4.2, 0, 0, Math.PI);
+        targetCtx.fillStyle = '#DC2626';
+        targetCtx.fill();
+
+        // 2) Sağ tarafta sallanan 3D Kırmızı Kaptan Tüyü
+        const plumeWave = Math.sin(time * 0.008) * 2.5;
+        const plumeGrad = targetCtx.createLinearGradient(10, yB - 6, 24, yB - 24);
+        plumeGrad.addColorStop(0, '#991B1B');
+        plumeGrad.addColorStop(0.5, '#FF2A85');
+        plumeGrad.addColorStop(1, '#FDE047');
+        targetCtx.fillStyle = plumeGrad;
+        targetCtx.shadowColor = '#FF2A85';
+        targetCtx.shadowBlur = 8;
+        targetCtx.beginPath();
+        targetCtx.moveTo(11, yB - 5);
+        targetCtx.quadraticCurveTo(22 + plumeWave, yB - 24, 15 + plumeWave, yB - 25);
+        targetCtx.quadraticCurveTo(8, yB - 16, 11, yB - 5);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.shadowBlur = 0;
+
+        // 3) 3D Tricorn Kaptan Şapkası Gövdesi ve Altın Kenar Şeridi
+        const hatGrad = targetCtx.createRadialGradient(0, yB - 14, 3, 0, yB - 6, 24);
+        hatGrad.addColorStop(0, '#334155');
+        hatGrad.addColorStop(0.55, '#0F172A');
+        hatGrad.addColorStop(1, '#020617');
+
+        targetCtx.fillStyle = hatGrad;
+        targetCtx.strokeStyle = '#FACC15';
+        targetCtx.shadowColor = '#F59E0B';
+        targetCtx.shadowBlur = 10;
+        targetCtx.lineWidth = 2.2;
+
+        targetCtx.beginPath();
+        targetCtx.moveTo(-23, yB + 1);
+        targetCtx.bezierCurveTo(-18, yB - 18, -7, yB - 22, 0, yB - 22);
+        targetCtx.bezierCurveTo(7, yB - 22, 18, yB - 18, 23, yB + 1);
+        targetCtx.quadraticCurveTo(0, yB - 4, -23, yB + 1);
         targetCtx.closePath();
         targetCtx.fill();
         targetCtx.stroke();
         targetCtx.shadowBlur = 0;
+
+        // 4) Şapka ortasında 3D Sevimli Korsan Kuru Kafası ve Çapraz Kemikler
+        targetCtx.strokeStyle = '#E2E8F0';
+        targetCtx.lineWidth = 1.8;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-5.5, yB - 6);
+        targetCtx.lineTo(5.5, yB - 13);
+        targetCtx.moveTo(-5.5, yB - 13);
+        targetCtx.lineTo(5.5, yB - 6);
+        targetCtx.stroke();
+
+        targetCtx.fillStyle = '#FFFFFF';
+        targetCtx.beginPath();
+        targetCtx.arc(0, yB - 10, 4.2, 0, Math.PI * 2);
+        targetCtx.fill();
+
+        targetCtx.fillStyle = '#FF2A85';
+        targetCtx.beginPath();
+        targetCtx.arc(-1.5, yB - 10, 1.1, 0, Math.PI * 2);
+        targetCtx.arc(1.5, yB - 10, 1.1, 0, Math.PI * 2);
+        targetCtx.fill();
         break;
       }
       case 'devil': {
-        // 3D Parlak Ateş Boynuzları
-        const hornGrad = targetCtx.createLinearGradient(0, -baseR - 16, 0, -baseR + 4);
-        hornGrad.addColorStop(0, '#FDE047');
-        hornGrad.addColorStop(0.45, '#FF2A85');
-        hornGrad.addColorStop(1, '#991B1B');
-        targetCtx.fillStyle = hornGrad;
-        targetCtx.shadowColor = '#FF2A85';
-        targetCtx.shadowBlur = 10;
-        targetCtx.beginPath();
-        targetCtx.moveTo(-14, -baseR + 4);
-        targetCtx.quadraticCurveTo(-23, -baseR - 15, -8, -baseR - 13);
-        targetCtx.closePath();
-        targetCtx.fill();
-        targetCtx.beginPath();
-        targetCtx.moveTo(14, -baseR + 4);
-        targetCtx.quadraticCurveTo(23, -baseR - 15, 8, -baseR - 13);
-        targetCtx.closePath();
-        targetCtx.fill();
+        // 😈 TAM 3D ATEŞ BOYNUZU: Lav Soketleri, Kıvrımlı 3D Magma Boynuzlar, Parlak Sırt Yansıması ve Uçuşan Kıvılcımlar
+        for (const s of [-1, 1]) {
+          targetCtx.save();
+          // 1) Kafa üstü kızgın lav soketi halkası
+          targetCtx.beginPath();
+          targetCtx.ellipse(s * 12, -baseR + 3.5, 4.8, 2.2, s * 0.35, 0, Math.PI * 2);
+          targetCtx.fillStyle = '#FEF08A';
+          targetCtx.shadowColor = '#FF2A85';
+          targetCtx.shadowBlur = 10;
+          targetCtx.fill();
+
+          // 2) 3D Kıvrımlı Magma Boynuz Gradyanı
+          const hornGrad = targetCtx.createLinearGradient(s * 10, -baseR + 4, s * 22, -baseR - 20);
+          hornGrad.addColorStop(0, '#7F1D1D');
+          hornGrad.addColorStop(0.35, '#EF4444');
+          hornGrad.addColorStop(0.7, '#FF2A85');
+          hornGrad.addColorStop(1, '#FEF08A');
+
+          targetCtx.fillStyle = hornGrad;
+          targetCtx.shadowColor = '#FF2A85';
+          targetCtx.shadowBlur = 14;
+
+          targetCtx.beginPath();
+          targetCtx.moveTo(s * 8.5, -baseR + 3);
+          targetCtx.bezierCurveTo(
+            s * 14,
+            -baseR - 10,
+            s * 25,
+            -baseR - 12,
+            s * 19,
+            -baseR - 21
+          );
+          targetCtx.bezierCurveTo(
+            s * 22,
+            -baseR - 9,
+            s * 18,
+            -baseR - 2,
+            s * 15,
+            -baseR + 5
+          );
+          targetCtx.closePath();
+          targetCtx.fill();
+
+          // 3) Boynuz üstü 3D parlak sırt çizgisi (Specular ridge)
+          targetCtx.shadowBlur = 0;
+          targetCtx.strokeStyle = 'rgba(254, 249, 195, 0.78)';
+          targetCtx.lineWidth = 1.4;
+          targetCtx.beginPath();
+          targetCtx.moveTo(s * 10.5, -baseR + 2);
+          targetCtx.quadraticCurveTo(s * 18, -baseR - 9, s * 18.5, -baseR - 19);
+          targetCtx.stroke();
+
+          // 4) Boynuz ucunda canlı ateş kıvılcımı
+          const sparkY = -baseR - 22 + Math.sin(time * 0.014 + s) * 2.5;
+          targetCtx.beginPath();
+          targetCtx.arc(s * 19.5, sparkY, 2.0, 0, Math.PI * 2);
+          targetCtx.fillStyle = '#FEF08A';
+          targetCtx.shadowColor = '#FFE066';
+          targetCtx.shadowBlur = 8;
+          targetCtx.fill();
+          targetCtx.restore();
+        }
         break;
       }
       case 'angel': {
-        // Görseldekiyle Birebir: Eğimli 3D Parlak Altın Neon Hale + Işık Çekirdeği
-        const floatY = -baseR - 11 + Math.sin(time * 0.006) * 2.2;
+        // 😇 TAM 3D KUTSAL HALE: Eğimli 3D Altın Neon Torus Halkası, Sıcak Beyaz Çekirdek ve Dönen Yıldız Parıltıları
+        const floatY = -baseR - 11.5 + Math.sin(time * 0.006) * 2.2;
         targetCtx.save();
         targetCtx.translate(0, floatY);
         targetCtx.rotate(-0.12);
 
-        // Dış altın neon halesi
+        // 1) Dış altın neon halesi
         targetCtx.strokeStyle = '#F59E0B';
         targetCtx.shadowColor = '#FFE066';
-        targetCtx.shadowBlur = 16;
-        targetCtx.lineWidth = 5.2;
+        targetCtx.shadowBlur = 18;
+        targetCtx.lineWidth = 5.6;
         targetCtx.beginPath();
-        targetCtx.ellipse(0, 0, baseR * 0.68, baseR * 0.21, 0, 0, Math.PI * 2);
+        targetCtx.ellipse(0, 0, baseR * 0.70, baseR * 0.22, 0, 0, Math.PI * 2);
         targetCtx.stroke();
 
-        // İç sıcak beyaz-altın çekirdek halkası
-        targetCtx.strokeStyle = '#FEF9C3';
+        // 2) Orta parlak altın katman
+        targetCtx.strokeStyle = '#FDE047';
+        targetCtx.lineWidth = 3.4;
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 0, baseR * 0.70, baseR * 0.22, 0, 0, Math.PI * 2);
+        targetCtx.stroke();
+
+        // 3) İç sıcak beyaz-altın çekirdek halkası
+        targetCtx.strokeStyle = '#FFFFFF';
         targetCtx.shadowColor = '#FFFFFF';
         targetCtx.shadowBlur = 6;
-        targetCtx.lineWidth = 2.1;
+        targetCtx.lineWidth = 1.6;
         targetCtx.beginPath();
-        targetCtx.ellipse(0, 0, baseR * 0.68, baseR * 0.21, 0, 0, Math.PI * 2);
+        targetCtx.ellipse(0, 0, baseR * 0.70, baseR * 0.22, 0, 0, Math.PI * 2);
         targetCtx.stroke();
+
+        // 4) Halenin etrafında dönen minik ışık yıldızcıkları
+        const starAngle = time * 0.003;
+        for (const offset of [0, Math.PI]) {
+          const sx = Math.cos(starAngle + offset) * (baseR * 0.74);
+          const sy = Math.sin(starAngle + offset) * (baseR * 0.24);
+          targetCtx.beginPath();
+          targetCtx.arc(sx, sy, 1.8, 0, Math.PI * 2);
+          targetCtx.fillStyle = '#FFFFFF';
+          targetCtx.fill();
+        }
         targetCtx.restore();
         break;
       }
       case 'viking': {
-        // 3D Boynuzlu Viking Miğferi
-        targetCtx.fillStyle = '#94A3B8';
+        // ⚔️ TAM 3D VİKİNG MİĞFERİ: 3D Kıvrımlı Fildişi Boynuzlar, Küresel Çelik Kubbe, Bronz Kemer ve Perçinler
+        const yV = -baseR + 5;
+
+        // 1) Sağ ve Sol 3D Kıvrımlı Fildişi Viking Boynuzları
+        for (const s of [-1, 1]) {
+          const hornGrad = targetCtx.createLinearGradient(s * 13, yV, s * 26, yV - 18);
+          hornGrad.addColorStop(0, '#A8A29E');
+          hornGrad.addColorStop(0.45, '#F5F5F4');
+          hornGrad.addColorStop(1, '#FEF3C7');
+
+          targetCtx.fillStyle = hornGrad;
+          targetCtx.strokeStyle = '#57534E';
+          targetCtx.lineWidth = 1.2;
+          targetCtx.beginPath();
+          targetCtx.moveTo(s * 13, yV - 5);
+          targetCtx.quadraticCurveTo(s * 25, yV - 6, s * 25, yV - 18);
+          targetCtx.quadraticCurveTo(s * 21, yV - 8, s * 13, yV + 1);
+          targetCtx.closePath();
+          targetCtx.fill();
+          targetCtx.stroke();
+
+          // Boynuz dibi bronz bilezik
+          targetCtx.fillStyle = '#D97706';
+          targetCtx.beginPath();
+          targetCtx.ellipse(s * 14, yV - 2, 2.2, 3.8, s * 0.2, 0, Math.PI * 2);
+          targetCtx.fill();
+        }
+
+        // 2) 3D Küresel Çelik Miğfer Kubbesi
+        const domeGrad = targetCtx.createRadialGradient(-5, yV - 12, 2, 0, yV - 5, 18);
+        domeGrad.addColorStop(0, '#F8FAFC');
+        domeGrad.addColorStop(0.45, '#94A3B8');
+        domeGrad.addColorStop(0.85, '#475569');
+        domeGrad.addColorStop(1, '#1E293B');
+
+        targetCtx.fillStyle = domeGrad;
+        targetCtx.strokeStyle = '#CBD5E1';
+        targetCtx.lineWidth = 1.5;
         targetCtx.beginPath();
-        targetCtx.arc(0, -baseR + 5, 15, Math.PI, 0);
-        targetCtx.fill();
-        targetCtx.strokeStyle = '#F8FAFC';
-        targetCtx.shadowColor = '#E2E8F0';
-        targetCtx.shadowBlur = 6;
-        targetCtx.lineWidth = 3.2;
-        targetCtx.beginPath();
-        targetCtx.moveTo(-14, -baseR + 2);
-        targetCtx.lineTo(-22, -baseR - 11);
-        targetCtx.moveTo(14, -baseR + 2);
-        targetCtx.lineTo(22, -baseR - 11);
-        targetCtx.stroke();
-        break;
-      }
-      case 'wizard': {
-        // 3D Mistik Büyücü Şapkası
-        const wizGrad = targetCtx.createLinearGradient(0, -baseR - 21, 0, -baseR + 4);
-        wizGrad.addColorStop(0, '#C084FC');
-        wizGrad.addColorStop(1, '#581C87');
-        targetCtx.fillStyle = wizGrad;
-        targetCtx.strokeStyle = '#FDE047';
-        targetCtx.shadowColor = '#A855F7';
-        targetCtx.shadowBlur = 10;
-        targetCtx.lineWidth = 2;
-        targetCtx.beginPath();
-        targetCtx.moveTo(-19, -baseR + 4);
-        targetCtx.lineTo(0, -baseR - 21);
-        targetCtx.lineTo(19, -baseR + 4);
+        targetCtx.arc(0, yV, 15.5, Math.PI, 0);
         targetCtx.closePath();
         targetCtx.fill();
         targetCtx.stroke();
+
+        // 3) Altın/Bronz Alın Şeridi, Orta Sırt ve Perçinler
+        const bronzeGrad = targetCtx.createLinearGradient(-16, yV - 3, 16, yV + 2);
+        bronzeGrad.addColorStop(0, '#92400E');
+        bronzeGrad.addColorStop(0.5, '#FBBF24');
+        bronzeGrad.addColorStop(1, '#92400E');
+
+        targetCtx.fillStyle = bronzeGrad;
+        targetCtx.beginPath();
+        targetCtx.roundRect(-16, yV - 2.5, 32, 4.5, 2);
+        targetCtx.fill();
+
+        // Burun koruyucu çıkıntısı
+        targetCtx.beginPath();
+        targetCtx.roundRect(-2.2, yV - 3, 4.4, 7.5, 1.5);
+        targetCtx.fill();
+
+        // Parlak perçin noktaları
+        targetCtx.fillStyle = '#FEF9C3';
+        for (const rx of [-11, -6, 6, 11]) {
+          targetCtx.beginPath();
+          targetCtx.arc(rx, yV - 0.3, 1.1, 0, Math.PI * 2);
+          targetCtx.fill();
+        }
+        break;
+      }
+      case 'wizard': {
+        // 🧙 TAM 3D MİSTİK BÜYÜCÜ ŞAPKASI: Geniş 3D Elips Siperlik, Kıvrık Koni Tepe, Altın Tokalı Kuşak ve Parlayan Yıldız/Hilal
+        const yW = -baseR + 4;
+
+        // 1) Şapka siperliği alt gölgesi
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, yW + 1.5, 21.5, 5.2, 0, 0, Math.PI * 2);
+        targetCtx.fillStyle = 'rgba(8, 11, 18, 0.45)';
+        targetCtx.fill();
+
+        // 2) 3D Kıvrımlı Büyücü Koni Gövdesi
+        const wizGrad = targetCtx.createLinearGradient(-12, yW - 24, 14, yW);
+        wizGrad.addColorStop(0, '#E879F9');
+        wizGrad.addColorStop(0.35, '#9333EA');
+        wizGrad.addColorStop(0.75, '#581C87');
+        wizGrad.addColorStop(1, '#3B0764');
+
+        targetCtx.fillStyle = wizGrad;
+        targetCtx.strokeStyle = '#FDE047';
+        targetCtx.shadowColor = '#A855F7';
+        targetCtx.shadowBlur = 14;
+        targetCtx.lineWidth = 1.6;
+
+        targetCtx.beginPath();
+        targetCtx.moveTo(-14.5, yW);
+        targetCtx.quadraticCurveTo(-8, yW - 18, 6, yW - 25);
+        targetCtx.quadraticCurveTo(13, yW - 26, 15, yW - 21);
+        targetCtx.quadraticCurveTo(9, yW - 14, 14.5, yW);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        // 3) Altın Tokalı Şapka Kuşağı
+        targetCtx.shadowBlur = 0;
+        targetCtx.fillStyle = '#FACC15';
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, yW - 1, 14.2, 3.2, 0, Math.PI, Math.PI * 2);
+        targetCtx.fill();
+
+        // 4) Ön 3D Elips Siperlik (Brim)
+        const brimGrad = targetCtx.createLinearGradient(-21, yW - 2, 21, yW + 4);
+        brimGrad.addColorStop(0, '#581C87');
+        brimGrad.addColorStop(0.5, '#A855F7');
+        brimGrad.addColorStop(1, '#3B0764');
+        targetCtx.fillStyle = brimGrad;
+        targetCtx.strokeStyle = '#FDE047';
+        targetCtx.lineWidth = 1.6;
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, yW + 0.5, 21, 4.6, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        // Ön altın kemer tokası
+        targetCtx.strokeStyle = '#FEF08A';
+        targetCtx.lineWidth = 1.8;
+        targetCtx.strokeRect(-3.5, yW - 4.5, 7, 4.5);
+
+        // 5) Şapka ucunda süzülen büyü küresi ve gövdede altın yıldız
+        const orbPulse = 2.2 + Math.sin(time * 0.01) * 0.6;
+        targetCtx.beginPath();
+        targetCtx.arc(15.5, yW - 21, orbPulse, 0, Math.PI * 2);
+        targetCtx.fillStyle = '#FEF08A';
+        targetCtx.shadowColor = '#FFE066';
+        targetCtx.shadowBlur = 10;
+        targetCtx.fill();
+
+        targetCtx.beginPath();
+        targetCtx.arc(-2, yW - 11, 2.0, 0, Math.PI * 2);
+        targetCtx.fillStyle = '#FDE047';
+        targetCtx.fill();
         break;
       }
       case 'headset': {
-        // 3D RGB Oyuncu Kulaklığı
-        targetCtx.strokeStyle = '#00F5D4';
+        // 🎧 TAM 3D PRO OYUNCU KULAKLIĞI: Çift Katmanlı 3D Kafa Bandı, Dolgun RGB Neon Kulaklık Kupaları ve Işıklı Mikrofon
+        // 1) Üst 3D Destekli Kafa Bandı
+        targetCtx.strokeStyle = '#1E293B';
+        targetCtx.lineWidth = 6.5;
+        targetCtx.lineCap = 'round';
+        targetCtx.beginPath();
+        targetCtx.arc(0, 0, baseR + 3.5, Math.PI * 1.12, Math.PI * 1.88);
+        targetCtx.stroke();
+
+        const bandNeonGrad = targetCtx.createLinearGradient(-baseR, -baseR, baseR, -baseR);
+        bandNeonGrad.addColorStop(0, '#FF2A85');
+        bandNeonGrad.addColorStop(0.5, '#00F5D4');
+        bandNeonGrad.addColorStop(1, '#FF2A85');
+
+        targetCtx.strokeStyle = bandNeonGrad;
+        targetCtx.shadowColor = '#00F5D4';
+        targetCtx.shadowBlur = 12;
+        targetCtx.lineWidth = 2.8;
+        targetCtx.beginPath();
+        targetCtx.arc(0, 0, baseR + 4.2, Math.PI * 1.14, Math.PI * 1.86);
+        targetCtx.stroke();
+
+        // 2) Sağ ve Sol 3D Dolgun RGB Kulaklık Kupaları (Earcups)
+        for (const s of [-1, 1]) {
+          targetCtx.save();
+          targetCtx.translate(s * (baseR + 2.5), 1);
+
+          // İç siyah yastık (cushion)
+          targetCtx.fillStyle = '#0F172A';
+          targetCtx.shadowBlur = 0;
+          targetCtx.beginPath();
+          targetCtx.ellipse(-s * 1.5, 0, 3.8, 9.2, 0, 0, Math.PI * 2);
+          targetCtx.fill();
+
+          // Dış 3D RGB Kupa Gövdesi
+          const cupGrad = targetCtx.createLinearGradient(-4, -9, 4, 9);
+          cupGrad.addColorStop(0, '#FF2A85');
+          cupGrad.addColorStop(0.5, '#9B5DE5');
+          cupGrad.addColorStop(1, '#00BBF9');
+
+          targetCtx.fillStyle = cupGrad;
+          targetCtx.strokeStyle = '#00F5D4';
+          targetCtx.shadowColor = '#FF2A85';
+          targetCtx.shadowBlur = 10;
+          targetCtx.lineWidth = 1.5;
+          targetCtx.beginPath();
+          targetCtx.ellipse(s * 1.2, 0, 4.2, 8.5, 0, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.stroke();
+
+          // Kupa üstü parlak beyaz ışık çizgisi
+          targetCtx.shadowBlur = 0;
+          targetCtx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          targetCtx.beginPath();
+          targetCtx.ellipse(s * 1.6, -3, 1.2, 3.2, 0, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.restore();
+        }
+
+        // 3) Sol kulaklıktan uzanan 3D Esnek Oyuncu Mikrofonu + Parlayan LED Uç
+        targetCtx.shadowBlur = 0;
+        targetCtx.strokeStyle = '#CBD5E1';
+        targetCtx.lineWidth = 2.2;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-baseR - 2, 6);
+        targetCtx.quadraticCurveTo(-baseR + 4, 15, -7, 11);
+        targetCtx.stroke();
+
+        targetCtx.beginPath();
+        targetCtx.arc(-6.5, 11, 2.6, 0, Math.PI * 2);
+        targetCtx.fillStyle = '#00F5D4';
         targetCtx.shadowColor = '#00F5D4';
         targetCtx.shadowBlur = 10;
-        targetCtx.lineWidth = 4;
-        targetCtx.beginPath();
-        targetCtx.arc(0, 0, baseR + 3, Math.PI * 1.1, Math.PI * 1.9);
-        targetCtx.stroke();
-        targetCtx.fillStyle = '#FF2A85';
-        targetCtx.shadowColor = '#FF2A85';
-        targetCtx.beginPath();
-        targetCtx.roundRect(-baseR - 5.5, -6, 6.5, 14, 3);
-        targetCtx.roundRect(baseR - 1, -6, 6.5, 14, 3);
         targetCtx.fill();
         break;
       }
       case 'fez': {
-        // 3D Tosun Paşa Fesi (Seferoğulları / Tellioğulları Özel)
-        const fezGrad = targetCtx.createLinearGradient(-12, -baseR - 13, 12, -baseR + 4);
-        fezGrad.addColorStop(0, '#EF4444');
-        fezGrad.addColorStop(1, '#991B1B');
-        targetCtx.fillStyle = fezGrad;
-        targetCtx.shadowColor = '#EF4444';
-        targetCtx.shadowBlur = 8;
+        // 🎩 TAM 3D TOSUN PAŞA FESİ: Gerçek 3D Silindirik Kadife Gövde, Üst Elips Perspektifi ve Sallanan İpek Püskül
+        const yF = -baseR + 4;
+        const topY = yF - 15;
+
+        // 1) Alt oturma gölgesi
         targetCtx.beginPath();
-        targetCtx.moveTo(-12, -baseR + 4);
-        targetCtx.lineTo(-10, -baseR - 13);
-        targetCtx.lineTo(10, -baseR - 13);
-        targetCtx.lineTo(12, -baseR + 4);
+        targetCtx.ellipse(0, yF + 1, 13.5, 3.5, 0, 0, Math.PI * 2);
+        targetCtx.fillStyle = 'rgba(8, 11, 18, 0.42)';
+        targetCtx.fill();
+
+        // 2) 3D Silindirik Kadife Bordo Gövde Gradyanı
+        const fezGrad = targetCtx.createLinearGradient(-13, topY, 13, yF);
+        fezGrad.addColorStop(0, '#7F1D1D');
+        fezGrad.addColorStop(0.28, '#EF4444');
+        fezGrad.addColorStop(0.55, '#DC2626');
+        fezGrad.addColorStop(0.85, '#991B1B');
+        fezGrad.addColorStop(1, '#450A0A');
+
+        targetCtx.fillStyle = fezGrad;
+        targetCtx.shadowColor = '#DC2626';
+        targetCtx.shadowBlur = 10;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-12.5, yF);
+        targetCtx.lineTo(-10, topY);
+        targetCtx.quadraticCurveTo(0, topY - 2.5, 10, topY);
+        targetCtx.lineTo(12.5, yF);
+        targetCtx.quadraticCurveTo(0, yF + 3.8, -12.5, yF);
         targetCtx.closePath();
         targetCtx.fill();
         targetCtx.shadowBlur = 0;
-        targetCtx.strokeStyle = '#FACC15';
-        targetCtx.lineWidth = 2.5;
+
+        // 3) Fesin 3D Üst Dairesel Yüzeyi (Üst kapak perspektifi)
+        const topGrad = targetCtx.createRadialGradient(-3, topY, 1, 0, topY, 10);
+        topGrad.addColorStop(0, '#F87171');
+        topGrad.addColorStop(1, '#991B1B');
+        targetCtx.fillStyle = topGrad;
+        targetCtx.strokeStyle = 'rgba(254, 202, 202, 0.45)';
+        targetCtx.lineWidth = 1;
         targetCtx.beginPath();
-        targetCtx.moveTo(0, -baseR - 13);
-        targetCtx.lineTo(13, -baseR - 4);
+        targetCtx.ellipse(0, topY, 10, 2.6, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        // Sol kenar 3D kadife parlama çizgisi
+        targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        targetCtx.lineWidth = 2;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-8, topY + 2);
+        targetCtx.lineTo(-9.8, yF - 1);
+        targetCtx.stroke();
+
+        // 4) Fes tepesi altın düğme ve sağdan sallanan 3D Siyah/Altın İpek Püskül
+        targetCtx.fillStyle = '#FACC15';
+        targetCtx.beginPath();
+        targetCtx.arc(0, topY, 2.2, 0, Math.PI * 2);
+        targetCtx.fill();
+
+        const tasselSwing = Math.sin(time * 0.009) * 2.2;
+        targetCtx.strokeStyle = '#FACC15';
+        targetCtx.lineWidth = 1.8;
+        targetCtx.beginPath();
+        targetCtx.moveTo(0, topY);
+        targetCtx.quadraticCurveTo(10, topY + 1, 13.5 + tasselSwing * 0.5, topY + 7);
+        targetCtx.stroke();
+
+        // Püskül saçağı
+        targetCtx.fillStyle = '#111827';
+        targetCtx.strokeStyle = '#FACC15';
+        targetCtx.lineWidth = 1;
+        targetCtx.beginPath();
+        targetCtx.moveTo(13.5 + tasselSwing * 0.5, topY + 6.5);
+        targetCtx.lineTo(11.5 + tasselSwing, topY + 15);
+        targetCtx.lineTo(16.5 + tasselSwing, topY + 14.5);
+        targetCtx.closePath();
+        targetCtx.fill();
         targetCtx.stroke();
         break;
       }
