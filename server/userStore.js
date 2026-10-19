@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { SLIME_COLORS, BASIC_10_SKINS } = require('../shared/constants');
+const { GAME_CONFIG, SLIME_COLORS, BASIC_10_SKINS } = require('../shared/constants');
+const STORE_ITEMS = require('../public/storeItems.json');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -240,7 +241,37 @@ function isValidColor(color) {
 }
 
 function isValidSkin(skin) {
-  return BASIC_10_SKINS.some((s) => s.id === skin);
+  return BASIC_10_SKINS.some((s) => s.id === skin) || STORE_ITEMS.some((it) => it.id === skin && it.type === 'hat');
+}
+
+function ensureUserEconomy(u) {
+  if (!u) return;
+  if (!u.stats || typeof u.stats !== 'object') {
+    u.stats = { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 };
+  }
+  if (typeof u.slimePoints !== 'number' || !Number.isFinite(u.slimePoints)) {
+    const legacyBonus =
+      (u.stats.totalCuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 25) +
+      (u.stats.totalKills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 75) +
+      Math.round((u.stats.totalScore || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.15));
+    u.slimePoints = (GAME_CONFIG.STARTER_SLIME_POINTS || 500) + legacyBonus;
+  }
+  if (typeof u.slimeCoins !== 'number' || !Number.isFinite(u.slimeCoins)) {
+    const winCoinBonus = (u.stats.wins || 0) * (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 15);
+    u.slimeCoins = (GAME_CONFIG.STARTER_SLIME_COINS || 100) + winCoinBonus;
+  }
+  if (!Array.isArray(u.ownedItems)) {
+    u.ownedItems = [];
+  }
+  if (!u.equipped || typeof u.equipped !== 'object') {
+    u.equipped = {
+      hat: null,
+      skin: null,
+      belt: null,
+      kill_effect: null,
+      title: null
+    };
+  }
 }
 
 function registerUser({ fullName, username, password, color, skin }) {
@@ -276,6 +307,16 @@ function registerUser({ fullName, username, password, color, skin }) {
     color: chosenColor,
     skin: chosenSkin,
     friends: prevFriends,
+    slimePoints: GAME_CONFIG.STARTER_SLIME_POINTS || 500,
+    slimeCoins: GAME_CONFIG.STARTER_SLIME_COINS || 100,
+    ownedItems: [],
+    equipped: {
+      hat: null,
+      skin: null,
+      belt: null,
+      kill_effect: null,
+      title: null
+    },
     stats: {
       totalScore: 0,
       totalCuts: 0,
@@ -304,10 +345,11 @@ function loginUser({ username, password }) {
     return { ok: false, error: 'Hatalı şifre! Lütfen tekrar deneyin.' };
   }
 
+  ensureUserEconomy(record);
   return { ok: true, user: sanitizeUser(record) };
 }
 
-function restoreOrLoginUser({ username, password, fullName, displayName, color, skin, friends, stats }) {
+function restoreOrLoginUser({ username, password, fullName, displayName, color, skin, friends, stats, slimePoints, slimeCoins, ownedItems, equipped }) {
   const cleanUser = normalizeUsername(username);
   const rawPass = String(password || '').trim();
   if (!cleanUser || cleanUser.length < 3 || rawPass.length < 4) {
@@ -320,6 +362,7 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
     if (hash !== existing.passwordHash) {
       return { ok: false, error: 'Hatalı şifre!' };
     }
+    ensureUserEconomy(existing);
     let changed = false;
     if (color && isValidColor(color) && existing.color !== color) {
       existing.color = color;
@@ -344,6 +387,18 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
     color: isValidColor(color) ? color : SLIME_COLORS[0].id,
     skin: isValidSkin(skin) ? skin : BASIC_10_SKINS[0].id,
     friends: Array.isArray(friends) ? friends.map((f) => normalizeUsername(f)).filter(Boolean) : [],
+    slimePoints: typeof slimePoints === 'number' ? slimePoints : (GAME_CONFIG.STARTER_SLIME_POINTS || 500),
+    slimeCoins: typeof slimeCoins === 'number' ? slimeCoins : (GAME_CONFIG.STARTER_SLIME_COINS || 100),
+    ownedItems: Array.isArray(ownedItems) ? ownedItems.filter((id) => typeof id === 'string') : [],
+    equipped: equipped && typeof equipped === 'object'
+      ? {
+          hat: equipped.hat || null,
+          skin: equipped.skin || null,
+          belt: equipped.belt || null,
+          kill_effect: equipped.kill_effect || null,
+          title: equipped.title || null
+        }
+      : { hat: null, skin: null, belt: null, kill_effect: null, title: null },
     stats: stats && typeof stats === 'object'
       ? {
           totalScore: Number(stats.totalScore) || 0,
@@ -356,21 +411,138 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
     createdAt: Date.now()
   };
 
+  ensureUserEconomy(restored);
   usersDb[cleanUser] = restored;
   saveUsers();
   return { ok: true, user: sanitizeUser(restored) };
 }
 
-function updateUserCustomization(username, { color, skin }) {
+function updateUserCustomization(username, { color, skin, equipped }) {
   const cleanUser = normalizeUsername(username);
   const record = usersDb[cleanUser];
   if (!record) return { ok: false, error: 'Kullanıcı bulunamadı.' };
 
+  ensureUserEconomy(record);
   if (color && isValidColor(color)) record.color = color;
   if (skin && isValidSkin(skin)) record.skin = skin;
+  if (equipped && typeof equipped === 'object') {
+    for (const slot of ['hat', 'skin', 'belt', 'kill_effect', 'title']) {
+      if (slot in equipped) {
+        const val = equipped[slot];
+        if (!val || record.ownedItems.includes(val)) {
+          record.equipped[slot] = val || null;
+        }
+      }
+    }
+  }
   saveUsers();
 
   return { ok: true, user: sanitizeUser(record) };
+}
+
+function purchaseStoreItem(username, { itemId, currency = 'point' }) {
+  const cleanUser = normalizeUsername(username);
+  const record = usersDb[cleanUser];
+  if (!record) return { ok: false, error: 'Satın alma işlemi için kullanıcı bulunamadı.' };
+
+  ensureUserEconomy(record);
+  const item = STORE_ITEMS.find((it) => it.id === itemId);
+  if (!item) return { ok: false, error: 'Bu mağaza eşyası bulunamadı.' };
+
+  if (record.ownedItems.includes(item.id)) {
+    record.equipped[item.type] = item.id;
+    if (item.type === 'hat') record.skin = item.id;
+    saveUsers();
+    return { ok: true, alreadyOwned: true, user: sanitizeUser(record), item };
+  }
+
+  if (currency === 'coin' || item.vipOnly || !item.pricePoint) {
+    if (record.slimeCoins < item.priceCoin) {
+      return {
+        ok: false,
+        error: `Yetersiz Slime Coin! Bu eşya için ${item.priceCoin} 🪙 gerekli (Mevcut: ${record.slimeCoins} 🪙).`
+      };
+    }
+    record.slimeCoins -= item.priceCoin;
+  } else {
+    if (record.slimePoints < item.pricePoint) {
+      return {
+        ok: false,
+        error: `Yetersiz Slime Puan! Bu eşya için ${item.pricePoint} 💎 gerekli (Mevcut: ${record.slimePoints} 💎). Oynayarak, kemer keserek ve rakip eleyerek puan kazanabilirsin!`
+      };
+    }
+    record.slimePoints -= item.pricePoint;
+  }
+
+  record.ownedItems.push(item.id);
+  record.equipped[item.type] = item.id;
+  if (item.type === 'hat') {
+    record.skin = item.id;
+  }
+  saveUsers();
+
+  return { ok: true, user: sanitizeUser(record), item };
+}
+
+function equipStoreItem(username, { itemId, type }) {
+  const cleanUser = normalizeUsername(username);
+  const record = usersDb[cleanUser];
+  if (!record) return { ok: false, error: 'Kullanıcı bulunamadı.' };
+
+  ensureUserEconomy(record);
+  const validSlots = ['hat', 'skin', 'belt', 'kill_effect', 'title'];
+  if (!validSlots.includes(type)) {
+    return { ok: false, error: 'Geçersiz ekipman kategorisi.' };
+  }
+
+  if (!itemId || itemId === 'none') {
+    record.equipped[type] = null;
+    if (type === 'hat' && !BASIC_10_SKINS.some((s) => s.id === record.skin)) {
+      record.skin = 'crown';
+    }
+    saveUsers();
+    return { ok: true, user: sanitizeUser(record) };
+  }
+
+  if (!record.ownedItems.includes(itemId)) {
+    return { ok: false, error: 'Bu eşyaya henüz sahip değilsiniz!' };
+  }
+
+  record.equipped[type] = itemId;
+  if (type === 'hat') {
+    record.skin = itemId;
+  }
+  saveUsers();
+  return { ok: true, user: sanitizeUser(record) };
+}
+
+function claimCoinPack(username, { coins = 250, points = 500 }) {
+  const cleanUser = normalizeUsername(username);
+  const record = usersDb[cleanUser];
+  if (!record) return { ok: false, error: 'Kullanıcı bulunamadı.' };
+
+  ensureUserEconomy(record);
+  const safeCoins = Math.max(0, Math.min(2500, Number(coins) || 0));
+  const safePoints = Math.max(0, Math.min(5000, Number(points) || 0));
+  record.slimeCoins += safeCoins;
+  record.slimePoints += safePoints;
+  saveUsers();
+  return { ok: true, user: sanitizeUser(record), addedCoins: safeCoins, addedPoints: safePoints };
+}
+
+function addLiveCombatRewards(username, { cuts = 0, kills = 0, scoreDelta = 0, earnedPoints = 0, earnedCoins = 0 }) {
+  const cleanUser = normalizeUsername(username);
+  const record = usersDb[cleanUser];
+  if (!record) return null;
+
+  ensureUserEconomy(record);
+  record.stats.totalCuts += cuts;
+  record.stats.totalKills += kills;
+  record.stats.totalScore += scoreDelta;
+  record.slimePoints += earnedPoints;
+  record.slimeCoins += earnedCoins;
+  saveUsers(false); // Debounced cloud sync
+  return sanitizeUser(record);
 }
 
 function findUserRecord(query) {
@@ -393,6 +565,7 @@ function findUserRecord(query) {
 function ensureProfileRecord(targetUsernameOrName, fallbackProfile) {
   let target = findUserRecord(targetUsernameOrName);
   if (target) {
+    ensureUserEconomy(target);
     if (fallbackProfile && target.isVirtualProfile) {
       if (fallbackProfile.color) target.color = fallbackProfile.color;
       if (fallbackProfile.skin) target.skin = fallbackProfile.skin;
@@ -416,6 +589,10 @@ function ensureProfileRecord(targetUsernameOrName, fallbackProfile) {
     color: isValidColor(fallbackProfile.color) ? fallbackProfile.color : (fallbackProfile.color || SLIME_COLORS[0].id),
     skin: isValidSkin(fallbackProfile.skin) ? fallbackProfile.skin : 'crown',
     friends: [],
+    slimePoints: 500,
+    slimeCoins: 100,
+    ownedItems: [],
+    equipped: { hat: null, skin: null, belt: null, kill_effect: null, title: null },
     stats: fallbackProfile.stats || {
       totalScore: 0,
       totalCuts: 0,
@@ -486,29 +663,42 @@ function removeFriend(myUsername, targetUsername) {
   };
 }
 
-function recordMatchStats(username, { score = 0, cuts = 0, kills = 0, won = false }) {
+function recordMatchStats(username, { score = 0, cuts = 0, kills = 0, won = false, earnedPoints = 0, earnedCoins = 0, alreadyCountedCombat = false }) {
   const key = normalizeUsername(username);
   const u = usersDb[key];
-  if (!u) return;
-  if (!u.stats) {
-    u.stats = { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 };
+  if (!u) return null;
+  ensureUserEconomy(u);
+
+  if (!alreadyCountedCombat) {
+    u.stats.totalScore += score;
+    u.stats.totalCuts += cuts;
+    u.stats.totalKills += kills;
+  } else {
+    u.stats.totalScore += score;
   }
-  u.stats.totalScore += score;
-  u.stats.totalCuts += cuts;
-  u.stats.totalKills += kills;
   u.stats.matchesPlayed += 1;
   if (won) u.stats.wins += 1;
+
+  u.slimePoints += earnedPoints;
+  u.slimeCoins += earnedCoins;
+
   saveUsers();
+  return sanitizeUser(u);
 }
 
 function sanitizeUser(u) {
   if (!u) return null;
+  ensureUserEconomy(u);
   return {
     username: u.username,
     displayName: u.displayName || u.username,
     fullName: u.fullName,
     color: u.color || SLIME_COLORS[0].id,
     skin: u.skin || BASIC_10_SKINS[0].id,
+    slimePoints: u.slimePoints,
+    slimeCoins: u.slimeCoins,
+    ownedItems: Array.isArray(u.ownedItems) ? u.ownedItems : [],
+    equipped: u.equipped || { hat: null, skin: null, belt: null, kill_effect: null, title: null },
     isBot: Boolean(u.isBot),
     isVirtualProfile: Boolean(u.isVirtualProfile),
     friendCount: Array.isArray(u.friends) ? u.friends.length : 0,
@@ -526,6 +716,10 @@ function getTotalRegisteredCount() {
   return Object.values(usersDb).filter((u) => !u.isVirtualProfile).length;
 }
 
+function getStoreItems() {
+  return STORE_ITEMS;
+}
+
 module.exports = {
   normalizeUsername,
   sanitizeText,
@@ -533,6 +727,11 @@ module.exports = {
   loginUser,
   restoreOrLoginUser,
   updateUserCustomization,
+  purchaseStoreItem,
+  equipStoreItem,
+  claimCoinPack,
+  addLiveCombatRewards,
+  getStoreItems,
   ensureProfileRecord,
   addFriend,
   removeFriend,
@@ -546,3 +745,4 @@ module.exports = {
   isCloudConnected,
   getLastCloudSyncAt
 };
+

@@ -148,9 +148,35 @@
   const matchEndModal = document.getElementById('match-end-modal');
   const winnerTitleEl = document.getElementById('winner-title');
   const winnerSubtitleEl = document.getElementById('winner-subtitle');
+  const matchRewardSummaryEl = document.getElementById('match-reward-summary');
   const finalStandingsBody = document.getElementById('final-standings-body');
   const nextMatchCountdownEl = document.getElementById('next-match-countdown');
   const backToLobbyFromEndBtn = document.getElementById('back-to-lobby-from-end-btn');
+  const openShopFromEndBtn = document.getElementById('open-shop-from-end-btn');
+
+  // Mağaza (Shop) & Lobi Cüzdan / Kariyer Elementleri
+  const shopModal = document.getElementById('shop-modal');
+  const shopCloseBtn = document.getElementById('shop-close-btn');
+  const shopPreviewCanvas = document.getElementById('shopPreviewCanvas');
+  const shopPreviewCtx = shopPreviewCanvas ? shopPreviewCanvas.getContext('2d') : null;
+  const shopWalletPointsEl = document.getElementById('shop-wallet-points');
+  const shopWalletCoinsEl = document.getElementById('shop-wallet-coins');
+  const shopItemsContainer = document.getElementById('shop-items-container');
+  const shopFeedbackMsg = document.getElementById('shop-feedback-msg');
+  const shopClaimPackBtn = document.getElementById('shop-claim-pack-btn');
+  const shopEquippedBadgesEl = document.getElementById('shop-equipped-badges');
+  const shopTabBtns = document.querySelectorAll('.shop-tab-btn');
+
+  const lobbyWalletPointsEl = document.getElementById('lobby-wallet-points');
+  const lobbyWalletCoinsEl = document.getElementById('lobby-wallet-coins');
+  const lobbyStatCutsEl = document.getElementById('lobby-stat-cuts');
+  const lobbyStatKillsEl = document.getElementById('lobby-stat-kills');
+  const lobbyStatScoreEl = document.getElementById('lobby-stat-score');
+  const lobbyEquippedTitleBadgeEl = document.getElementById('lobby-equipped-title-badge');
+
+  const openShopBtn = document.getElementById('open-shop-btn');
+  const openShopTopBtn = document.getElementById('open-shop-top-btn');
+  const openShopBottomBtn = document.getElementById('open-shop-bottom-btn');
 
   // Durum Değişkenleri
   let selfId = null;
@@ -160,9 +186,18 @@
   let availableModes = window.SharedConstants.GAME_MODES || [];
   let mapObstacles = [];
   let roomsSummary = [];
+  let storeItems = [];
+  let currentShopTab = 'hat';
 
   let currentUser = null; // Giriş yapmış üye bilgisi
   let guestFriends = []; // Misafir oturumda takip edilen oyuncular
+  let guestEconomy = {
+    slimePoints: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_POINTS) || 500,
+    slimeCoins: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_COINS) || 100,
+    ownedItems: [],
+    equipped: { hat: null, skin: null, belt: null, kill_effect: null, title: null },
+    stats: { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
+  };
   let selectedColor = availableColors[0] ? availableColors[0].id : '#00F5D4';
   let selectedSkin = availableSkins[0] ? availableSkins[0].id : 'crown';
   let selectedModeId = 'ffa';
@@ -274,11 +309,21 @@
   const snapEffects = [];
   const splatEffects = [];
   const floatingTexts = [];
+  const killAnimations = [];
+  let screenCrackUntil = 0;
 
   const POWERUP_META = {
     wide_cam: { id: 'wide_cam', name: 'GENİŞ KAMERA', icon: '🔭', color: '#00BBF9' },
     double_shot: { id: 'double_shot', name: 'İKİLİ ATIŞ', icon: '🏹', color: '#FF2A85' },
     high_speed: { id: 'high_speed', name: 'YÜKSEK HIZ', icon: '⚡', color: '#FFE066' }
+  };
+
+  const TITLE_META = {
+    title_clan_badge: { id: 'title_clan_badge', label: '🛡️ KLAN ŞAMPİYONU', color: '#00BBF9', bg: 'rgba(0,187,249,0.22)' },
+    title_belt_master: { id: 'title_belt_master', label: '✂️ KEMER USTASI', color: '#00F5D4', bg: 'rgba(0,245,212,0.22)' },
+    title_chaos_envoy: { id: 'title_chaos_envoy', label: '🔥 KAOS ELÇİSİ', color: '#FF2A85', bg: 'rgba(255,42,133,0.24)' },
+    title_gladiator_crown: { id: 'title_gladiator_crown', label: '🏆 ARENA GLADYATÖRÜ', color: '#C084FC', bg: 'rgba(192,132,252,0.26)' },
+    title_vip_gold_frame: { id: 'title_vip_gold_frame', label: '🌟 VIP ALTIN EFSANE', color: '#FFE066', bg: 'rgba(255,224,102,0.28)', isGoldFrame: true }
   };
 
   const stars = Array.from({ length: 140 }, () => ({
@@ -289,7 +334,7 @@
     color: ['#00F5D4', '#FF2A85', '#00BBF9', '#FFE066', '#FFFFFF'][Math.floor(Math.random() * 5)]
   }));
 
-  // --- LOBİ, ÜYELİK & KOSTÜM ARAYÜZÜ ---
+  // --- LOBİ, ÜYELİK, EKONOMİ & MAĞAZA (SHOP) ARAYÜZÜ ---
   function switchAuthTab(tabName) {
     authTabs.forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.tab === tabName);
@@ -319,6 +364,10 @@
         skin: userObj.skin || selectedSkin,
         friendCount: userObj.friendCount || 0,
         friends: userObj.friends || [],
+        slimePoints: Number.isFinite(Number(userObj.slimePoints)) ? Number(userObj.slimePoints) : 500,
+        slimeCoins: Number.isFinite(Number(userObj.slimeCoins)) ? Number(userObj.slimeCoins) : 100,
+        ownedItems: Array.isArray(userObj.ownedItems) ? userObj.ownedItems : [],
+        equipped: userObj.equipped || { hat: null, skin: null, belt: null, kill_effect: null, title: null },
         stats: userObj.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
       }));
     } catch (_e) {}
@@ -328,6 +377,29 @@
     try {
       localStorage.setItem('slimeio_guest_friends', JSON.stringify(guestFriends));
     } catch (_e) {}
+  }
+
+  function saveGuestEconomyToStorage() {
+    try {
+      localStorage.setItem('slimeio_guest_economy', JSON.stringify({
+        color: selectedColor,
+        skin: selectedSkin,
+        slimePoints: guestEconomy.slimePoints,
+        slimeCoins: guestEconomy.slimeCoins,
+        ownedItems: guestEconomy.ownedItems,
+        equipped: guestEconomy.equipped,
+        stats: guestEconomy.stats
+      }));
+    } catch (_e) {}
+  }
+
+  function syncGuestLoadoutToServer() {
+    if (currentUser || !socket || !socket.connected) return;
+    socket.emit('syncGuestLoadout', {
+      color: selectedColor,
+      skin: selectedSkin,
+      equipped: guestEconomy.equipped
+    });
   }
 
   function restoreLocalUserSessionImmediately() {
@@ -344,6 +416,36 @@
         if (Array.isArray(parsedGF)) guestFriends = parsedGF;
       }
 
+      const savedGuestEcoRaw = localStorage.getItem('slimeio_guest_economy');
+      if (savedGuestEcoRaw) {
+        const parsedEco = JSON.parse(savedGuestEcoRaw);
+        if (parsedEco && typeof parsedEco === 'object') {
+          if (Number.isFinite(Number(parsedEco.slimePoints))) guestEconomy.slimePoints = Number(parsedEco.slimePoints);
+          if (Number.isFinite(Number(parsedEco.slimeCoins))) guestEconomy.slimeCoins = Number(parsedEco.slimeCoins);
+          if (Array.isArray(parsedEco.ownedItems)) guestEconomy.ownedItems = parsedEco.ownedItems;
+          if (parsedEco.equipped && typeof parsedEco.equipped === 'object') {
+            guestEconomy.equipped = {
+              hat: parsedEco.equipped.hat || null,
+              skin: parsedEco.equipped.skin || null,
+              belt: parsedEco.equipped.belt || null,
+              kill_effect: parsedEco.equipped.kill_effect || null,
+              title: parsedEco.equipped.title || null
+            };
+          }
+          if (parsedEco.stats && typeof parsedEco.stats === 'object') {
+            guestEconomy.stats = {
+              totalScore: Number(parsedEco.stats.totalScore) || 0,
+              totalCuts: Number(parsedEco.stats.totalCuts) || 0,
+              totalKills: Number(parsedEco.stats.totalKills) || 0,
+              matchesPlayed: Number(parsedEco.stats.matchesPlayed) || 0,
+              wins: Number(parsedEco.stats.wins) || 0
+            };
+          }
+          if (parsedEco.color) selectedColor = parsedEco.color;
+          if (parsedEco.skin) selectedSkin = parsedEco.skin;
+        }
+      }
+
       const savedCredsRaw = localStorage.getItem('slimeio_creds');
       if (savedCredsRaw) {
         const creds = JSON.parse(savedCredsRaw);
@@ -356,6 +458,10 @@
             skin: creds.skin || selectedSkin,
             friendCount: creds.friendCount || 0,
             friends: creds.friends || [],
+            slimePoints: Number.isFinite(Number(creds.slimePoints)) ? Number(creds.slimePoints) : 500,
+            slimeCoins: Number.isFinite(Number(creds.slimeCoins)) ? Number(creds.slimeCoins) : 100,
+            ownedItems: Array.isArray(creds.ownedItems) ? creds.ownedItems : [],
+            equipped: creds.equipped || { hat: null, skin: null, belt: null, kill_effect: null, title: null },
             stats: creds.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
           };
           selectedColor = currentUser.color;
@@ -364,6 +470,372 @@
       }
     } catch (_e) {}
   }
+
+  function getActiveEconomy() {
+    if (currentUser) {
+      if (!Number.isFinite(Number(currentUser.slimePoints))) currentUser.slimePoints = 500;
+      if (!Number.isFinite(Number(currentUser.slimeCoins))) currentUser.slimeCoins = 100;
+      if (!Array.isArray(currentUser.ownedItems)) currentUser.ownedItems = [];
+      if (!currentUser.equipped || typeof currentUser.equipped !== 'object') {
+        currentUser.equipped = { hat: null, skin: null, belt: null, kill_effect: null, title: null };
+      }
+      if (!currentUser.stats) {
+        currentUser.stats = { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 };
+      }
+      return currentUser;
+    }
+    return guestEconomy;
+  }
+
+  function syncStoreItemsOwnership() {
+    const eco = getActiveEconomy();
+    const ownedSet = new Set(eco.ownedItems || []);
+    storeItems.forEach((item) => {
+      item.isOwned = ownedSet.has(item.id);
+    });
+  }
+
+  function updateCareerAndShopUI() {
+    const eco = getActiveEconomy();
+    syncStoreItemsOwnership();
+
+    const pts = Math.max(0, Math.floor(Number(eco.slimePoints) || 0));
+    const coins = Math.max(0, Math.floor(Number(eco.slimeCoins) || 0));
+    const cuts = (eco.stats && eco.stats.totalCuts) || 0;
+    const kills = (eco.stats && eco.stats.totalKills) || 0;
+    const score = (eco.stats && eco.stats.totalScore) || 0;
+
+    if (lobbyWalletPointsEl) lobbyWalletPointsEl.textContent = pts.toLocaleString('tr-TR');
+    if (lobbyWalletCoinsEl) lobbyWalletCoinsEl.textContent = coins.toLocaleString('tr-TR');
+    if (shopWalletPointsEl) shopWalletPointsEl.textContent = pts.toLocaleString('tr-TR');
+    if (shopWalletCoinsEl) shopWalletCoinsEl.textContent = coins.toLocaleString('tr-TR');
+
+    if (lobbyStatCutsEl) lobbyStatCutsEl.textContent = `✂️ ${cuts.toLocaleString('tr-TR')}`;
+    if (lobbyStatKillsEl) lobbyStatKillsEl.textContent = `💀 ${kills.toLocaleString('tr-TR')}`;
+    if (lobbyStatScoreEl) lobbyStatScoreEl.textContent = `⭐ ${score.toLocaleString('tr-TR')}`;
+
+    const eq = eco.equipped || {};
+    const titleObj = eq.title ? TITLE_META[eq.title] : null;
+    if (lobbyEquippedTitleBadgeEl) {
+      if (titleObj) {
+        lobbyEquippedTitleBadgeEl.textContent = titleObj.label;
+        lobbyEquippedTitleBadgeEl.style.color = titleObj.color;
+        lobbyEquippedTitleBadgeEl.style.borderColor = titleObj.color;
+        lobbyEquippedTitleBadgeEl.style.background = titleObj.bg;
+      } else {
+        lobbyEquippedTitleBadgeEl.textContent = '✨ Unvan: Çaylak Slime';
+        lobbyEquippedTitleBadgeEl.style.color = '#FFE066';
+        lobbyEquippedTitleBadgeEl.style.borderColor = 'rgba(255,224,102,0.4)';
+        lobbyEquippedTitleBadgeEl.style.background = 'rgba(255,224,102,0.12)';
+      }
+    }
+
+    if (shopEquippedBadgesEl) {
+      const slots = [
+        { key: 'hat', label: 'Şapka', fallback: '👑 Klasik' },
+        { key: 'skin', label: 'Kaplama', fallback: '💧 Jöle' },
+        { key: 'belt', label: 'Kemer', fallback: '🔗 Neon' },
+        { key: 'kill_effect', label: 'Ölüm', fallback: '🎉 Standart' },
+        { key: 'title', label: 'Unvan', fallback: '✨ Çaylak' }
+      ];
+      shopEquippedBadgesEl.innerHTML = slots.map((s) => {
+        const eqId = eq[s.key];
+        const found = eqId ? storeItems.find((it) => it.id === eqId) : null;
+        const text = found ? `${found.icon || '✨'} ${escapeHtml(found.name)}` : s.fallback;
+        return `<span style="font-size:10.5px; font-weight:800; padding:3px 8px; border-radius:999px; background:${found ? 'rgba(0,245,155,0.16)' : 'rgba(255,255,255,0.06)'}; border:1px solid ${found ? '#00F59B' : 'rgba(255,255,255,0.12)'}; color:${found ? '#00F59B' : '#94A3B8'};">${s.label}: ${text}</span>`;
+      }).join('');
+    }
+
+    if (shopModal && shopModal.style.display !== 'none') {
+      renderShopModal();
+    }
+  }
+
+  function renderShopModal() {
+    if (!shopItemsContainer) return;
+    const eco = getActiveEconomy();
+    syncStoreItemsOwnership();
+
+    const filtered = storeItems
+      .filter((it) => it.type === currentShopTab)
+      .sort((a, b) => {
+        const pa = a.pricePoint > 0 ? a.pricePoint : a.priceCoin * 20;
+        const pb = b.pricePoint > 0 ? b.pricePoint : b.priceCoin * 20;
+        return pa - pb;
+      });
+
+    if (filtered.length === 0) {
+      shopItemsContainer.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:32px; color:#94A3B8;">Mağaza verileri yükleniyor...</div>`;
+      return;
+    }
+
+    const eq = eco.equipped || {};
+
+    shopItemsContainer.innerHTML = filtered.map((item) => {
+      const isOwned = Boolean(item.isOwned);
+      const isEquipped = eq[item.type] === item.id;
+      const isVipOnly = item.pricePoint === 0 && item.priceCoin > 0;
+      const canAffordPoint = item.pricePoint > 0 && eco.slimePoints >= item.pricePoint;
+      const canAffordCoin = item.priceCoin > 0 && eco.slimeCoins >= item.priceCoin;
+
+      const cardClasses = [
+        'shop-item-card',
+        isOwned ? 'owned' : '',
+        isEquipped ? 'equipped' : '',
+        isVipOnly ? 'vip-only' : ''
+      ].filter(Boolean).join(' ');
+
+      const badgeHtml = isEquipped
+        ? `<span class="shop-badge equipped">✨ KUŞANILDI</span>`
+        : isOwned
+          ? `<span class="shop-badge owned">✓ SAHİPSİN</span>`
+          : isVipOnly
+            ? `<span class="shop-badge vip">👑 VIP ÖZEL</span>`
+            : `<span class="shop-badge category">${escapeHtml(item.category || item.type)}</span>`;
+
+      const priceRowHtml = `
+        <div class="shop-price-row">
+          ${item.pricePoint > 0
+            ? `<span class="shop-price-tag point">💎 ${item.pricePoint.toLocaleString('tr-TR')} Puan</span>`
+            : `<span class="shop-price-tag vip-lock">🔒 Sadece Coin</span>`}
+          ${item.priceCoin > 0
+            ? `<span class="shop-price-tag coin">🪙 ${item.priceCoin.toLocaleString('tr-TR')} Coin</span>`
+            : ''}
+        </div>
+      `;
+
+      let actionsHtml = '';
+      if (isOwned) {
+        actionsHtml = `
+          <div class="shop-buy-actions">
+            <button type="button" class="shop-btn ${isEquipped ? 'btn-equipped' : 'btn-equip'}" data-action="equip" data-id="${escapeHtml(item.id)}">
+              ${isEquipped ? '✓ Kuşanıldı (Çıkar)' : '✨ Hemen Kuşan'}
+            </button>
+          </div>
+        `;
+      } else {
+        actionsHtml = `
+          <div class="shop-buy-actions">
+            ${item.pricePoint > 0 ? `
+              <button type="button" class="shop-btn btn-buy-point" data-action="buy-point" data-id="${escapeHtml(item.id)}" ${canAffordPoint ? '' : 'disabled'} title="${canAffordPoint ? 'Slime Puan ile Satın Al' : 'Yeterli Slime Puanın yok (Kesme ve öldürme yaparak kazanabilirsin!)'}">
+                💎 ${item.pricePoint.toLocaleString('tr-TR')} Al
+              </button>
+            ` : ''}
+            ${item.priceCoin > 0 ? `
+              <button type="button" class="shop-btn btn-buy-coin" data-action="buy-coin" data-id="${escapeHtml(item.id)}" ${canAffordCoin ? '' : 'disabled'} title="${canAffordCoin ? 'Slime Coin ile Satın Al' : 'Yeterli Slime Coinin yok'}">
+                🪙 ${item.priceCoin.toLocaleString('tr-TR')} Al
+              </button>
+            ` : ''}
+          </div>
+        `;
+      }
+
+      return `
+        <div class="${cardClasses}">
+          <div class="shop-item-top">
+            <div class="shop-item-icon">${item.icon || '✨'}</div>
+            ${badgeHtml}
+          </div>
+          <div class="shop-item-name">${escapeHtml(item.name)}</div>
+          <div class="shop-item-desc">${escapeHtml(item.description || '')}</div>
+          ${priceRowHtml}
+          ${actionsHtml}
+        </div>
+      `;
+    }).join('');
+
+    shopItemsContainer.querySelectorAll('button[data-action]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        const itemId = btn.dataset.id;
+        if (action === 'buy-point') {
+          handleBuyShopItem(itemId, 'point');
+        } else if (action === 'buy-coin') {
+          handleBuyShopItem(itemId, 'coin');
+        } else if (action === 'equip') {
+          handleEquipShopItem(itemId);
+        }
+      });
+    });
+  }
+
+  function showShopFeedback(msg, isError = false) {
+    if (!shopFeedbackMsg) return;
+    shopFeedbackMsg.style.color = isError ? '#FF2A85' : '#00F59B';
+    shopFeedbackMsg.textContent = msg;
+  }
+
+  function handleBuyShopItem(itemId, currency) {
+    window.soundManager.init();
+    const item = storeItems.find((it) => it.id === itemId);
+    if (!item) return;
+
+    if (currentUser) {
+      socket.emit('shopBuyItem', { itemId, currency }, (res) => {
+        if (res && res.ok && res.user) {
+          currentUser = res.user;
+          if (currentUser.skin) selectedSkin = currentUser.skin;
+          saveUserSessionToStorage(currentUser);
+          window.soundManager.playPowerupPickup();
+          showShopFeedback(`🎉 "${item.name}" satın alındı ve kuşanıldı!`, false);
+          updateCareerAndShopUI();
+        } else {
+          window.soundManager.playUiPop();
+          showShopFeedback((res && res.error) || 'Satın alma başarısız.', true);
+        }
+      });
+      return;
+    }
+
+    // Misafir (Guest) yerel ekonomi satın alma işlemi
+    if (guestEconomy.ownedItems.includes(itemId)) {
+      handleEquipShopItem(itemId);
+      return;
+    }
+
+    if (currency === 'point') {
+      if (!item.pricePoint || item.pricePoint <= 0) {
+        showShopFeedback('Bu özel eşya sadece Slime Coin ile satın alınabilir!', true);
+        return;
+      }
+      if (guestEconomy.slimePoints < item.pricePoint) {
+        showShopFeedback(`Yetersiz Slime Puan! (${item.pricePoint - guestEconomy.slimePoints} 💎 daha gerekli)`, true);
+        return;
+      }
+      guestEconomy.slimePoints -= item.pricePoint;
+    } else {
+      if (!item.priceCoin || item.priceCoin <= 0) {
+        showShopFeedback('Bu eşya Slime Coin ile satılmıyor.', true);
+        return;
+      }
+      if (guestEconomy.slimeCoins < item.priceCoin) {
+        showShopFeedback(`Yetersiz Slime Coin! (${item.priceCoin - guestEconomy.slimeCoins} 🪙 daha gerekli)`, true);
+        return;
+      }
+      guestEconomy.slimeCoins -= item.priceCoin;
+    }
+
+    guestEconomy.ownedItems.push(itemId);
+    guestEconomy.equipped[item.type] = item.id;
+    if (item.type === 'hat') {
+      selectedSkin = item.id;
+    }
+    saveGuestEconomyToStorage();
+    syncGuestLoadoutToServer();
+    window.soundManager.playPowerupPickup();
+    showShopFeedback(`🎉 "${item.name}" satın alındı ve kuşanıldı!`, false);
+    updateCareerAndShopUI();
+  }
+
+  function handleEquipShopItem(itemId) {
+    window.soundManager.init();
+    const item = storeItems.find((it) => it.id === itemId);
+    if (!item) return;
+
+    if (currentUser) {
+      socket.emit('shopEquipItem', { itemId }, (res) => {
+        if (res && res.ok && res.user) {
+          currentUser = res.user;
+          if (currentUser.skin) selectedSkin = currentUser.skin;
+          saveUserSessionToStorage(currentUser);
+          window.soundManager.playUiPop();
+          const isNowEq = currentUser.equipped && currentUser.equipped[item.type] === item.id;
+          showShopFeedback(isNowEq ? `✨ "${item.name}" kuşanıldı!` : `↺ "${item.name}" çıkarıldı.`, false);
+          updateCareerAndShopUI();
+        } else {
+          showShopFeedback((res && res.error) || 'İşlem başarısız.', true);
+        }
+      });
+      return;
+    }
+
+    if (!guestEconomy.ownedItems.includes(itemId)) return;
+    if (guestEconomy.equipped[item.type] === itemId) {
+      guestEconomy.equipped[item.type] = null;
+      if (item.type === 'hat') selectedSkin = 'crown';
+      showShopFeedback(`↺ "${item.name}" çıkarıldı.`, false);
+    } else {
+      guestEconomy.equipped[item.type] = itemId;
+      if (item.type === 'hat') selectedSkin = itemId;
+      showShopFeedback(`✨ "${item.name}" kuşanıldı!`, false);
+    }
+    window.soundManager.playUiPop();
+    saveGuestEconomyToStorage();
+    syncGuestLoadoutToServer();
+    updateCareerAndShopUI();
+  }
+
+  function openShopModal(tab = null) {
+    window.soundManager.init();
+    window.soundManager.playUiPop();
+    if (tab && typeof tab === 'string') {
+      currentShopTab = tab;
+      shopTabBtns.forEach((b) => b.classList.toggle('active', b.dataset.shopTab === currentShopTab));
+    }
+    if (shopFeedbackMsg) shopFeedbackMsg.textContent = '';
+    updateCareerAndShopUI();
+    if (shopModal) shopModal.style.display = 'flex';
+  }
+
+  if (openShopBtn) openShopBtn.addEventListener('click', () => openShopModal());
+  if (openShopTopBtn) openShopTopBtn.addEventListener('click', () => openShopModal());
+  if (openShopBottomBtn) openShopBottomBtn.addEventListener('click', () => openShopModal());
+  if (openShopFromEndBtn) {
+    openShopFromEndBtn.addEventListener('click', () => {
+      matchEndModal.style.display = 'none';
+      openShopModal();
+    });
+  }
+  if (shopCloseBtn) {
+    shopCloseBtn.addEventListener('click', () => {
+      shopModal.style.display = 'none';
+    });
+  }
+
+  shopTabBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      window.soundManager.init();
+      window.soundManager.playUiPop();
+      currentShopTab = btn.dataset.shopTab || 'hat';
+      shopTabBtns.forEach((b) => b.classList.toggle('active', b.dataset.shopTab === currentShopTab));
+      renderShopModal();
+    });
+  });
+
+  if (shopClaimPackBtn) {
+    shopClaimPackBtn.addEventListener('click', () => {
+      window.soundManager.init();
+      if (currentUser) {
+        socket.emit('shopClaimCoinPack', {}, (res) => {
+          if (res && res.ok && res.user) {
+            currentUser = res.user;
+            saveUserSessionToStorage(currentUser);
+            window.soundManager.playPowerupPickup();
+            showShopFeedback(res.message || '🎁 +250 🪙 Slime Coin ve +1.000 💎 Slime Puan eklendi!', false);
+            updateCareerAndShopUI();
+          }
+        });
+      } else {
+        guestEconomy.slimeCoins += 250;
+        guestEconomy.slimePoints += 1000;
+        saveGuestEconomyToStorage();
+        window.soundManager.playPowerupPickup();
+        showShopFeedback('🎁 +250 🪙 Slime Coin ve +1.000 💎 Slime Puan cüzdanına eklendi!', false);
+        updateCareerAndShopUI();
+      }
+    });
+  }
+
+  // storeItems.json dosyasını doğrudan da yükle (anında mağaza erişimi için)
+  fetch('/storeItems.json')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (Array.isArray(data) && data.length > 0 && storeItems.length === 0) {
+        storeItems = data;
+        updateCareerAndShopUI();
+      }
+    })
+    .catch(() => {});
 
   function updateAuthUI() {
     if (currentUser) {
@@ -374,7 +846,7 @@
       memberFriendsStatEl.textContent = `👥 ${currentUser.friendCount || 0} Arkadaş`;
       memberWinsStatEl.textContent = `🏆 ${(currentUser.stats && currentUser.stats.wins) || 0} Galibiyet`;
       myFriendCountBadge.textContent = String(currentUser.friendCount || 0);
-      skinLockBadge.textContent = '✓ Üye Kostümleri Açık';
+      skinLockBadge.textContent = '✓ Üye & Mağaza Açık';
       skinLockBadge.style.color = '#00F59B';
       selectedColor = currentUser.color || selectedColor;
       selectedSkin = currentUser.skin || selectedSkin;
@@ -382,12 +854,13 @@
       authGuestOrMemberBox.style.display = 'block';
       loggedInUserBox.style.display = 'none';
       myFriendCountBadge.textContent = String(guestFriends.length || 0);
-      skinLockBadge.textContent = '🔒 Üyelere Özel';
-      skinLockBadge.style.color = '#FFB800';
+      skinLockBadge.textContent = '🛒 Mağaza & Renkler Açık';
+      skinLockBadge.style.color = '#00F5D4';
       if (selectedModeId !== 'ffa') selectedModeId = 'ffa';
     }
     renderColorAndSkinSelectors();
     renderModesList();
+    updateCareerAndShopUI();
   }
 
   function renderColorAndSkinSelectors() {
@@ -398,22 +871,21 @@
 
     colorPaletteContainer.querySelectorAll('.color-swatch').forEach((el) => {
       el.addEventListener('click', () => {
-        if (!currentUser) {
-          switchAuthTab('register');
-          authFeedback.style.color = '#FFB800';
-          authFeedback.textContent = '🎨 Slime rengini seçmek için lütfen hızlı üye ol veya giriş yap!';
-          return;
-        }
         selectedColor = el.dataset.color;
-        currentUser.color = selectedColor;
-        saveUserSessionToStorage(currentUser);
+        if (currentUser) {
+          currentUser.color = selectedColor;
+          saveUserSessionToStorage(currentUser);
+          socket.emit('updateCustomization', { color: selectedColor, skin: selectedSkin }, (res) => {
+            if (res && res.ok && res.user) {
+              currentUser = res.user;
+              saveUserSessionToStorage(currentUser);
+            }
+          });
+        } else {
+          saveGuestEconomyToStorage();
+          syncGuestLoadoutToServer();
+        }
         renderColorAndSkinSelectors();
-        socket.emit('updateCustomization', { color: selectedColor, skin: selectedSkin }, (res) => {
-          if (res && res.ok && res.user) {
-            currentUser = res.user;
-            saveUserSessionToStorage(currentUser);
-          }
-        });
       });
     });
 
@@ -430,17 +902,19 @@
         if (!currentUser) {
           switchAuthTab('register');
           authFeedback.style.color = '#FFB800';
-          authFeedback.textContent = '👑 Basic 10 kostümden birini seçmek için lütfen hızlı üye ol veya giriş yap!';
+          authFeedback.textContent = '👑 Basic 10 üye kostümünü seçmek için hızlı üye ol veya 🛒 Mağaza\'dan puanla yeni şapkalar al!';
           return;
         }
         selectedSkin = el.dataset.skin;
         currentUser.skin = selectedSkin;
+        if (currentUser.equipped) currentUser.equipped.hat = null;
         saveUserSessionToStorage(currentUser);
         renderColorAndSkinSelectors();
         socket.emit('updateCustomization', { color: selectedColor, skin: selectedSkin }, (res) => {
           if (res && res.ok && res.user) {
             currentUser = res.user;
             saveUserSessionToStorage(currentUser);
+            updateCareerAndShopUI();
           }
         });
       });
@@ -1271,7 +1745,12 @@
 
   window.addEventListener('keydown', (e) => {
     if (isTypingInInput(e.target)) return;
-    if (isElementVisible(lobbyModal) || isElementVisible(profileModal) || isElementVisible(friendsModal)) {
+    if (
+      isElementVisible(lobbyModal) ||
+      isElementVisible(shopModal) ||
+      isElementVisible(profileModal) ||
+      isElementVisible(friendsModal)
+    ) {
       return;
     }
 
@@ -1592,6 +2071,9 @@
     availableModes = data.modes || availableModes;
     mapObstacles = data.obstacles || [];
     roomsSummary = data.roomsSummary || [];
+    if (Array.isArray(data.storeItems) && data.storeItems.length > 0) {
+      storeItems = data.storeItems;
+    }
 
     resizeCanvas();
     restoreLocalUserSessionImmediately();
@@ -1609,9 +2091,12 @@
             }
             updateAuthUI();
           });
+          return;
         }
       } catch (_e) {}
     }
+
+    syncGuestLoadoutToServer();
   });
 
   socket.on('roomsSummary', (list) => {
@@ -1707,6 +2192,51 @@
     });
   });
 
+  // Canlı Kesim ve Eleme (Öldürme) Slime Puan / Coin Ödülü Bildirimi
+  socket.on('combatReward', ({ points, coins, reason, slimePoints, slimeCoins, totalCuts, totalKills }) => {
+    const addPts = Number(points) || 0;
+    const addCoins = Number(coins) || 0;
+
+    if (currentUser) {
+      if (Number.isFinite(Number(slimePoints))) currentUser.slimePoints = Number(slimePoints);
+      else currentUser.slimePoints = (currentUser.slimePoints || 0) + addPts;
+
+      if (Number.isFinite(Number(slimeCoins))) currentUser.slimeCoins = Number(slimeCoins);
+      else currentUser.slimeCoins = (currentUser.slimeCoins || 0) + addCoins;
+
+      if (!currentUser.stats) currentUser.stats = { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 };
+      if (Number.isFinite(Number(totalCuts))) currentUser.stats.totalCuts = Number(totalCuts);
+      if (Number.isFinite(Number(totalKills))) currentUser.stats.totalKills = Number(totalKills);
+      saveUserSessionToStorage(currentUser);
+    } else {
+      guestEconomy.slimePoints += addPts;
+      guestEconomy.slimeCoins += addCoins;
+      if (reason === 'Kemer Kesimi') guestEconomy.stats.totalCuts += 1;
+      if (reason === 'Rakip Eleme') {
+        guestEconomy.stats.totalKills += 1;
+        guestEconomy.stats.totalScore += 50;
+      } else {
+        guestEconomy.stats.totalScore += 20;
+      }
+      saveGuestEconomyToStorage();
+    }
+
+    updateCareerAndShopUI();
+
+    const me = renderPlayers.get(selfId);
+    if (me && addPts > 0) {
+      const coinStr = addCoins > 0 ? ` +${addCoins} 🪙` : '';
+      floatingTexts.push({
+        text: `+${addPts} 💎 Slime Puan${coinStr}`,
+        x: me.renderX,
+        y: me.renderY - 52,
+        color: '#00F5D4',
+        alpha: 1.0,
+        vy: -1.6
+      });
+    }
+  });
+
   socket.on('powerupCollected', ({ playerId, powerupId, x, y }) => {
     const meta = POWERUP_META[powerupId] || POWERUP_META.high_speed;
     const p = renderPlayers.get(playerId);
@@ -1732,7 +2262,44 @@
     }
   });
 
-  socket.on('playerDied', ({ victimId }) => {
+  function spawnKillAnimation(x, y, effectId, victimColor) {
+    const type = effectId || 'kill_confetti';
+    const particles = [];
+    const count = type === 'kill_pixel' ? 22 : 18;
+    const palette = ['#00F5D4', '#FF2A85', '#FFE066', '#00BBF9', '#9B5DE5', '#00F59B', victimColor || '#FF2A85'];
+    for (let i = 0; i < count; i++) {
+      const ang = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+      const spd = 2.2 + Math.random() * 5.2;
+      particles.push({
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - (type === 'kill_confetti' ? 1.5 : 0),
+        size: 4 + Math.random() * 5,
+        color: palette[i % palette.length],
+        rot: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 0.25
+      });
+    }
+    killAnimations.push({
+      x: Number(x) || 0,
+      y: Number(y) || 0,
+      type,
+      color: victimColor || '#FF2A85',
+      startTime: performance.now(),
+      duration: 1450,
+      particles
+    });
+  }
+
+  socket.on('playerDied', ({ victimId, killerId, x, y, killEffect, victimColor }) => {
+    const victim = renderPlayers.get(victimId);
+    const fxX = Number.isFinite(Number(x)) ? Number(x) : victim ? victim.renderX : 0;
+    const fxY = Number.isFinite(Number(y)) ? Number(y) : victim ? victim.renderY : 0;
+    spawnKillAnimation(fxX, fxY, killEffect || 'kill_confetti', victimColor || (victim && victim.color) || '#FF2A85');
+
+    if (killEffect === 'kill_screen_crack' && (victimId === selfId || killerId === selfId)) {
+      screenCrackUntil = performance.now() + 550;
+    }
+
     if (victimId === selfId) {
       joystick.active = false;
       joystick.touchId = null;
@@ -1753,6 +2320,55 @@
     overlayEl.style.display = 'none';
     myBandsEl.textContent = '🎯 Doğmak İçin Bir Kayaya/Duvara Dokun!';
     updateMouseWorld();
+  });
+
+  socket.on('matchRewardsEarned', (reward) => {
+    if (!reward) return;
+    const earnedPoints = Number(reward.earnedPoints) || 0;
+    const earnedCoins = Number(reward.earnedCoins) || 0;
+
+    if (currentUser) {
+      if (Number.isFinite(Number(reward.totalSlimePoints))) {
+        currentUser.slimePoints = Number(reward.totalSlimePoints);
+      } else {
+        currentUser.slimePoints = (currentUser.slimePoints || 0) + earnedPoints;
+      }
+      if (Number.isFinite(Number(reward.totalSlimeCoins))) {
+        currentUser.slimeCoins = Number(reward.totalSlimeCoins);
+      } else {
+        currentUser.slimeCoins = (currentUser.slimeCoins || 0) + earnedCoins;
+      }
+      if (reward.stats) {
+        currentUser.stats = reward.stats;
+      }
+      saveUserSessionToStorage(currentUser);
+    } else {
+      guestEconomy.slimePoints += earnedPoints;
+      guestEconomy.slimeCoins += earnedCoins;
+      guestEconomy.stats.matchesPlayed = (guestEconomy.stats.matchesPlayed || 0) + 1;
+      guestEconomy.stats.totalScore = (guestEconomy.stats.totalScore || 0) + (Number(reward.score) || 0);
+      if (reward.won) guestEconomy.stats.wins = (guestEconomy.stats.wins || 0) + 1;
+      saveGuestEconomyToStorage();
+    }
+
+    updateAuthUI();
+    updateCareerAndShopUI();
+
+    const eco = getActiveEconomy();
+    if (matchRewardSummaryEl) {
+      matchRewardSummaryEl.style.display = 'flex';
+      matchRewardSummaryEl.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <span style="font-size:11px; font-weight:900; color:#00F5D4; text-transform:uppercase;">🎁 Maç Sonu Kazancın (Kemer Kesme & Eleme Ödülü)</span>
+          <span style="font-size:12px; color:#E2E8F0;">✂️ ${reward.cuts || 0} Kesim  •  💀 ${reward.kills || 0} Eleme  •  ⭐ ${reward.score || 0} Skor ${reward.won ? ' • 🏆 ŞAMPİYONLUK BONUSLU!' : ''}</span>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <span style="background:rgba(0,245,212,0.18); border:1.5px solid #00F5D4; color:#00F5D4; padding:5px 12px; border-radius:10px; font-weight:900; font-size:14px;">+${earnedPoints.toLocaleString('tr-TR')} 💎 Slime Puan</span>
+          ${earnedCoins > 0 ? `<span style="background:rgba(255,224,102,0.18); border:1.5px solid #FFE066; color:#FFE066; padding:5px 12px; border-radius:10px; font-weight:900; font-size:14px;">+${earnedCoins.toLocaleString('tr-TR')} 🪙 Slime Coin</span>` : ''}
+          <span style="font-size:11.5px; color:#94A3B8; font-weight:800;">Toplam Cüzdan: <strong style="color:#00F5D4;">${(eco.slimePoints || 0).toLocaleString('tr-TR')} 💎</strong> | <strong style="color:#FFE066;">${(eco.slimeCoins || 0).toLocaleString('tr-TR')} 🪙</strong></span>
+        </div>
+      `;
+    }
   });
 
   socket.on('matchEnded', ({ isTeam, seferScore, telliScore, winnerName, winnerScore, winnerBands, standings, nextMatchIn }) => {
@@ -1776,6 +2392,7 @@
         const safeUser = escapeHtml(p.username || '');
         const safeName = escapeHtml(p.name || 'Slime');
         const safeColor = escapeHtml(p.color || '#00F5D4');
+        const earnedBadge = p.earnedPoints ? ` <span style="color:#00F5D4; font-size:11px;">(+${p.earnedPoints}💎)</span>` : '';
         return `<tr class="${rowClass}" data-player-id="${safeId}" data-username="${safeUser}" style="cursor:pointer;" onclick="inspectPlayerProfile('${safeId}', '${safeUser}')">
           <td>${medal}</td>
           <td style="text-align:left;">
@@ -1784,7 +2401,7 @@
           <td>${p.bandsCount}</td>
           <td>✂️ ${p.cuts}</td>
           <td>💀 ${p.kills}</td>
-          <td style="text-align:right; font-weight:900; color:#FFE066;">${p.score} Puan</td>
+          <td style="text-align:right; font-weight:900; color:#FFE066;">${p.score} Puan${earnedBadge}</td>
         </tr>`;
       })
       .join('');
@@ -1932,6 +2549,7 @@
         existing.username = p.username;
         existing.color = p.color;
         existing.skin = p.skin;
+        existing.equipped = p.equipped || existing.equipped || null;
         existing.team = p.team;
         existing.alive = p.alive;
         existing.waitingForWall = p.waitingForWall;
@@ -2078,12 +2696,36 @@
     return shades;
   }
 
-  // --- 3D KÜRESEL JÖLE GÖVDE + CAM PARLAMASI + KOSTÜM YANSIMASI ---
-  function draw3DSlimeBody(targetCtx, baseR, colorHex, time, wobblePhase = 0, skinId = 'crown') {
-    const shades = getSlimeColorShades(colorHex);
-    const points = 24;
+  // --- 3D KÜRESEL JÖLE GÖVDE + CAM PARLAMASI + KOSTÜM & MAĞAZA KAPLAMASI (SKIN) ---
+  function draw3DSlimeBody(targetCtx, baseR, colorHex, time, wobblePhase = 0, skinId = 'crown', skinCoatingId = null) {
+    let effectiveHex = colorHex;
+    if (skinCoatingId === 'skin_rgb') {
+      const rgbColors = ['#FF2A85', '#FFE066', '#00F59B', '#00BBF9', '#9B5DE5'];
+      effectiveHex = rgbColors[Math.floor((time * 0.004) % rgbColors.length)];
+    } else if (skinCoatingId === 'skin_gold_armor') {
+      effectiveHex = '#FACC15';
+    } else if (skinCoatingId === 'skin_lava') {
+      effectiveHex = '#EA580C';
+    } else if (skinCoatingId === 'skin_ice') {
+      effectiveHex = '#38BDF8';
+    } else if (skinCoatingId === 'skin_toxic') {
+      effectiveHex = '#22C55E';
+    } else if (skinCoatingId === 'skin_galaxy') {
+      effectiveHex = '#6D28D9';
+    } else if (skinCoatingId === 'skin_zombie') {
+      effectiveHex = '#65A30D';
+    } else if (skinCoatingId === 'skin_camo') {
+      effectiveHex = '#4D7C0F';
+    }
+
+    const shades = getSlimeColorShades(effectiveHex);
+    const points = skinCoatingId === 'skin_8bit' ? 12 : 24;
 
     targetCtx.save();
+    if (skinCoatingId === 'skin_ghost') {
+      targetCtx.globalAlpha = 0.58 + Math.sin(time * 0.006) * 0.14;
+    }
+
     targetCtx.beginPath();
     for (let i = 0; i <= points; i++) {
       const a = (i / points) * Math.PI * 2;
@@ -2119,9 +2761,105 @@
     targetCtx.fill();
     targetCtx.shadowBlur = 0;
 
-    // Gövde içi klipleme (iç yansımalar, alt neon lazer yansıması ve kafa üstü kostüm parlaması)
+    // Gövde içi klipleme (iç yansımalar, mağaza kaplama dokuları ve kafa üstü kostüm parlaması)
     targetCtx.save();
     targetCtx.clip();
+
+    // 1.5) MAĞAZA KAPLAMA DOKULARI (10 Özel Kaplama)
+    if (skinCoatingId === 'skin_galaxy') {
+      const galGrad = targetCtx.createRadialGradient(0, 0, 2, 0, 0, baseR);
+      galGrad.addColorStop(0, 'rgba(236, 72, 153, 0.55)');
+      galGrad.addColorStop(0.5, 'rgba(109, 40, 217, 0.65)');
+      galGrad.addColorStop(1, 'rgba(15, 23, 42, 0.85)');
+      targetCtx.fillStyle = galGrad;
+      targetCtx.fillRect(-baseR * 1.2, -baseR * 1.2, baseR * 2.4, baseR * 2.4);
+      for (let i = 0; i < 8; i++) {
+        const ang = time * 0.0015 + i * 0.8;
+        const dist = (i % 3 + 1) * (baseR * 0.24);
+        targetCtx.beginPath();
+        targetCtx.arc(Math.cos(ang) * dist, Math.sin(ang) * dist, i % 2 === 0 ? 1.8 : 1.1, 0, Math.PI * 2);
+        targetCtx.fillStyle = i % 2 === 0 ? '#FFFFFF' : '#00F5D4';
+        targetCtx.fill();
+      }
+    } else if (skinCoatingId === 'skin_lava') {
+      targetCtx.strokeStyle = '#FEF08A';
+      targetCtx.shadowColor = '#FACC15';
+      targetCtx.shadowBlur = 8;
+      targetCtx.lineWidth = 2.2;
+      targetCtx.beginPath();
+      targetCtx.moveTo(-baseR * 0.7, -baseR * 0.2);
+      targetCtx.lineTo(-baseR * 0.1, baseR * 0.15);
+      targetCtx.lineTo(baseR * 0.6, -baseR * 0.3);
+      targetCtx.moveTo(-baseR * 0.2, baseR * 0.15);
+      targetCtx.lineTo(baseR * 0.2, baseR * 0.75);
+      targetCtx.stroke();
+      targetCtx.shadowBlur = 0;
+    } else if (skinCoatingId === 'skin_ice') {
+      targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+      targetCtx.lineWidth = 1.8;
+      for (let i = 0; i < 3; i++) {
+        const a = (i * Math.PI) / 3 + 0.2;
+        targetCtx.beginPath();
+        targetCtx.moveTo(Math.cos(a) * (-baseR * 0.65), Math.sin(a) * (-baseR * 0.65));
+        targetCtx.lineTo(Math.cos(a) * (baseR * 0.65), Math.sin(a) * (baseR * 0.65));
+        targetCtx.stroke();
+      }
+    } else if (skinCoatingId === 'skin_toxic') {
+      for (let i = 0; i < 5; i++) {
+        const by = ((time * 0.03 + i * 11) % (baseR * 1.5)) - baseR * 0.75;
+        const bx = Math.sin(i * 2.1 + time * 0.004) * (baseR * 0.48);
+        targetCtx.beginPath();
+        targetCtx.arc(bx, -by, 2.5 + (i % 2), 0, Math.PI * 2);
+        targetCtx.fillStyle = 'rgba(190, 242, 100, 0.8)';
+        targetCtx.fill();
+      }
+    } else if (skinCoatingId === 'skin_8bit') {
+      const step = Math.max(5, Math.round(baseR * 0.28));
+      for (let x = -baseR; x < baseR; x += step) {
+        for (let y = -baseR; y < baseR; y += step) {
+          if ((Math.floor(x / step) + Math.floor(y / step)) % 2 === 0) {
+            targetCtx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+            targetCtx.fillRect(x, y, step, step);
+          }
+        }
+      }
+    } else if (skinCoatingId === 'skin_camo') {
+      const blobs = [
+        { x: -0.35, y: -0.25, r: 0.34, c: '#365314' },
+        { x: 0.32, y: 0.28, r: 0.36, c: '#1A2E05' },
+        { x: -0.22, y: 0.42, r: 0.28, c: '#713F12' },
+        { x: 0.28, y: -0.35, r: 0.26, c: '#365314' }
+      ];
+      for (const b of blobs) {
+        targetCtx.beginPath();
+        targetCtx.arc(b.x * baseR, b.y * baseR, b.r * baseR, 0, Math.PI * 2);
+        targetCtx.fillStyle = b.c;
+        targetCtx.fill();
+      }
+    } else if (skinCoatingId === 'skin_zombie') {
+      targetCtx.strokeStyle = '#1E293B';
+      targetCtx.lineWidth = 2;
+      targetCtx.beginPath();
+      targetCtx.moveTo(-baseR * 0.55, -baseR * 0.45);
+      targetCtx.lineTo(baseR * 0.15, -baseR * 0.22);
+      targetCtx.stroke();
+      for (let s = -2; s <= 1; s++) {
+        targetCtx.beginPath();
+        targetCtx.moveTo(-baseR * 0.2 + s * 4, -baseR * 0.42);
+        targetCtx.lineTo(-baseR * 0.24 + s * 4, -baseR * 0.26);
+        targetCtx.stroke();
+      }
+    } else if (skinCoatingId === 'skin_gold_armor') {
+      const sheenX = ((time * 0.08) % (baseR * 3)) - baseR * 1.5;
+      targetCtx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+      targetCtx.beginPath();
+      targetCtx.moveTo(sheenX - 6, -baseR);
+      targetCtx.lineTo(sheenX + 6, -baseR);
+      targetCtx.lineTo(sheenX - 14, baseR);
+      targetCtx.lineTo(sheenX - 26, baseR);
+      targetCtx.closePath();
+      targetCtx.fill();
+    }
 
     // 2) Alt Karın Neon Lazer Yansıması (Görseldeki gövdeyi saran turkuaz/pembe neon ışık yansıması)
     targetCtx.beginPath();
@@ -2134,7 +2872,7 @@
     targetCtx.stroke();
     targetCtx.shadowBlur = 0;
 
-    // 3) Kafa Üstü 3D Kostüm Işık Yansıması & Gölgesi (Tüm 10 Kostüm İçin Özel 3D Etkileşim)
+    // 3) Kafa Üstü 3D Kostüm Işık Yansıması & Gölgesi
     targetCtx.save();
     if (skinId === 'angel') {
       targetCtx.rotate(-0.12);
@@ -2145,14 +2883,14 @@
       targetCtx.shadowColor = '#FFE066';
       targetCtx.shadowBlur = 10;
       targetCtx.stroke();
-    } else if (skinId === 'crown') {
+    } else if (skinId === 'crown' || skinId === 'hat_vip_crown') {
       targetCtx.beginPath();
       targetCtx.ellipse(0, -baseR * 0.68, baseR * 0.56, baseR * 0.16, 0, 0, Math.PI * 2);
       targetCtx.fillStyle = 'rgba(250, 204, 21, 0.34)';
       targetCtx.shadowColor = '#FACC15';
       targetCtx.shadowBlur = 10;
       targetCtx.fill();
-    } else if (skinId === 'devil') {
+    } else if (skinId === 'devil' || skinId === 'hat_devil_horns') {
       for (const s of [-1, 1]) {
         targetCtx.beginPath();
         targetCtx.ellipse(s * baseR * 0.46, -baseR * 0.64, baseR * 0.22, baseR * 0.11, s * 0.35, 0, Math.PI * 2);
@@ -2161,7 +2899,7 @@
         targetCtx.shadowBlur = 10;
         targetCtx.fill();
       }
-    } else if (skinId === 'cyber' || skinId === 'headset') {
+    } else if (skinId === 'cyber' || skinId === 'headset' || skinId === 'hat_cyber_vr') {
       targetCtx.beginPath();
       targetCtx.ellipse(0, -baseR * 0.60, baseR * 0.48, baseR * 0.13, 0, 0, Math.PI * 2);
       targetCtx.strokeStyle = 'rgba(0, 245, 212, 0.58)';
@@ -2169,17 +2907,17 @@
       targetCtx.shadowColor = '#00F5D4';
       targetCtx.shadowBlur = 8;
       targetCtx.stroke();
-    } else if (skinId === 'wizard') {
+    } else if (skinId === 'wizard' || skinId === 'hat_dark_wizard') {
       targetCtx.beginPath();
       targetCtx.ellipse(0, -baseR * 0.68, baseR * 0.66, baseR * 0.18, 0, 0, Math.PI * 2);
       targetCtx.fillStyle = 'rgba(168, 85, 247, 0.38)';
       targetCtx.shadowColor = '#C084FC';
       targetCtx.shadowBlur = 10;
       targetCtx.fill();
-    } else if (skinId === 'pirate' || skinId === 'viking' || skinId === 'fez' || skinId === 'ninja') {
+    } else {
       targetCtx.beginPath();
       targetCtx.ellipse(0, -baseR * 0.68, baseR * 0.58, baseR * 0.16, 0, 0, Math.PI * 2);
-      targetCtx.fillStyle = 'rgba(8, 11, 18, 0.32)';
+      targetCtx.fillStyle = 'rgba(8, 11, 18, 0.28)';
       targetCtx.fill();
     }
     targetCtx.restore();
@@ -3099,31 +3837,334 @@
         targetCtx.stroke();
         break;
       }
+      case 'hat_cat_ears': {
+        // 🐱 NEON KEDİ KULAKLARI: Sevimli 3D üçgen kulaklar ve pembe neon iç üçgenler
+        for (const s of [-1, 1]) {
+          targetCtx.save();
+          targetCtx.fillStyle = '#1E1B4B';
+          targetCtx.strokeStyle = '#00F5D4';
+          targetCtx.shadowColor = '#FF2A85';
+          targetCtx.shadowBlur = 10;
+          targetCtx.lineWidth = 1.6;
+          targetCtx.beginPath();
+          targetCtx.moveTo(s * 6, -baseR + 4);
+          targetCtx.lineTo(s * 18, -baseR - 15);
+          targetCtx.lineTo(s * 21, -baseR + 6);
+          targetCtx.closePath();
+          targetCtx.fill();
+          targetCtx.stroke();
+
+          targetCtx.shadowBlur = 0;
+          targetCtx.fillStyle = '#FF2A85';
+          targetCtx.beginPath();
+          targetCtx.moveTo(s * 9, -baseR + 3);
+          targetCtx.lineTo(s * 16.5, -baseR - 10);
+          targetCtx.lineTo(s * 18.5, -baseR + 4);
+          targetCtx.closePath();
+          targetCtx.fill();
+          targetCtx.restore();
+        }
+        break;
+      }
+      case 'hat_party': {
+        // 🎉 PARTİ ŞAPKASI: Renkli puantiyeli 3D koni ve tepede ponpon
+        const yP = -baseR + 3;
+        const pGrad = targetCtx.createLinearGradient(-10, yP - 22, 10, yP);
+        pGrad.addColorStop(0, '#FF2A85');
+        pGrad.addColorStop(0.5, '#9B5DE5');
+        pGrad.addColorStop(1, '#00BBF9');
+        targetCtx.fillStyle = pGrad;
+        targetCtx.strokeStyle = '#FFE066';
+        targetCtx.lineWidth = 1.5;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-11, yP);
+        targetCtx.lineTo(0, yP - 23);
+        targetCtx.lineTo(11, yP);
+        targetCtx.quadraticCurveTo(0, yP + 3.5, -11, yP);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        // Puantiyeler ve Ponpon
+        targetCtx.fillStyle = '#FFE066';
+        for (const pt of [{ x: -3, y: yP - 6 }, { x: 4, y: yP - 9 }, { x: 0, y: yP - 14 }]) {
+          targetCtx.beginPath();
+          targetCtx.arc(pt.x, pt.y, 1.8, 0, Math.PI * 2);
+          targetCtx.fill();
+        }
+        targetCtx.beginPath();
+        targetCtx.arc(0, yP - 24.5, 4.2, 0, Math.PI * 2);
+        targetCtx.fillStyle = '#00F5D4';
+        targetCtx.shadowColor = '#00F5D4';
+        targetCtx.shadowBlur = 10;
+        targetCtx.fill();
+        break;
+      }
+      case 'hat_flower_crown': {
+        // 🌸 BAHAR ÇİÇEK TACI: Yapraklı sarmaşık ve 5 adet 3D renkli bahar çiçeği
+        const yFl = -baseR + 4;
+        targetCtx.strokeStyle = '#22C55E';
+        targetCtx.lineWidth = 3.5;
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, yFl, 15.5, 3.8, 0, 0, Math.PI * 2);
+        targetCtx.stroke();
+
+        const flowers = [
+          { x: -13, y: yFl, c: '#FF2A85' },
+          { x: -6.5, y: yFl + 2, c: '#00F5D4' },
+          { x: 0, y: yFl + 2.5, c: '#FFE066' },
+          { x: 6.5, y: yFl + 2, c: '#FF70A6' },
+          { x: 13, y: yFl, c: '#00BBF9' }
+        ];
+        for (const fl of flowers) {
+          targetCtx.beginPath();
+          targetCtx.arc(fl.x, fl.y, 4.0, 0, Math.PI * 2);
+          targetCtx.fillStyle = fl.c;
+          targetCtx.shadowColor = fl.c;
+          targetCtx.shadowBlur = 6;
+          targetCtx.fill();
+          targetCtx.shadowBlur = 0;
+          targetCtx.beginPath();
+          targetCtx.arc(fl.x, fl.y, 1.6, 0, Math.PI * 2);
+          targetCtx.fillStyle = '#FFFFFF';
+          targetCtx.fill();
+        }
+        break;
+      }
+      case 'hat_chef': {
+        // 👨‍🍳 USTA AŞÇI ŞAPKASI: Kabarık 3D beyaz şef kepi
+        const yC = -baseR + 3;
+        targetCtx.fillStyle = '#F8FAFC';
+        targetCtx.strokeStyle = '#CBD5E1';
+        targetCtx.lineWidth = 1.5;
+        for (const p of [{ x: -8, y: yC - 13, r: 7 }, { x: 8, y: yC - 13, r: 7 }, { x: 0, y: yC - 16, r: 8.5 }]) {
+          targetCtx.beginPath();
+          targetCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.stroke();
+        }
+        targetCtx.fillStyle = '#E2E8F0';
+        targetCtx.beginPath();
+        targetCtx.roundRect(-11.5, yC - 8, 23, 8.5, 2.5);
+        targetCtx.fill();
+        targetCtx.stroke();
+        break;
+      }
+      case 'hat_pirate_parrot': {
+        // 🦜 KORSAN PAPAĞANI & BANDANA: Kırmızı bandana + omuz/tepede 3D renkli papağan
+        drawSkinAccessory(targetCtx, 'pirate', baseR, time);
+        const bob = Math.sin(time * 0.01) * 2;
+        targetCtx.save();
+        targetCtx.translate(18, -baseR - 8 + bob);
+        targetCtx.fillStyle = '#EF4444';
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 0, 5.5, 7, 0.2, 0, Math.PI * 2);
+        targetCtx.fill();
+        targetCtx.fillStyle = '#22C55E';
+        targetCtx.beginPath();
+        targetCtx.ellipse(2, 1, 3.2, 5, -0.2, 0, Math.PI * 2);
+        targetCtx.fill();
+        targetCtx.fillStyle = '#FACC15';
+        targetCtx.beginPath();
+        targetCtx.moveTo(-4, -3);
+        targetCtx.lineTo(-8.5, -1);
+        targetCtx.lineTo(-4, 1);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.restore();
+        break;
+      }
+      case 'hat_alien_antenna': {
+        // 👽 UZAYLI ANTENİ: Yaylı çift neon yeşil anten ve parlayan küreler
+        const sway = Math.sin(time * 0.01) * 3.5;
+        for (const s of [-1, 1]) {
+          targetCtx.strokeStyle = '#00F59B';
+          targetCtx.lineWidth = 2.4;
+          targetCtx.beginPath();
+          targetCtx.moveTo(s * 8, -baseR + 3);
+          targetCtx.quadraticCurveTo(s * 14 + sway, -baseR - 10, s * 13 + sway, -baseR - 19);
+          targetCtx.stroke();
+
+          targetCtx.beginPath();
+          targetCtx.arc(s * 13 + sway, -baseR - 20, 4.2, 0, Math.PI * 2);
+          targetCtx.fillStyle = '#00F59B';
+          targetCtx.shadowColor = '#00F59B';
+          targetCtx.shadowBlur = 12;
+          targetCtx.fill();
+          targetCtx.shadowBlur = 0;
+        }
+        break;
+      }
+      case 'hat_ninja_bandana': {
+        drawSkinAccessory(targetCtx, 'ninja', baseR, time);
+        break;
+      }
+      case 'hat_devil_horns': {
+        drawSkinAccessory(targetCtx, 'devil', baseR, time);
+        break;
+      }
+      case 'hat_steampunk_goggles': {
+        // ⚙️ STEAMPUNK GÖZLÜĞÜ: Alında bronz/pirinç dişli mercekli gözlük
+        const gy = -baseR * 0.56;
+        targetCtx.strokeStyle = '#78350F';
+        targetCtx.lineWidth = 4;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-baseR * 0.92, gy);
+        targetCtx.quadraticCurveTo(0, gy - 4, baseR * 0.92, gy);
+        targetCtx.stroke();
+
+        for (const s of [-1, 1]) {
+          targetCtx.beginPath();
+          targetCtx.arc(s * 8.5, gy - 1, 6.2, 0, Math.PI * 2);
+          targetCtx.fillStyle = '#D97706';
+          targetCtx.strokeStyle = '#FEF08A';
+          targetCtx.lineWidth = 1.8;
+          targetCtx.fill();
+          targetCtx.stroke();
+
+          targetCtx.beginPath();
+          targetCtx.arc(s * 8.5, gy - 1, 4.0, 0, Math.PI * 2);
+          targetCtx.fillStyle = '#00F5D4';
+          targetCtx.shadowColor = '#00F5D4';
+          targetCtx.shadowBlur = 8;
+          targetCtx.fill();
+          targetCtx.shadowBlur = 0;
+        }
+        break;
+      }
+      case 'hat_spartan': {
+        // 🛡️ SPARTALI MİĞFERİ: Kırmızı tüylü sorguçlu altın-bronz gladyatör miğferi
+        const yS = -baseR + 4;
+        // Kırmızı sorguç (Crest)
+        targetCtx.fillStyle = '#EF4444';
+        targetCtx.strokeStyle = '#FACC15';
+        targetCtx.lineWidth = 1.5;
+        targetCtx.beginPath();
+        targetCtx.arc(0, yS - 9, 16, Math.PI * 1.1, Math.PI * 1.9);
+        targetCtx.lineTo(8, yS - 6);
+        targetCtx.lineTo(-8, yS - 6);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        // Bronz Kubbe
+        targetCtx.fillStyle = '#F59E0B';
+        targetCtx.strokeStyle = '#FEF08A';
+        targetCtx.beginPath();
+        targetCtx.arc(0, yS, 15, Math.PI, 0);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.stroke();
+        break;
+      }
+      case 'hat_astronaut': {
+        // 🧑‍🚀 ASTRONOT KASKI: Şeffaf 3D cam kubbe ve altın-mavi yansıma
+        targetCtx.save();
+        targetCtx.strokeStyle = '#E2E8F0';
+        targetCtx.lineWidth = 2.6;
+        targetCtx.fillStyle = 'rgba(56, 189, 248, 0.16)';
+        targetCtx.shadowColor = '#00BBF9';
+        targetCtx.shadowBlur = 12;
+        targetCtx.beginPath();
+        targetCtx.arc(0, -1, baseR + 5.5, 0, Math.PI * 2);
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        targetCtx.shadowBlur = 0;
+        targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+        targetCtx.lineWidth = 2.5;
+        targetCtx.beginPath();
+        targetCtx.arc(0, -1, baseR + 2.5, Math.PI * 1.15, Math.PI * 1.55);
+        targetCtx.stroke();
+        targetCtx.restore();
+        break;
+      }
+      case 'hat_samurai': {
+        // ⚔️ SAMURAY MİĞFERİ (KABUTO): Geniş yan kanatlar ve altın hilal boynuz (Kuwagata)
+        const yK = -baseR + 4;
+        targetCtx.fillStyle = '#1E293B';
+        targetCtx.strokeStyle = '#EF4444';
+        targetCtx.lineWidth = 1.6;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-21, yK + 5);
+        targetCtx.quadraticCurveTo(0, yK - 18, 21, yK + 5);
+        targetCtx.lineTo(14, yK + 1);
+        targetCtx.lineTo(-14, yK + 1);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        // Altın Hilal
+        targetCtx.strokeStyle = '#FACC15';
+        targetCtx.shadowColor = '#FACC15';
+        targetCtx.shadowBlur = 10;
+        targetCtx.lineWidth = 2.6;
+        targetCtx.beginPath();
+        targetCtx.arc(0, yK - 11, 10, Math.PI * 0.15, Math.PI * 0.85, true);
+        targetCtx.stroke();
+        targetCtx.shadowBlur = 0;
+        break;
+      }
+      case 'hat_cyber_vr': {
+        drawSkinAccessory(targetCtx, 'cyber', baseR, time);
+        break;
+      }
+      case 'hat_dark_wizard': {
+        drawSkinAccessory(targetCtx, 'wizard', baseR, time);
+        break;
+      }
+      case 'hat_vip_crown': {
+        // 👑 VIP KRAL TACI: Ekstra parlak elmaslı ve süzülen yıldızlı imparatorluk tacı
+        drawSkinAccessory(targetCtx, 'crown', baseR, time);
+        const pulseR = 3.2 + Math.sin(time * 0.01) * 0.8;
+        targetCtx.beginPath();
+        targetCtx.arc(0, -baseR - 23, pulseR, 0, Math.PI * 2);
+        targetCtx.fillStyle = '#00F5D4';
+        targetCtx.shadowColor = '#00F5D4';
+        targetCtx.shadowBlur = 14;
+        targetCtx.fill();
+        targetCtx.shadowBlur = 0;
+        break;
+      }
     }
     targetCtx.restore();
   }
 
-  function renderLobbySkinPreview(time) {
-    if (!previewCtx || lobbyModal.style.display === 'none') return;
-    const w = skinPreviewCanvas.width;
-    const h = skinPreviewCanvas.height;
-    previewCtx.clearRect(0, 0, w, h);
+  function renderPreviewOnCanvas(targetCanvas, targetCtx, time) {
+    if (!targetCanvas || !targetCtx) return;
+    const w = targetCanvas.width;
+    const h = targetCanvas.height;
+    targetCtx.clearRect(0, 0, w, h);
 
-    previewCtx.save();
-    previewCtx.translate(w / 2, h / 2 + 12);
-    const r = 27;
+    const eco = getActiveEconomy();
+    const eq = (eco && eco.equipped) || {};
+    const activeHat = eq.hat || selectedSkin || 'crown';
+    const activeSkinCoating = eq.skin || null;
 
-    // 1) 3D Parlak Jöle Gövde
-    draw3DSlimeBody(previewCtx, r, selectedColor, time, 0.5, selectedSkin);
+    targetCtx.save();
+    targetCtx.translate(w / 2, h / 2 + 12);
+    const r = Math.min(w, h) * 0.27;
 
-    // 2) 3D Sevimli Canlı Gözler (hafif canlı bakış salınımı ile)
+    // 1) 3D Parlak Jöle Gövde + Mağaza Kaplaması
+    draw3DSlimeBody(targetCtx, r, selectedColor, time, 0.5, activeHat, activeSkinCoating);
+
+    // 2) 3D Sevimli Canlı Gözler
     const lookX = Math.sin(time * 0.0022) * 2.2;
     const lookY = Math.cos(time * 0.0018) * 1.4;
-    draw3DCuteEyes(previewCtx, r, lookX, lookY, time, 1.2);
+    draw3DCuteEyes(targetCtx, r, lookX, lookY, time, 1.2);
 
-    // 3) 3D Neon Kostüm Aksesuarı
-    drawSkinAccessory(previewCtx, selectedSkin, r, time);
-    previewCtx.restore();
+    // 3) 3D Neon Kostüm / Mağaza Şapkası Aksesuarı
+    drawSkinAccessory(targetCtx, activeHat, r, time);
+    targetCtx.restore();
+  }
+
+  function renderLobbySkinPreview(time) {
+    if (previewCtx && lobbyModal && lobbyModal.style.display !== 'none') {
+      renderPreviewOnCanvas(skinPreviewCanvas, previewCtx, time);
+    }
+    if (shopPreviewCtx && shopModal && shopModal.style.display !== 'none') {
+      renderPreviewOnCanvas(shopPreviewCanvas, shopPreviewCtx, time);
+    }
   }
 
   // --- HARİTA VE OYUNCU GÖRSELLEŞTİRME ---
@@ -3218,6 +4259,8 @@
     const midX = (x1 + x2) * 0.5 + Math.sin(time * 0.004 + band.id) * 14;
     const midY = (y1 + y2) * 0.5 + Math.cos(time * 0.004 + band.id) * 14;
 
+    const beltEffect = (player.equipped && player.equipped.belt) || null;
+
     ctx.save();
     ctx.lineCap = 'round';
 
@@ -3232,19 +4275,92 @@
       ctx.quadraticCurveTo(midX, midY, x2, y2);
       ctx.stroke();
       ctx.setLineDash([]);
-    } else {
-      // 1) Dış Neon Lazer Işıması (Görseldeki parlak turkuaz/pembe lazer kemerler)
+    } else if (beltEffect === 'belt_lightning') {
+      // ⚡ YILDIRIM AĞI: Yüksek voltajlı zikzaklı elektrik kemeri
+      ctx.strokeStyle = '#38BDF8';
+      ctx.shadowColor = '#00F5D4';
+      ctx.shadowBlur = 18;
+      ctx.lineWidth = 3.5;
       ctx.beginPath();
-      ctx.lineWidth = 4.6;
-      ctx.strokeStyle = player.color;
-      ctx.shadowColor = player.color;
+      ctx.moveTo(x1, y1);
+      const steps = 8;
+      for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const bx = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * midX + t * t * x2;
+        const by = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * midY + t * t * y2;
+        const jitter = Math.sin(time * 0.04 + i * 3.1 + band.id) * 8;
+        ctx.lineTo(bx + jitter, by - jitter);
+      }
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    } else if (beltEffect === 'belt_rainbow') {
+      // 🌈 GÖKKUŞAĞI NEON KEMER
+      const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+      grad.addColorStop(0, '#FF2A85');
+      grad.addColorStop(0.25, '#FFE066');
+      grad.addColorStop(0.5, '#00F59B');
+      grad.addColorStop(0.75, '#00BBF9');
+      grad.addColorStop(1, '#9B5DE5');
+      ctx.beginPath();
+      ctx.lineWidth = 5.5;
+      ctx.strokeStyle = grad;
+      ctx.shadowColor = '#00F5D4';
       ctx.shadowBlur = 14;
-      ctx.globalAlpha = 0.9;
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(midX, midY, x2, y2);
+      ctx.stroke();
+    } else if (beltEffect === 'belt_fire_chain') {
+      // 🔥 ATEŞTEN ZİNCİR
+      ctx.beginPath();
+      ctx.setLineDash([10, 5]);
+      ctx.lineWidth = 5.2;
+      ctx.strokeStyle = '#F97316';
+      ctx.shadowColor = '#EF4444';
+      ctx.shadowBlur = 16;
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(midX, midY, x2, y2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (beltEffect === 'belt_lightsaber') {
+      // ⚔️ IŞIN KILICI LAZER: Ekstra kalın plazma hüzmesi ve bembeyaz çekirdek
+      ctx.beginPath();
+      ctx.lineWidth = 7.5;
+      ctx.strokeStyle = '#FF2A85';
+      ctx.shadowColor = '#FF2A85';
+      ctx.shadowBlur = 22;
       ctx.moveTo(x1, y1);
       ctx.quadraticCurveTo(midX, midY, x2, y2);
       ctx.stroke();
 
-      // 2) İç Beyaz Lazer Çekirdeği (Hot Laser Core)
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.lineWidth = 3.0;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(midX, midY, x2, y2);
+      ctx.stroke();
+    } else {
+      // Standart + diğer özel kemer renkleri (water_hose, gold_rope, ghost, blood_vine, stardust, cyber_matrix)
+      let strokeCol = player.color;
+      if (beltEffect === 'belt_gold_rope') strokeCol = '#FACC15';
+      else if (beltEffect === 'belt_water_hose') strokeCol = '#38BDF8';
+      else if (beltEffect === 'belt_ghost') strokeCol = '#A5F3FC';
+      else if (beltEffect === 'belt_blood_vine') strokeCol = '#10B981';
+      else if (beltEffect === 'belt_stardust') strokeCol = '#E879F9';
+      else if (beltEffect === 'belt_cyber_matrix') strokeCol = '#00F59B';
+
+      ctx.beginPath();
+      if (beltEffect === 'belt_cyber_matrix') ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 4.6;
+      ctx.strokeStyle = strokeCol;
+      ctx.shadowColor = strokeCol;
+      ctx.shadowBlur = 14;
+      ctx.globalAlpha = beltEffect === 'belt_ghost' ? 0.55 : 0.9;
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(midX, midY, x2, y2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
       ctx.shadowBlur = 0;
       ctx.beginPath();
       ctx.lineWidth = 1.6;
@@ -3253,6 +4369,19 @@
       ctx.moveTo(x1, y1);
       ctx.quadraticCurveTo(midX, midY, x2, y2);
       ctx.stroke();
+
+      // Kemer üstü hareketli parçacıklar (yıldız tozu, su damlası veya sarmaşık dikeni)
+      if (beltEffect === 'belt_stardust' || beltEffect === 'belt_water_hose' || beltEffect === 'belt_blood_vine') {
+        for (let i = 1; i <= 4; i++) {
+          const t = ((time * 0.0008 + i * 0.25) % 1);
+          const px = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * midX + t * t * x2;
+          const py = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * midY + t * t * y2;
+          ctx.beginPath();
+          ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+          ctx.fillStyle = beltEffect === 'belt_blood_vine' ? '#F43F5E' : '#FFFFFF';
+          ctx.fill();
+        }
+      }
     }
 
     // Duvar Bağlantı Noktasında Parlak Neon Enerji Küresi
@@ -3331,11 +4460,14 @@
     ctx.stroke();
     ctx.setLineDash([]);
 
+    const eqMe = (me && me.equipped) || {};
+    const meHat = eqMe.hat || me.skin || 'crown';
+    const meCoating = eqMe.skin || null;
     ctx.globalAlpha = 0.88;
     ctx.translate(preview.spawnX, preview.spawnY);
-    draw3DSlimeBody(ctx, config.PLAYER_RADIUS, me.color || '#00F5D4', time, 0, me.skin || 'crown');
+    draw3DSlimeBody(ctx, config.PLAYER_RADIUS, me.color || '#00F5D4', time, 0, meHat, meCoating);
     draw3DCuteEyes(ctx, config.PLAYER_RADIUS, 0, 0, time, 0);
-    drawSkinAccessory(ctx, me.skin || 'crown', config.PLAYER_RADIUS, time);
+    drawSkinAccessory(ctx, meHat, config.PLAYER_RADIUS, time);
     ctx.restore();
   }
 
@@ -3546,20 +4678,25 @@
             : Math.atan2(mouseWorld.y - player.renderY, mouseWorld.x - player.renderX)
         : moveAngle;
 
+    const eq = player.equipped || {};
+    const activeHat = eq.hat || player.skin || 'crown';
+    const activeCoating = eq.skin || null;
+    const activeTitleMeta = eq.title ? TITLE_META[eq.title] : null;
+
     // 0) Aktif Güçlendirme (Power-Up) Neon Aurası (Diğer tüm oyuncular tarafından görülür)
     if (player.activePowerup) {
       drawPlayerPowerupAura(player, time, lookAngle);
     }
 
-    // 1) 3D Parlak Jöle Küre Gövde (Hareket yönüne göre esneyen jelly fizik)
+    // 1) 3D Parlak Jöle Küre Gövde + Mağaza Kaplaması (Hareket yönüne göre esneyen jelly fizik)
     ctx.save();
     ctx.translate(player.renderX, player.renderY);
     ctx.rotate(moveAngle);
     ctx.scale(stretch, squash);
-    draw3DSlimeBody(ctx, baseR, player.color || '#00F5D4', time, player.wobblePhase || 0, player.skin || 'crown');
+    draw3DSlimeBody(ctx, baseR, player.color || '#00F5D4', time, player.wobblePhase || 0, activeHat, activeCoating);
     ctx.restore();
 
-    // 2) 3D İri Parlak Gözler, Allık, Tebessüm ve Neon Kostüm Aksesuarı
+    // 2) 3D İri Parlak Gözler, Allık, Tebessüm ve Neon Kostüm / Mağaza Şapkası
     ctx.save();
     ctx.translate(player.renderX, player.renderY);
     const lookX = Math.cos(lookAngle) * 4.2;
@@ -3567,8 +4704,7 @@
 
     draw3DCuteEyes(ctx, baseR, lookX, lookY, time, player.wobblePhase || 0);
 
-    // Seçili Basic 10 Kostümünü Çiz
-    drawSkinAccessory(ctx, player.skin || 'crown', baseR, time);
+    drawSkinAccessory(ctx, activeHat, baseR, time);
 
     if (followedPlayerId && player.id === followedPlayerId) {
       ctx.beginPath();
@@ -3589,12 +4725,161 @@
         ? '[TELLİ] '
         : '';
 
+    const nameText = `${familyPrefix}${player.name} [🔗${player.bands.length} | 🏹${ammo}]`;
+
+    // VIP Altın veya Unvan Çerçevesi
+    if (activeTitleMeta) {
+      ctx.save();
+      ctx.font = '900 10px "Segoe UI", sans-serif';
+      const titleW = Math.max(88, ctx.measureText(activeTitleMeta.label).width + 14);
+      ctx.fillStyle = activeTitleMeta.bg;
+      ctx.strokeStyle = activeTitleMeta.color;
+      ctx.lineWidth = activeTitleMeta.isGoldFrame ? 2 : 1.3;
+      ctx.shadowColor = activeTitleMeta.color;
+      ctx.shadowBlur = activeTitleMeta.isGoldFrame ? 10 : 6;
+      ctx.beginPath();
+      ctx.roundRect(-titleW / 2, baseR + 27, titleW, 16, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = activeTitleMeta.color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(activeTitleMeta.label, 0, baseR + 35);
+      ctx.restore();
+    }
+
     ctx.font = 'bold 13px "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#F8F9FA';
+    ctx.fillStyle = activeTitleMeta && activeTitleMeta.isGoldFrame ? '#FFE066' : '#F8F9FA';
     ctx.shadowColor = '#000000';
     ctx.shadowBlur = 6;
-    ctx.fillText(`${familyPrefix}${player.name} [🔗${player.bands.length} | 🏹${ammo}]`, 0, baseR + 22);
+    ctx.fillText(nameText, 0, baseR + 20);
+    ctx.restore();
+  }
+
+  function drawKillAnimations(time) {
+    if (killAnimations.length === 0) return;
+
+    for (let i = killAnimations.length - 1; i >= 0; i--) {
+      const ka = killAnimations[i];
+      const elapsed = time - ka.startTime;
+      if (elapsed >= ka.duration) {
+        killAnimations.splice(i, 1);
+        continue;
+      }
+      const progress = Math.max(0, Math.min(1, elapsed / ka.duration));
+      const alpha = 1 - progress;
+
+      ctx.save();
+      ctx.translate(ka.x, ka.y);
+      ctx.globalAlpha = alpha;
+
+      // Parçacık patlaması
+      for (const pt of ka.particles) {
+        pt.rot += pt.vRot;
+        const px = pt.vx * (elapsed * 0.06);
+        const py = pt.vy * (elapsed * 0.06) + (ka.type === 'kill_confetti' ? progress * progress * 28 : 0);
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(pt.rot);
+        ctx.fillStyle = ka.type === 'kill_blackhole' ? '#A855F7' : pt.color;
+        if (ka.type === 'kill_pixel') {
+          ctx.fillRect(-pt.size, -pt.size, pt.size * 2, pt.size * 2);
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, pt.size * (1 - progress * 0.4), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Ölüm Efektine Özel Merkez 3D Görsel Şov
+      if (ka.type === 'kill_blackhole') {
+        const bhR = 36 * Math.sin(progress * Math.PI);
+        const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, Math.max(4, bhR));
+        grad.addColorStop(0, '#000000');
+        grad.addColorStop(0.6, '#3B0764');
+        grad.addColorStop(1, 'rgba(168, 85, 247, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, Math.max(4, bhR), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (ka.type === 'kill_ufo') {
+        // 🛸 UFO IŞINLAMASI: Yukarıdan inen yeşil çekim huzmesi ve uçan daire
+        ctx.fillStyle = 'rgba(0, 245, 155, 0.28)';
+        ctx.beginPath();
+        ctx.moveTo(-12, -55);
+        ctx.lineTo(12, -55);
+        ctx.lineTo(28, 12);
+        ctx.lineTo(-28, 12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.font = '28px "Segoe UI Emoji", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🛸', 0, -52 - progress * 20);
+      } else if (ka.type === 'kill_tombstone') {
+        ctx.font = '32px "Segoe UI Emoji", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🪦 R.I.P', 0, -10 + Math.min(0, (progress - 0.2) * 15));
+      } else if (ka.type === 'kill_gg_neon') {
+        ctx.font = '900 26px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#00F5D4';
+        ctx.shadowColor = '#FF2A85';
+        ctx.shadowBlur = 16;
+        ctx.fillText('⚡ GG! ⚡', 0, -16 - progress * 24);
+      } else if (ka.type === 'kill_heartbreak') {
+        ctx.font = '30px "Segoe UI Emoji", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('💔', 0, -12 - progress * 22);
+      } else if (ka.type === 'kill_fireworks') {
+        ctx.strokeStyle = '#FFE066';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, progress * 55, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (ka.type === 'kill_bomb_crater') {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+        ctx.strokeStyle = '#F97316';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(0, 4, 28, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  function drawScreenCrackOverlay(time) {
+    if (time >= screenCrackUntil) return;
+    const rem = screenCrackUntil - time;
+    const alpha = Math.min(1, rem / 550);
+
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.85;
+    ctx.strokeStyle = '#E2E8F0';
+    ctx.shadowColor = '#00BBF9';
+    ctx.shadowBlur = 12;
+    ctx.lineWidth = 2.6;
+
+    const cx = canvas.width * 0.5;
+    const cy = canvas.height * 0.5;
+    const rays = [0.2, 0.9, 1.55, 2.3, 3.1, 3.9, 4.7, 5.5];
+    for (const a of rays) {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      const r1 = 90;
+      const r2 = 240;
+      const r3 = 460;
+      ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+      ctx.lineTo(cx + Math.cos(a + 0.12) * r2, cy + Math.sin(a + 0.12) * r2);
+      ctx.lineTo(cx + Math.cos(a - 0.08) * r3, cy + Math.sin(a - 0.08) * r3);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -3788,6 +5073,8 @@
       if (sp.alpha <= 0) splatEffects.splice(i, 1);
     }
 
+    drawKillAnimations(time);
+
     for (const p of renderPlayers.values()) {
       if (!p.alive) continue;
       drawJellySlime(p, time);
@@ -3819,6 +5106,7 @@
 
     drawMinimap();
     drawVirtualJoystick();
+    drawScreenCrackOverlay(time);
 
     requestAnimationFrame(renderLoop);
   }

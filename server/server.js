@@ -535,6 +535,41 @@ function addScore(room, player, amount, reason, worldX, worldY) {
   });
 }
 
+function grantLiveCombatReward(player, type) {
+  if (!player || player.isBot) return;
+  const isKill = type === 'kill';
+  const earnedPoints = isKill
+    ? (GAME_CONFIG.REWARD_POINT_PER_KILL || 75)
+    : (GAME_CONFIG.REWARD_POINT_PER_CUT || 25);
+  const earnedCoins = isKill && player.kills > 0 && player.kills % 3 === 0
+    ? (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 5)
+    : 0;
+
+  let updatedUser = null;
+  if (player.username) {
+    updatedUser = userStore.addLiveCombatRewards(player.username, {
+      cuts: isKill ? 0 : 1,
+      kills: isKill ? 1 : 0,
+      scoreDelta: 0,
+      earnedPoints,
+      earnedCoins
+    });
+    const sock = connectedSockets.get(player.id);
+    if (sock && updatedUser) {
+      sock.user = updatedUser;
+    }
+  }
+
+  io.to(player.id).emit('combatReward', {
+    type,
+    earnedPoints,
+    earnedCoins,
+    cuts: player.cuts || 0,
+    kills: player.kills || 0,
+    user: updatedUser
+  });
+}
+
 function killPlayer(room, victim, killerId = null) {
   if (!victim.alive) return;
   victim.alive = false;
@@ -548,17 +583,25 @@ function killPlayer(room, victim, killerId = null) {
   const killer = killerId ? room.players.get(killerId) : null;
   if (killer && killer.id !== victim.id) {
     killer.kills += 1;
-    addScore(room, killer, GAME_CONFIG.SCORE_PER_KILL, 'ELEME!', deathPos.x, deathPos.y);
+    addScore(room, killer, GAME_CONFIG.SCORE_PER_KILL, 'ELEME! (+75 💎)', deathPos.x, deathPos.y);
+    grantLiveCombatReward(killer, 'kill');
   }
 
   victim.score = Math.floor(victim.score * 0.75);
   clearPlayerPhysics(room, victim);
 
+  const activeKillEffect =
+    (killer && killer.equipped && killer.equipped.kill_effect) ||
+    (victim && victim.equipped && victim.equipped.kill_effect) ||
+    'kill_confetti';
+
   io.to(room.id).emit('playerDied', {
     victimId: victim.id,
     victimName: victim.name,
+    victimColor: victim.color || '#00F5D4',
     killerId,
     killerName: killer ? killer.name : null,
+    killEffect: activeKillEffect,
     x: Math.round(deathPos.x),
     y: Math.round(deathPos.y),
     respawnDelay: GAME_CONFIG.RESPAWN_DELAY_MS
@@ -1104,7 +1147,8 @@ function updateRoomArrows(room, now) {
           owner.bands.splice(k, 1);
           if (shooter) {
             shooter.cuts += 1;
-            addScore(room, shooter, GAME_CONFIG.SCORE_PER_BELT_CUT, 'OKLA KESTİ!', hit.x, hit.y);
+            addScore(room, shooter, GAME_CONFIG.SCORE_PER_BELT_CUT, 'OKLA KESTİ! (+25 💎)', hit.x, hit.y);
+            grantLiveCombatReward(shooter, 'cut');
           }
 
           io.to(room.id).emit('bandSnapped', {
@@ -1152,7 +1196,8 @@ function updateRoomArrows(room, now) {
 
           if (shooter) {
             shooter.cuts += 1;
-            addScore(room, shooter, GAME_CONFIG.SCORE_PER_ARROW_HIT, 'TAM İSABET!', bodyHit.x, bodyHit.y);
+            addScore(room, shooter, GAME_CONFIG.SCORE_PER_ARROW_HIT, 'TAM İSABET! (+25 💎)', bodyHit.x, bodyHit.y);
+            grantLiveCombatReward(shooter, 'cut');
           }
 
           io.to(room.id).emit('arrowSplat', { x: Math.round(bodyHit.x), y: Math.round(bodyHit.y), color: arrow.color });
@@ -1216,7 +1261,8 @@ function processRoomBandIntersections(room) {
           owner.bands.splice(k, 1);
 
           cutter.cuts += 1;
-          addScore(room, cutter, GAME_CONFIG.SCORE_PER_BELT_CUT, 'KESİM!', hit.x, hit.y);
+          addScore(room, cutter, GAME_CONFIG.SCORE_PER_BELT_CUT, 'KESİM! (+25 💎)', hit.x, hit.y);
+          grantLiveCombatReward(cutter, 'cut');
 
           io.to(room.id).emit('bandSnapped', {
             ownerId: owner.id,
@@ -1376,7 +1422,7 @@ function triggerMatchEnd(room) {
   let seferScore = 0;
   let telliScore = 0;
 
-  const standings = [...room.players.values()]
+  const rawStandings = [...room.players.values()]
     .filter((p) => !p.watchOnly)
     .map((p) => {
       const sc = p.score || 0;
@@ -1388,6 +1434,7 @@ function triggerMatchEnd(room) {
         username: p.username || null,
         color: p.color,
         skin: p.skin,
+        equipped: p.equipped || null,
         team: p.team || null,
         bandsCount: p.bands.length,
         cuts: p.cuts || 0,
@@ -1397,23 +1444,66 @@ function triggerMatchEnd(room) {
     })
     .sort((a, b) => b.score - a.score || b.bandsCount - a.bandsCount || b.cuts - a.cuts);
 
-  const winner = standings[0] || { name: 'Kimse', score: 0, bandsCount: 0 };
+  const winner = rawStandings[0] || { name: 'Kimse', score: 0, bandsCount: 0 };
   let winningTeam = null;
   if (room.isTeam) {
     winningTeam = seferScore >= telliScore ? 'seferogullari' : 'telliogullari';
   }
 
-  // Kayıtlı üyelerin istatistiklerini kaydet
-  for (const p of room.players.values()) {
-    if (!p.isBot && !p.watchOnly && p.username) {
-      const won = room.isTeam ? p.team === winningTeam : winner.id === p.id;
-      userStore.recordMatchStats(p.username, {
-        score: p.score || 0,
-        cuts: p.cuts || 0,
-        kills: p.kills || 0,
-        won
+  const standings = rawStandings.map((row) => {
+    const won = room.isTeam ? row.team === winningTeam : winner.id === row.id;
+    const cutsPoints = (row.cuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 25);
+    const killsPoints = (row.kills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 75);
+    const scorePoints = Math.round((row.score || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.15));
+    const bonusPoints = (GAME_CONFIG.REWARD_POINT_MATCH_COMPLETE || 50) + (won ? (GAME_CONFIG.REWARD_POINT_MATCH_WIN || 150) : 0);
+    const totalMatchPoints = cutsPoints + killsPoints + scorePoints + bonusPoints;
+    const killCoins = Math.floor((row.kills || 0) / 3) * (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 5);
+    const winCoins = won ? (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 15) : 0;
+    const totalMatchCoins = killCoins + winCoins;
+
+    return {
+      ...row,
+      won,
+      earnedPoints: totalMatchPoints,
+      earnedCoins: totalMatchCoins,
+      endOfMatchBonusPoints: scorePoints + bonusPoints,
+      endOfMatchBonusCoins: winCoins
+    };
+  });
+
+  // Kayıtlı üyelerin ve oyuncuların maç sonu hakedişlerini kaydet & bildir
+  for (const row of standings) {
+    const p = room.players.get(row.id);
+    if (!p || p.isBot || p.watchOnly) continue;
+
+    let updatedUser = null;
+    if (p.username) {
+      updatedUser = userStore.recordMatchStats(p.username, {
+        score: row.score || 0,
+        cuts: row.cuts || 0,
+        kills: row.kills || 0,
+        won: row.won,
+        earnedPoints: row.endOfMatchBonusPoints,
+        earnedCoins: row.endOfMatchBonusCoins,
+        alreadyCountedCombat: true
       });
+      const sock = connectedSockets.get(p.id);
+      if (sock && updatedUser) {
+        sock.user = updatedUser;
+      }
     }
+
+    io.to(p.id).emit('matchRewardsEarned', {
+      won: row.won,
+      score: row.score,
+      cuts: row.cuts,
+      kills: row.kills,
+      totalMatchPoints: row.earnedPoints,
+      totalMatchCoins: row.earnedCoins,
+      endOfMatchBonusPoints: row.endOfMatchBonusPoints,
+      endOfMatchBonusCoins: row.endOfMatchBonusCoins,
+      user: updatedUser
+    });
   }
 
   const nextMatchIn = 10000;
@@ -1590,6 +1680,7 @@ setInterval(() => {
         username: p.username || null,
         color: p.color,
         skin: p.skin || 'crown',
+        equipped: p.equipped || null,
         team: p.team || null,
         isBot: Boolean(p.isBot),
         watchOnly: Boolean(p.watchOnly),
@@ -1817,6 +1908,7 @@ io.on('connection', (socket) => {
     config: GAME_CONFIG,
     colors: SLIME_COLORS,
     skins: BASIC_10_SKINS,
+    storeItems: userStore.getStoreItems(),
     modes: GAME_MODES,
     teams: TEAMS,
     obstacles: sharedMapObstacles,
@@ -1866,22 +1958,110 @@ io.on('connection', (socket) => {
     const res = userStore.updateUserCustomization(socket.user.username, payload || {});
     if (res.ok) {
       socket.user = res.user;
-      // Eğer aktif bir odadaysa rengini ve kostümünü güncelle
+      // Eğer aktif bir odadaysa rengini, kostümünü ve ekipmanlarını güncelle
       if (socket.currentRoomId) {
         const room = rooms.get(socket.currentRoomId);
         const p = room ? room.players.get(socket.id) : null;
         if (p) {
           if (!room.isTeam) p.color = res.user.color;
           p.skin = res.user.skin;
+          p.equipped = res.user.equipped || p.equipped;
         }
       }
     }
     if (typeof ack === 'function') ack(res);
   });
 
+  // 2b) Slime Mağazası (Shop) Satın Alma, Kuşanma ve Coin Paketi İşlemleri
+  socket.on('shopBuyItem', (payload, ack) => {
+    if (!socket.user) {
+      if (typeof ack === 'function') {
+        ack({ ok: false, isGuest: true, error: 'Misafir modunda yerel cüzdan kullanılır.' });
+      }
+      return;
+    }
+    const res = userStore.purchaseStoreItem(socket.user.username, payload || {});
+    if (res.ok) {
+      socket.user = res.user;
+      if (socket.currentRoomId) {
+        const room = rooms.get(socket.currentRoomId);
+        const p = room ? room.players.get(socket.id) : null;
+        if (p) {
+          p.skin = res.user.skin;
+          p.equipped = res.user.equipped;
+        }
+      }
+    }
+    if (typeof ack === 'function') ack(res);
+  });
+
+  socket.on('shopEquipItem', (payload, ack) => {
+    if (!socket.user) {
+      if (typeof ack === 'function') {
+        ack({ ok: false, isGuest: true });
+      }
+      return;
+    }
+    const res = userStore.equipStoreItem(socket.user.username, payload || {});
+    if (res.ok) {
+      socket.user = res.user;
+      if (socket.currentRoomId) {
+        const room = rooms.get(socket.currentRoomId);
+        const p = room ? room.players.get(socket.id) : null;
+        if (p) {
+          p.skin = res.user.skin;
+          p.equipped = res.user.equipped;
+        }
+      }
+    }
+    if (typeof ack === 'function') ack(res);
+  });
+
+  socket.on('shopClaimCoinPack', (payload, ack) => {
+    if (!socket.user) {
+      if (typeof ack === 'function') ack({ ok: false, isGuest: true });
+      return;
+    }
+    const res = userStore.claimCoinPack(socket.user.username, payload || {});
+    if (res.ok) {
+      socket.user = res.user;
+    }
+    if (typeof ack === 'function') ack(res);
+  });
+
+  socket.on('syncGuestLoadout', (payload) => {
+    if (!payload || typeof payload !== 'object') return;
+    socket.guestEquipped = {
+      hat: typeof payload.hat === 'string' ? payload.hat : null,
+      skin: typeof payload.skin === 'string' ? payload.skin : null,
+      belt: typeof payload.belt === 'string' ? payload.belt : null,
+      kill_effect: typeof payload.kill_effect === 'string' ? payload.kill_effect : null,
+      title: typeof payload.title === 'string' ? payload.title : null
+    };
+    if (socket.currentRoomId) {
+      const room = rooms.get(socket.currentRoomId);
+      const p = room ? room.players.get(socket.id) : null;
+      if (p && !socket.user) {
+        p.equipped = socket.guestEquipped;
+        if (socket.guestEquipped.hat) {
+          p.skin = socket.guestEquipped.hat;
+        }
+      }
+    }
+  });
+
   // 3) Odaya Katılma veya Maçı Canlı İzleme (Misafir veya Üye)
   socket.on('joinRoom', (payload, ack) => {
-    const { roomId = 'ffa', guestName = '', preferredTeam = null, watchOnly = false } = payload || {};
+    const { roomId = 'ffa', guestName = '', preferredTeam = null, watchOnly = false, guestEquipped = null } = payload || {};
+    if (guestEquipped && typeof guestEquipped === 'object') {
+      socket.guestEquipped = {
+        hat: typeof guestEquipped.hat === 'string' ? guestEquipped.hat : null,
+        skin: typeof guestEquipped.skin === 'string' ? guestEquipped.skin : null,
+        belt: typeof guestEquipped.belt === 'string' ? guestEquipped.belt : null,
+        kill_effect: typeof guestEquipped.kill_effect === 'string' ? guestEquipped.kill_effect : null,
+        title: typeof guestEquipped.title === 'string' ? guestEquipped.title : null
+      };
+    }
     const room = rooms.get(roomId);
     if (!room) {
       if (typeof ack === 'function') ack({ ok: false, error: 'Oda bulunamadı.' });
@@ -1946,6 +2126,7 @@ io.on('connection', (socket) => {
         username: socket.user ? socket.user.username : null,
         color: socket.user ? socket.user.color : '#00F5D4',
         skin: socket.user ? socket.user.skin : 'crown',
+        equipped: socket.user ? socket.user.equipped : (socket.guestEquipped || null),
         team: null,
         isBot: false,
         isGuest: !socket.user,
@@ -2020,7 +2201,12 @@ io.on('connection', (socket) => {
         ? socket.user.color
         : SLIME_COLORS[room.players.size % SLIME_COLORS.length].id;
 
-    const playerSkin = socket.user ? socket.user.skin : 'crown';
+    const activeEquipped = socket.user ? socket.user.equipped : (socket.guestEquipped || null);
+    const playerSkin = (activeEquipped && activeEquipped.hat)
+      ? activeEquipped.hat
+      : socket.user
+        ? socket.user.skin
+        : 'crown';
 
     // "🚀 Maça Katıl" seçen oyuncu bekletilmeden doğrudan duvar seçimine (waitingForWall = true) alınır!
     let isSpectating = false;
@@ -2063,6 +2249,7 @@ io.on('connection', (socket) => {
       username: socket.user ? socket.user.username : null,
       color: playerColor,
       skin: playerSkin,
+      equipped: activeEquipped,
       team: assignedTeam,
       isBot: false,
       isGuest: !socket.user,

@@ -53,7 +53,18 @@
 
     // Online Sunucu Ayarları
     MIN_TOTAL_PLAYERS_WITH_BOTS: 6,
-    MAX_PLAYERS_PER_ROOM: 40
+    MAX_PLAYERS_PER_ROOM: 40,
+
+    // Slime Mağazası & Kariyer Puan/Coin Kazanım Kurgusu
+    STARTER_SLIME_POINTS: 500,          // Yeni oyunculara hoş geldin Slime Puanı
+    STARTER_SLIME_COINS: 100,           // Yeni oyunculara hoş geldin Slime Coin
+    REWARD_POINT_PER_CUT: 25,           // Her kemer kesimi (✂️) başına +25 Slime Puan
+    REWARD_POINT_PER_KILL: 75,          // Her rakip eleme (💀) başına +75 Slime Puan
+    REWARD_POINT_SCORE_RATIO: 0.15,     // Maç skoru üzerinden +%15 Slime Puan
+    REWARD_POINT_MATCH_COMPLETE: 50,    // Maç tamamlama ödülü +50 Slime Puan
+    REWARD_POINT_MATCH_WIN: 150,        // Maç şampiyonluğu ödülü +150 Slime Puan
+    REWARD_COIN_MATCH_WIN: 15,          // Maç şampiyonluğu ödülü +15 Slime Coin
+    REWARD_COIN_PER_3_KILLS: 5          // Her 3 elemede +5 Slime Coin
   };
 
   // Rastgele Verilen 3 Geçici Güçlendirme Türü (10 Saniye Süreli)
