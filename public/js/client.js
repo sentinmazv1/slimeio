@@ -2005,135 +2005,485 @@
     }
   });
 
-  // --- BASIC 10 KOSTÜM ÇİZİM FONKSİYONU ---
+  // --- 3D PARLAK JÖLE RENK TONU ÖNBELLEĞİ ---
+  const slimeShadeCache = new Map();
+
+  function getSlimeColorShades(hex) {
+    const key = String(hex || '#00F5D4').toUpperCase();
+    if (slimeShadeCache.has(key)) return slimeShadeCache.get(key);
+
+    let clean = key.replace('#', '');
+    if (clean.length === 3) {
+      clean = clean[0] + clean[0] + clean[1] + clean[1] + clean[2] + clean[2];
+    }
+    const num = parseInt(clean, 16);
+    const r = Number.isFinite(num) ? (num >> 16) & 255 : 0;
+    const g = Number.isFinite(num) ? (num >> 8) & 255 : 245;
+    const b = Number.isFinite(num) ? num & 255 : 212;
+
+    const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+    const rgb = (rr, gg, bb) => `rgb(${clamp(rr)}, ${clamp(gg)}, ${clamp(bb)})`;
+    const rgba = (rr, gg, bb, a) => `rgba(${clamp(rr)}, ${clamp(gg)}, ${clamp(bb)}, ${a})`;
+
+    const shades = {
+      base: key,
+      highlight: rgb(r + (255 - r) * 0.58, g + (255 - g) * 0.58, b + (255 - b) * 0.58),
+      midBright: rgb(r + (255 - r) * 0.22, g + (255 - g) * 0.22, b + (255 - b) * 0.22),
+      deep: rgb(r * 0.52, g * 0.48, b * 0.56),
+      darkEdge: rgb(r * 0.34, g * 0.30, b * 0.40),
+      rimGlow: rgba(r + (255 - r) * 0.45, g + (255 - g) * 0.45, b + (255 - b) * 0.45, 0.72),
+      bellyBounce: rgba(0, 245, 212, 0.42)
+    };
+    slimeShadeCache.set(key, shades);
+    return shades;
+  }
+
+  // --- 3D KÜRESEL JÖLE GÖVDE + CAM PARLAMASI + KOSTÜM YANSIMASI ---
+  function draw3DSlimeBody(targetCtx, baseR, colorHex, time, wobblePhase = 0, skinId = 'crown') {
+    const shades = getSlimeColorShades(colorHex);
+    const points = 24;
+
+    targetCtx.save();
+    targetCtx.beginPath();
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const jellyWave =
+        Math.sin(a * 3 + time * 0.008 + wobblePhase) * (baseR * 0.055) +
+        Math.cos(a * 2 - time * 0.005 + wobblePhase) * (baseR * 0.025);
+      const r = baseR + jellyWave;
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r;
+      if (i === 0) targetCtx.moveTo(px, py);
+      else targetCtx.lineTo(px, py);
+    }
+    targetCtx.closePath();
+
+    // 1) Dış Neon Aura + 3D Küresel Radyal Gövde Gradyanı
+    targetCtx.shadowColor = shades.base;
+    targetCtx.shadowBlur = baseR * 0.75;
+    const bodyGrad = targetCtx.createRadialGradient(
+      -baseR * 0.32,
+      -baseR * 0.36,
+      baseR * 0.06,
+      0,
+      baseR * 0.08,
+      baseR * 1.08
+    );
+    bodyGrad.addColorStop(0, shades.highlight);
+    bodyGrad.addColorStop(0.28, shades.midBright);
+    bodyGrad.addColorStop(0.64, shades.base);
+    bodyGrad.addColorStop(0.90, shades.deep);
+    bodyGrad.addColorStop(1, shades.darkEdge);
+
+    targetCtx.fillStyle = bodyGrad;
+    targetCtx.fill();
+    targetCtx.shadowBlur = 0;
+
+    // Gövde içi klipleme (iç yansımalar, alt neon lazer yansıması ve kafa üstü kostüm parlaması)
+    targetCtx.save();
+    targetCtx.clip();
+
+    // 2) Alt Karın Neon Lazer Yansıması (Görseldeki gövdeyi saran turkuaz/pembe neon ışık yansıması)
+    targetCtx.beginPath();
+    targetCtx.arc(0, baseR * 0.14, baseR * 0.82, Math.PI * 0.14, Math.PI * 0.86);
+    targetCtx.lineWidth = Math.max(2, baseR * 0.09);
+    targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.34)';
+    targetCtx.shadowColor = '#00F5D4';
+    targetCtx.shadowBlur = 8;
+    targetCtx.lineCap = 'round';
+    targetCtx.stroke();
+    targetCtx.shadowBlur = 0;
+
+    // 3) Kafa Üstü Kostüm Işık Yansıması (Görseldeki altın halenin jöle kafaya vurduğu parlak halka yansıma)
+    if (skinId === 'angel' || skinId === 'crown' || skinId === 'wizard') {
+      targetCtx.save();
+      targetCtx.rotate(-0.12);
+      targetCtx.beginPath();
+      targetCtx.ellipse(0, -baseR * 0.62, baseR * 0.42, baseR * 0.12, 0, 0, Math.PI * 2);
+      targetCtx.strokeStyle = 'rgba(255, 230, 102, 0.68)';
+      targetCtx.lineWidth = Math.max(2, baseR * 0.085);
+      targetCtx.shadowColor = '#FFE066';
+      targetCtx.shadowBlur = 8;
+      targetCtx.stroke();
+      targetCtx.restore();
+    } else if (skinId === 'cyber' || skinId === 'headset') {
+      targetCtx.beginPath();
+      targetCtx.ellipse(0, -baseR * 0.64, baseR * 0.40, baseR * 0.11, 0, 0, Math.PI * 2);
+      targetCtx.strokeStyle = 'rgba(0, 245, 212, 0.52)';
+      targetCtx.lineWidth = Math.max(1.8, baseR * 0.075);
+      targetCtx.stroke();
+    }
+
+    // 4) Sol-Üst 3D Cam / Jöle Parlama (Specular Highlight) + İkincil Su Damlası Parıltısı
+    const specGrad = targetCtx.createLinearGradient(
+      -baseR * 0.55,
+      -baseR * 0.72,
+      -baseR * 0.05,
+      -baseR * 0.12
+    );
+    specGrad.addColorStop(0, 'rgba(255, 255, 255, 0.78)');
+    specGrad.addColorStop(1, 'rgba(255, 255, 255, 0.08)');
+
+    targetCtx.beginPath();
+    targetCtx.ellipse(-baseR * 0.30, -baseR * 0.42, baseR * 0.30, baseR * 0.15, -0.52, 0, Math.PI * 2);
+    targetCtx.fillStyle = specGrad;
+    targetCtx.fill();
+
+    targetCtx.beginPath();
+    targetCtx.arc(-baseR * 0.52, -baseR * 0.16, Math.max(1.8, baseR * 0.065), 0, Math.PI * 2);
+    targetCtx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+    targetCtx.fill();
+
+    targetCtx.restore(); // clip sonu
+
+    // 5) Dış 3D Rim-Light Çerçevesi
+    targetCtx.lineWidth = Math.max(1.8, baseR * 0.085);
+    targetCtx.strokeStyle = shades.rimGlow;
+    targetCtx.stroke();
+    targetCtx.restore();
+  }
+
+  // --- 3D PIXAR / ARCADE TARZI İRİ PARLAK SEVİMLİ GÖZLER VE GÜLÜMSEME ---
+  function draw3DCuteEyes(targetCtx, baseR, lookX, lookY, time, seedPhase = 0) {
+    targetCtx.save();
+
+    // Gözlerin hemen altında tatlı 3D yanak allığı ve hafif tebessüm çukuru
+    for (const side of [-1, 1]) {
+      targetCtx.beginPath();
+      targetCtx.ellipse(
+        side * baseR * 0.44 + lookX * 0.25,
+        baseR * 0.16 + lookY * 0.25,
+        baseR * 0.14,
+        baseR * 0.075,
+        0,
+        0,
+        Math.PI * 2
+      );
+      targetCtx.fillStyle = 'rgba(255, 112, 166, 0.34)';
+      targetCtx.fill();
+    }
+
+    // Tatlı minik gülümseme kavisi
+    targetCtx.beginPath();
+    targetCtx.arc(lookX * 0.35, baseR * 0.13 + lookY * 0.35, baseR * 0.19, Math.PI * 0.18, Math.PI * 0.82);
+    targetCtx.lineWidth = Math.max(1.6, baseR * 0.065);
+    targetCtx.lineCap = 'round';
+    targetCtx.strokeStyle = 'rgba(15, 23, 42, 0.42)';
+    targetCtx.stroke();
+
+    // Doğal göz kırpma animasyonu (her ~4.5 saniyede bir çok kısa sevimli göz kırpma)
+    const blinkCycle = Math.sin(time * 0.0022 + seedPhase * 3.7);
+    const isBlinking = blinkCycle > 0.985;
+
+    const eyeRx = baseR * 0.235;
+    const eyeRy = baseR * 0.285;
+
+    for (const side of [-1, 1]) {
+      const ex = side * baseR * 0.245 + lookX * 0.55;
+      const ey = -baseR * 0.08 + lookY * 0.55;
+
+      targetCtx.save();
+      targetCtx.translate(ex, ey);
+      targetCtx.rotate(side * -0.07);
+
+      if (isBlinking) {
+        // Mutlu kapalı göz kavisi
+        targetCtx.beginPath();
+        targetCtx.arc(0, 0, eyeRx, Math.PI * 1.12, Math.PI * 1.88);
+        targetCtx.lineWidth = Math.max(2.2, baseR * 0.095);
+        targetCtx.lineCap = 'round';
+        targetCtx.strokeStyle = '#1E1B4B';
+        targetCtx.stroke();
+        targetCtx.restore();
+        continue;
+      }
+
+      // 1) Göz Çukuru 3D Derinlik Gölgesi
+      targetCtx.beginPath();
+      targetCtx.ellipse(0, baseR * 0.03, eyeRx * 1.10, eyeRy * 1.08, 0, 0, Math.PI * 2);
+      targetCtx.fillStyle = 'rgba(8, 11, 18, 0.38)';
+      targetCtx.fill();
+
+      // 2) 3D Gölgeli Göz Akı (Sclera)
+      const scleraGrad = targetCtx.createRadialGradient(
+        -eyeRx * 0.2,
+        -eyeRy * 0.2,
+        eyeRx * 0.1,
+        0,
+        0,
+        eyeRy * 1.05
+      );
+      scleraGrad.addColorStop(0, '#FFFFFF');
+      scleraGrad.addColorStop(0.75, '#F8FAFC');
+      scleraGrad.addColorStop(1, '#CBD5E1');
+
+      targetCtx.beginPath();
+      targetCtx.ellipse(0, 0, eyeRx, eyeRy, 0, 0, Math.PI * 2);
+      targetCtx.fillStyle = scleraGrad;
+      targetCtx.fill();
+      targetCtx.lineWidth = Math.max(1.1, baseR * 0.042);
+      targetCtx.strokeStyle = 'rgba(15, 23, 42, 0.55)';
+      targetCtx.stroke();
+
+      // 3) 3D Parlak Kehribar / Ela-Kahve İris (Görseldeki sıcak parlak göz rengi)
+      const irisOffX = lookX * 0.26;
+      const irisOffY = lookY * 0.26;
+      const irisRx = eyeRx * 0.66;
+      const irisRy = eyeRy * 0.66;
+
+      const irisGrad = targetCtx.createRadialGradient(
+        irisOffX - irisRx * 0.2,
+        irisOffY - irisRy * 0.25,
+        irisRx * 0.1,
+        irisOffX,
+        irisOffY,
+        irisRy
+      );
+      irisGrad.addColorStop(0, '#FBBF24');
+      irisGrad.addColorStop(0.45, '#B45309');
+      irisGrad.addColorStop(0.82, '#78350F');
+      irisGrad.addColorStop(1, '#271206');
+
+      targetCtx.beginPath();
+      targetCtx.ellipse(irisOffX, irisOffY, irisRx, irisRy, 0, 0, Math.PI * 2);
+      targetCtx.fillStyle = irisGrad;
+      targetCtx.fill();
+
+      // 4) Kadife Siyah Göz Bebeği (Pupil)
+      targetCtx.beginPath();
+      targetCtx.ellipse(irisOffX * 1.08, irisOffY * 1.08, irisRx * 0.54, irisRy * 0.54, 0, 0, Math.PI * 2);
+      targetCtx.fillStyle = '#090D16';
+      targetCtx.fill();
+
+      // 5) Çift Katmanlı Canlı Işık Yansıması (Catchlights — Sevimliliğin anahtarı!)
+      targetCtx.beginPath();
+      targetCtx.arc(
+        irisOffX - irisRx * 0.34,
+        irisOffY - irisRy * 0.36,
+        Math.max(1.7, baseR * 0.082),
+        0,
+        Math.PI * 2
+      );
+      targetCtx.fillStyle = '#FFFFFF';
+      targetCtx.fill();
+
+      targetCtx.beginPath();
+      targetCtx.arc(
+        irisOffX + irisRx * 0.32,
+        irisOffY + irisRy * 0.34,
+        Math.max(0.95, baseR * 0.042),
+        0,
+        Math.PI * 2
+      );
+      targetCtx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+      targetCtx.fill();
+
+      targetCtx.restore();
+    }
+
+    targetCtx.restore();
+  }
+
+  // --- BASIC 10 KOSTÜM ÇİZİM FONKSİYONU (3D NEON & PARLAK EFEKTLİ) ---
   function drawSkinAccessory(targetCtx, skinId, baseR, time) {
     targetCtx.save();
     switch (skinId) {
       case 'crown': {
-        // Altın Kral Tacı
-        targetCtx.fillStyle = '#FFD700';
-        targetCtx.strokeStyle = '#B45309';
-        targetCtx.lineWidth = 2;
+        // 3D Altın Kral Tacı + Mücevher Parıltısı
+        const crownGrad = targetCtx.createLinearGradient(0, -baseR - 16, 0, -baseR + 4);
+        crownGrad.addColorStop(0, '#FEF08A');
+        crownGrad.addColorStop(0.5, '#FACC15');
+        crownGrad.addColorStop(1, '#CA8A04');
+        targetCtx.fillStyle = crownGrad;
+        targetCtx.strokeStyle = '#FEF9C3';
+        targetCtx.shadowColor = '#FACC15';
+        targetCtx.shadowBlur = 10;
+        targetCtx.lineWidth = 1.8;
         targetCtx.beginPath();
         targetCtx.moveTo(-14, -baseR + 4);
         targetCtx.lineTo(-16, -baseR - 12);
         targetCtx.lineTo(-6, -baseR - 4);
-        targetCtx.lineTo(0, -baseR - 15);
+        targetCtx.lineTo(0, -baseR - 16);
         targetCtx.lineTo(6, -baseR - 4);
         targetCtx.lineTo(16, -baseR - 12);
         targetCtx.lineTo(14, -baseR + 4);
         targetCtx.closePath();
         targetCtx.fill();
         targetCtx.stroke();
+        targetCtx.shadowBlur = 0;
+
+        // Orta yakut taş
+        targetCtx.beginPath();
+        targetCtx.arc(0, -baseR - 2, 2.6, 0, Math.PI * 2);
+        targetCtx.fillStyle = '#FF2A85';
+        targetCtx.fill();
         break;
       }
       case 'ninja': {
-        // Kırmızı Ninja Bandı
+        // 3D Kırmızı Ninja Bandı ve Metal Plakası
+        targetCtx.fillStyle = '#DC2626';
+        targetCtx.shadowColor = '#EF4444';
+        targetCtx.shadowBlur = 8;
+        targetCtx.beginPath();
+        targetCtx.roundRect(-baseR + 2, -baseR * 0.58, (baseR - 2) * 2, 7.5, 3);
+        targetCtx.fill();
+        targetCtx.shadowBlur = 0;
+
+        targetCtx.fillStyle = '#E2E8F0';
+        targetCtx.fillRect(-7, -baseR * 0.55, 14, 5);
+
         targetCtx.fillStyle = '#EF4444';
-        targetCtx.fillRect(-baseR + 2, -baseR * 0.55, (baseR - 2) * 2, 7);
         targetCtx.beginPath();
         targetCtx.moveTo(-baseR + 2, -baseR * 0.45);
-        targetCtx.lineTo(-baseR - 12, -baseR * 0.65 + Math.sin(time * 0.01) * 4);
-        targetCtx.lineTo(-baseR - 10, -baseR * 0.25 + Math.sin(time * 0.01) * 4);
+        targetCtx.lineTo(-baseR - 13, -baseR * 0.68 + Math.sin(time * 0.012) * 4);
+        targetCtx.lineTo(-baseR - 10, -baseR * 0.25 + Math.sin(time * 0.012) * 4);
         targetCtx.closePath();
         targetCtx.fill();
         break;
       }
       case 'cyber': {
-        // Siber Lazer Vizör Gözlük
-        targetCtx.fillStyle = '#00F5D4';
+        // 3D Siber Lazer Vizör Gözlük
+        const visorGrad = targetCtx.createLinearGradient(-16, -8, 16, 2);
+        visorGrad.addColorStop(0, '#00F5D4');
+        visorGrad.addColorStop(0.5, '#FFFFFF');
+        visorGrad.addColorStop(1, '#00BBF9');
+        targetCtx.fillStyle = visorGrad;
         targetCtx.shadowColor = '#00F5D4';
-        targetCtx.shadowBlur = 10;
-        targetCtx.fillRect(-15, -7, 30, 8);
+        targetCtx.shadowBlur = 14;
+        targetCtx.beginPath();
+        targetCtx.roundRect(-16, -7.5, 32, 8.5, 4);
+        targetCtx.fill();
         targetCtx.strokeStyle = '#FFFFFF';
         targetCtx.lineWidth = 1.5;
-        targetCtx.strokeRect(-15, -7, 30, 8);
-        break;
-      }
-      case 'pirate': {
-        // Korsan Şapkası
-        targetCtx.fillStyle = '#1E293B';
-        targetCtx.strokeStyle = '#F59E0B';
-        targetCtx.lineWidth = 2;
-        targetCtx.beginPath();
-        targetCtx.moveTo(-20, -baseR + 4);
-        targetCtx.quadraticCurveTo(0, -baseR - 18, 20, -baseR + 4);
-        targetCtx.closePath();
-        targetCtx.fill();
         targetCtx.stroke();
         break;
       }
+      case 'pirate': {
+        // 3D Korsan Kaptan Şapkası
+        targetCtx.fillStyle = '#0F172A';
+        targetCtx.strokeStyle = '#FBBF24';
+        targetCtx.shadowColor = '#F59E0B';
+        targetCtx.shadowBlur = 8;
+        targetCtx.lineWidth = 2.2;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-21, -baseR + 4);
+        targetCtx.quadraticCurveTo(0, -baseR - 19, 21, -baseR + 4);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.stroke();
+        targetCtx.shadowBlur = 0;
+        break;
+      }
       case 'devil': {
-        // Ateş Boynuzları
-        targetCtx.fillStyle = '#FF0055';
+        // 3D Parlak Ateş Boynuzları
+        const hornGrad = targetCtx.createLinearGradient(0, -baseR - 16, 0, -baseR + 4);
+        hornGrad.addColorStop(0, '#FDE047');
+        hornGrad.addColorStop(0.45, '#FF2A85');
+        hornGrad.addColorStop(1, '#991B1B');
+        targetCtx.fillStyle = hornGrad;
+        targetCtx.shadowColor = '#FF2A85';
+        targetCtx.shadowBlur = 10;
         targetCtx.beginPath();
         targetCtx.moveTo(-14, -baseR + 4);
-        targetCtx.quadraticCurveTo(-22, -baseR - 14, -8, -baseR - 12);
+        targetCtx.quadraticCurveTo(-23, -baseR - 15, -8, -baseR - 13);
         targetCtx.closePath();
         targetCtx.fill();
         targetCtx.beginPath();
         targetCtx.moveTo(14, -baseR + 4);
-        targetCtx.quadraticCurveTo(22, -baseR - 14, 8, -baseR - 12);
+        targetCtx.quadraticCurveTo(23, -baseR - 15, 8, -baseR - 13);
         targetCtx.closePath();
         targetCtx.fill();
         break;
       }
       case 'angel': {
-        // Kutsal Altın Hale
-        targetCtx.strokeStyle = '#FFE066';
+        // Görseldekiyle Birebir: Eğimli 3D Parlak Altın Neon Hale + Işık Çekirdeği
+        const floatY = -baseR - 11 + Math.sin(time * 0.006) * 2.2;
+        targetCtx.save();
+        targetCtx.translate(0, floatY);
+        targetCtx.rotate(-0.12);
+
+        // Dış altın neon halesi
+        targetCtx.strokeStyle = '#F59E0B';
         targetCtx.shadowColor = '#FFE066';
-        targetCtx.shadowBlur = 12;
-        targetCtx.lineWidth = 3.5;
+        targetCtx.shadowBlur = 16;
+        targetCtx.lineWidth = 5.2;
         targetCtx.beginPath();
-        targetCtx.ellipse(0, -baseR - 10 + Math.sin(time * 0.006) * 2, 16, 5, 0, 0, Math.PI * 2);
+        targetCtx.ellipse(0, 0, baseR * 0.68, baseR * 0.21, 0, 0, Math.PI * 2);
         targetCtx.stroke();
+
+        // İç sıcak beyaz-altın çekirdek halkası
+        targetCtx.strokeStyle = '#FEF9C3';
+        targetCtx.shadowColor = '#FFFFFF';
+        targetCtx.shadowBlur = 6;
+        targetCtx.lineWidth = 2.1;
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 0, baseR * 0.68, baseR * 0.21, 0, 0, Math.PI * 2);
+        targetCtx.stroke();
+        targetCtx.restore();
         break;
       }
       case 'viking': {
-        // Boynuzlu Viking Miğferi
+        // 3D Boynuzlu Viking Miğferi
         targetCtx.fillStyle = '#94A3B8';
         targetCtx.beginPath();
         targetCtx.arc(0, -baseR + 5, 15, Math.PI, 0);
         targetCtx.fill();
         targetCtx.strokeStyle = '#F8FAFC';
-        targetCtx.lineWidth = 3;
+        targetCtx.shadowColor = '#E2E8F0';
+        targetCtx.shadowBlur = 6;
+        targetCtx.lineWidth = 3.2;
         targetCtx.beginPath();
         targetCtx.moveTo(-14, -baseR + 2);
-        targetCtx.lineTo(-22, -baseR - 10);
+        targetCtx.lineTo(-22, -baseR - 11);
         targetCtx.moveTo(14, -baseR + 2);
-        targetCtx.lineTo(22, -baseR - 10);
+        targetCtx.lineTo(22, -baseR - 11);
         targetCtx.stroke();
         break;
       }
       case 'wizard': {
-        // Mistik Büyücü Şapkası
-        targetCtx.fillStyle = '#6D28D9';
-        targetCtx.strokeStyle = '#FCD34D';
+        // 3D Mistik Büyücü Şapkası
+        const wizGrad = targetCtx.createLinearGradient(0, -baseR - 21, 0, -baseR + 4);
+        wizGrad.addColorStop(0, '#C084FC');
+        wizGrad.addColorStop(1, '#581C87');
+        targetCtx.fillStyle = wizGrad;
+        targetCtx.strokeStyle = '#FDE047';
+        targetCtx.shadowColor = '#A855F7';
+        targetCtx.shadowBlur = 10;
         targetCtx.lineWidth = 2;
         targetCtx.beginPath();
-        targetCtx.moveTo(-18, -baseR + 4);
-        targetCtx.lineTo(0, -baseR - 20);
-        targetCtx.lineTo(18, -baseR + 4);
+        targetCtx.moveTo(-19, -baseR + 4);
+        targetCtx.lineTo(0, -baseR - 21);
+        targetCtx.lineTo(19, -baseR + 4);
         targetCtx.closePath();
         targetCtx.fill();
         targetCtx.stroke();
         break;
       }
       case 'headset': {
-        // RGB Oyuncu Kulaklığı
+        // 3D RGB Oyuncu Kulaklığı
         targetCtx.strokeStyle = '#00F5D4';
+        targetCtx.shadowColor = '#00F5D4';
+        targetCtx.shadowBlur = 10;
         targetCtx.lineWidth = 4;
         targetCtx.beginPath();
         targetCtx.arc(0, 0, baseR + 3, Math.PI * 1.1, Math.PI * 1.9);
         targetCtx.stroke();
         targetCtx.fillStyle = '#FF2A85';
-        targetCtx.fillRect(-baseR - 5, -6, 6, 14);
-        targetCtx.fillRect(baseR - 1, -6, 6, 14);
+        targetCtx.shadowColor = '#FF2A85';
+        targetCtx.beginPath();
+        targetCtx.roundRect(-baseR - 5.5, -6, 6.5, 14, 3);
+        targetCtx.roundRect(baseR - 1, -6, 6.5, 14, 3);
+        targetCtx.fill();
         break;
       }
       case 'fez': {
-        // Tosun Paşa Fesi (Seferoğulları / Tellioğulları Özel)
-        targetCtx.fillStyle = '#DC2626';
+        // 3D Tosun Paşa Fesi (Seferoğulları / Tellioğulları Özel)
+        const fezGrad = targetCtx.createLinearGradient(-12, -baseR - 13, 12, -baseR + 4);
+        fezGrad.addColorStop(0, '#EF4444');
+        fezGrad.addColorStop(1, '#991B1B');
+        targetCtx.fillStyle = fezGrad;
+        targetCtx.shadowColor = '#EF4444';
+        targetCtx.shadowBlur = 8;
         targetCtx.beginPath();
         targetCtx.moveTo(-12, -baseR + 4);
         targetCtx.lineTo(-10, -baseR - 13);
@@ -2141,7 +2491,8 @@
         targetCtx.lineTo(12, -baseR + 4);
         targetCtx.closePath();
         targetCtx.fill();
-        targetCtx.strokeStyle = '#111827';
+        targetCtx.shadowBlur = 0;
+        targetCtx.strokeStyle = '#FACC15';
         targetCtx.lineWidth = 2.5;
         targetCtx.beginPath();
         targetCtx.moveTo(0, -baseR - 13);
@@ -2161,39 +2512,17 @@
 
     previewCtx.save();
     previewCtx.translate(w / 2, h / 2 + 12);
-    const r = 26;
+    const r = 27;
 
-    previewCtx.beginPath();
-    for (let i = 0; i <= 16; i++) {
-      const a = (i / 16) * Math.PI * 2;
-      const wave = Math.sin(a * 3 + time * 0.008) * 1.6;
-      const px = Math.cos(a) * (r + wave);
-      const py = Math.sin(a) * (r + wave);
-      if (i === 0) previewCtx.moveTo(px, py);
-      else previewCtx.lineTo(px, py);
-    }
-    previewCtx.closePath();
-    previewCtx.fillStyle = selectedColor;
-    previewCtx.shadowColor = selectedColor;
-    previewCtx.shadowBlur = 14;
-    previewCtx.fill();
-    previewCtx.shadowBlur = 0;
-    previewCtx.lineWidth = 2;
-    previewCtx.strokeStyle = '#FFFFFF';
-    previewCtx.stroke();
+    // 1) 3D Parlak Jöle Gövde
+    draw3DSlimeBody(previewCtx, r, selectedColor, time, 0.5, selectedSkin);
 
-    // Gözler
-    for (const s of [-1, 1]) {
-      previewCtx.beginPath();
-      previewCtx.arc(s * 7, -2, 4.5, 0, Math.PI * 2);
-      previewCtx.fillStyle = '#FFF';
-      previewCtx.fill();
-      previewCtx.beginPath();
-      previewCtx.arc(s * 7 + 1, -2, 2.2, 0, Math.PI * 2);
-      previewCtx.fillStyle = '#080B12';
-      previewCtx.fill();
-    }
+    // 2) 3D Sevimli Canlı Gözler (hafif canlı bakış salınımı ile)
+    const lookX = Math.sin(time * 0.0022) * 2.2;
+    const lookY = Math.cos(time * 0.0018) * 1.4;
+    draw3DCuteEyes(previewCtx, r, lookX, lookY, time, 1.2);
 
+    // 3) 3D Neon Kostüm Aksesuarı
     drawSkinAccessory(previewCtx, selectedSkin, r, time);
     previewCtx.restore();
   }
@@ -2291,31 +2620,56 @@
     const midY = (y1 + y2) * 0.5 + Math.cos(time * 0.004 + band.id) * 14;
 
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(x1, y1, 7, 0, Math.PI * 2);
-    ctx.fillStyle = player.color;
-    ctx.shadowColor = player.color;
-    ctx.shadowBlur = 10;
-    ctx.fill();
+    ctx.lineCap = 'round';
 
-    ctx.beginPath();
     if (isTargetedForRightClick) {
+      ctx.beginPath();
       ctx.setLineDash([12, 6]);
-      ctx.lineWidth = 5.5;
+      ctx.lineWidth = 6;
       ctx.strokeStyle = '#FFFFFF';
       ctx.shadowColor = '#FFFFFF';
-      ctx.shadowBlur = 14;
+      ctx.shadowBlur = 16;
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(midX, midY, x2, y2);
+      ctx.stroke();
+      ctx.setLineDash([]);
     } else {
-      ctx.lineWidth = 3.4;
+      // 1) Dış Neon Lazer Işıması (Görseldeki parlak turkuaz/pembe lazer kemerler)
+      ctx.beginPath();
+      ctx.lineWidth = 4.6;
       ctx.strokeStyle = player.color;
       ctx.shadowColor = player.color;
-      ctx.shadowBlur = 8;
-      ctx.globalAlpha = 0.85;
+      ctx.shadowBlur = 14;
+      ctx.globalAlpha = 0.9;
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(midX, midY, x2, y2);
+      ctx.stroke();
+
+      // 2) İç Beyaz Lazer Çekirdeği (Hot Laser Core)
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.globalAlpha = 0.88;
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(midX, midY, x2, y2);
+      ctx.stroke();
     }
-    ctx.moveTo(x1, y1);
-    ctx.quadraticCurveTo(midX, midY, x2, y2);
-    ctx.lineCap = 'round';
-    ctx.stroke();
+
+    // Duvar Bağlantı Noktasında Parlak Neon Enerji Küresi
+    ctx.globalAlpha = 1.0;
+    ctx.beginPath();
+    ctx.arc(x1, y1, 7.5, 0, Math.PI * 2);
+    ctx.fillStyle = player.color;
+    ctx.shadowColor = player.color;
+    ctx.shadowBlur = 14;
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(x1, y1, 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
     ctx.restore();
   }
 
@@ -2326,22 +2680,29 @@
       ctx.translate(a.x, a.y);
       ctx.rotate(angle);
 
+      // Neon Lazer Ok Gövdesi (Görseldeki parlak üçgen neon ok ucuyla birebir uyumlu)
       ctx.shadowColor = a.color;
-      ctx.shadowBlur = 14;
+      ctx.shadowBlur = 18;
 
       ctx.beginPath();
-      ctx.moveTo(17, 0);
-      ctx.quadraticCurveTo(0, 9, -15, 5);
-      ctx.lineTo(-10, 0);
-      ctx.lineTo(-15, -5);
-      ctx.quadraticCurveTo(0, -9, 17, 0);
+      ctx.moveTo(19, 0);
+      ctx.lineTo(-14, 9);
+      ctx.lineTo(-8, 0);
+      ctx.lineTo(-14, -9);
       ctx.closePath();
 
       ctx.fillStyle = a.color;
       ctx.fill();
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.2;
       ctx.strokeStyle = '#FFFFFF';
       ctx.stroke();
+
+      // Ok ucu parlak yıldız çekirdeği
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(14, 0, 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fill();
       ctx.restore();
     }
   }
@@ -2371,14 +2732,11 @@
     ctx.stroke();
     ctx.setLineDash([]);
 
-    ctx.globalAlpha = 0.85;
-    ctx.beginPath();
-    ctx.arc(preview.spawnX, preview.spawnY, config.PLAYER_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = me.color || '#00F5D4';
-    ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.stroke();
+    ctx.globalAlpha = 0.88;
+    ctx.translate(preview.spawnX, preview.spawnY);
+    draw3DSlimeBody(ctx, config.PLAYER_RADIUS, me.color || '#00F5D4', time, 0, me.skin || 'crown');
+    draw3DCuteEyes(ctx, config.PLAYER_RADIUS, 0, 0, time, 0);
+    drawSkinAccessory(ctx, me.skin || 'crown', config.PLAYER_RADIUS, time);
     ctx.restore();
   }
 
@@ -2386,44 +2744,21 @@
     const speed = Math.hypot(player.vx, player.vy);
     const moveAngle = speed > 0.2 ? Math.atan2(player.vy, player.vx) : 0;
 
-    const stretch = 1 + Math.min(speed * 0.032, 0.38) + player.impactPulse * 0.25;
+    const stretch = 1 + Math.min(speed * 0.032, 0.36) + player.impactPulse * 0.25;
     const squash = 1 / Math.sqrt(stretch);
     player.impactPulse *= 0.88;
 
+    const baseR = config.PLAYER_RADIUS;
+
+    // 1) 3D Parlak Jöle Küre Gövde (Hareket yönüne göre esneyen jelly fizik)
     ctx.save();
     ctx.translate(player.renderX, player.renderY);
     ctx.rotate(moveAngle);
     ctx.scale(stretch, squash);
-
-    const baseR = config.PLAYER_RADIUS;
-    const points = 16;
-    ctx.beginPath();
-    for (let i = 0; i <= points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const jellyWave = Math.sin(a * 3 + time * 0.008 + player.wobblePhase) * 1.8;
-      const r = baseR + jellyWave;
-      const px = Math.cos(a) * r;
-      const py = Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-
-    ctx.shadowColor = player.color;
-    ctx.shadowBlur = 16;
-    ctx.fillStyle = player.color;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.ellipse(-baseR * 0.28, -baseR * 0.32, baseR * 0.28, baseR * 0.15, -0.5, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.fill();
+    draw3DSlimeBody(ctx, baseR, player.color || '#00F5D4', time, player.wobblePhase || 0, player.skin || 'crown');
     ctx.restore();
 
+    // 2) 3D İri Parlak Gözler, Allık, Tebessüm ve Neon Kostüm Aksesuarı
     ctx.save();
     ctx.translate(player.renderX, player.renderY);
     const lookAngle =
@@ -2434,23 +2769,10 @@
             ? keyboard.aimAngle
             : Math.atan2(mouseWorld.y - player.renderY, mouseWorld.x - player.renderX)
         : moveAngle;
-    const lookX = Math.cos(lookAngle) * 4;
-    const lookY = Math.sin(lookAngle) * 4;
+    const lookX = Math.cos(lookAngle) * 4.2;
+    const lookY = Math.sin(lookAngle) * 4.2;
 
-    for (const side of [-1, 1]) {
-      const ex = side * 6.5 + lookX * 0.6;
-      const ey = -2 + lookY * 0.6;
-
-      ctx.beginPath();
-      ctx.arc(ex, ey, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(ex + lookX * 0.3, ey + lookY * 0.3, 2.3, 0, Math.PI * 2);
-      ctx.fillStyle = '#080B12';
-      ctx.fill();
-    }
+    draw3DCuteEyes(ctx, baseR, lookX, lookY, time, player.wobblePhase || 0);
 
     // Seçili Basic 10 Kostümünü Çiz
     drawSkinAccessory(ctx, player.skin || 'crown', baseR, time);
@@ -2479,7 +2801,7 @@
     ctx.fillStyle = '#F8F9FA';
     ctx.shadowColor = '#000000';
     ctx.shadowBlur = 6;
-    ctx.fillText(`${familyPrefix}${player.name} [🔗${player.bands.length} | 🏹${ammo}]`, 0, baseR + 20);
+    ctx.fillText(`${familyPrefix}${player.name} [🔗${player.bands.length} | 🏹${ammo}]`, 0, baseR + 22);
     ctx.restore();
   }
 
