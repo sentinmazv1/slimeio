@@ -258,20 +258,13 @@
     });
   }
 
-  leaderboardHeaderEl.addEventListener('click', (e) => {
+  const leaderboardToggleHintEl = document.getElementById('leaderboard-toggle-hint');
+  leaderboardHeaderEl.addEventListener('click', () => {
     const isHidden = leaderboardListEl.style.display === 'none';
-    if (isHidden) {
-      leaderboardListEl.style.display = 'flex';
-      return;
+    leaderboardListEl.style.display = isHidden ? 'flex' : 'none';
+    if (leaderboardToggleHintEl) {
+      leaderboardToggleHintEl.textContent = isHidden ? '▼' : '▲';
     }
-    if (e.target && e.target.tagName === 'SPAN') {
-      const firstRow = leaderboardListEl.querySelector('.lb-row');
-      if (firstRow && typeof window.inspectPlayerProfile === 'function') {
-        window.inspectPlayerProfile(firstRow.dataset.playerId || null, firstRow.dataset.username || '');
-        return;
-      }
-    }
-    leaderboardListEl.style.display = 'none';
   });
 
   // Skor tablosu, takım koltukları ve maç sonu tablosu için anında (pointerdown) profil tıklama delegasyonu
@@ -1281,7 +1274,7 @@
 
   muteBtn.addEventListener('click', () => {
     const isMuted = window.soundManager.toggleMute();
-    muteBtn.textContent = isMuted ? '🔇 Ses' : '🔊 Ses';
+    muteBtn.innerHTML = isMuted ? '🔇<span class="btn-desk-only"> Ses</span>' : '🔊<span class="btn-desk-only"> Ses</span>';
   });
 
   // --- PROFİL İNCELEME, TAKİP ET (ARKADAŞ EKLE) & KAMERA İZLEME SİSTEMİ ---
@@ -1651,12 +1644,27 @@
   const mouseWorld = { x: 0, y: 0 };
 
   function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    const scaleFactor = Math.min(canvas.width / 1280, canvas.height / 760);
-    camera.targetGameplayZoom = Math.max(0.42, Math.min(0.92, scaleFactor * 0.88));
+    const vw = Math.round((window.visualViewport && window.visualViewport.width) || window.innerWidth);
+    const vh = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight);
+    canvas.width = vw;
+    canvas.height = vh;
+    if (vw < 600) {
+      // Mobil dikey ekranda karakter, kemerler ve isimlerin net ve büyük görünmesi için dengeli yakınlaştırma
+      camera.targetGameplayZoom = Math.max(0.58, Math.min(0.72, vw / 620));
+      joystick.maxRadius = 48;
+    } else if (vw < 860) {
+      camera.targetGameplayZoom = 0.68;
+      joystick.maxRadius = 52;
+    } else {
+      const scaleFactor = Math.min(vw / 1280, vh / 760);
+      camera.targetGameplayZoom = Math.max(0.54, Math.min(0.92, scaleFactor * 0.88));
+      joystick.maxRadius = 60;
+    }
   }
   window.addEventListener('resize', resizeCanvas);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', resizeCanvas);
+  }
   resizeCanvas();
 
   // Klavye (WASD / Yön Tuşları + Space Ok Atma + E/Shift Kemer Koparma) Durumu
@@ -2670,10 +2678,12 @@
     const secs = String(remainingSec % 60).padStart(2, '0');
     timerEl.textContent = `${mins}:${secs}`;
 
+    const isMobileScreen = canvas.width < 860;
+
     if (isTeam) {
       teamHudScoresEl.style.display = 'flex';
-      hudSeferScoreEl.textContent = `🟢 Sefer: ${seferScore || 0}`;
-      hudTelliScoreEl.textContent = `🔴 Telli: ${telliScore || 0}`;
+      hudSeferScoreEl.textContent = isMobileScreen ? `🟢 ${seferScore || 0}` : `🟢 Sefer: ${seferScore || 0}`;
+      hudTelliScoreEl.textContent = isMobileScreen ? `🔴 ${telliScore || 0}` : `🔴 Telli: ${telliScore || 0}`;
     } else {
       teamHudScoresEl.style.display = 'none';
     }
@@ -2736,38 +2746,55 @@
     if (me && !serverMatchOver && roomStatus === 'playing') {
       const count = me.bands.length;
       const slimeAmmo = Math.max(0, count - 1);
-      myScoreEl.textContent = `Puan: ${me.score || 0}`;
+      myScoreEl.textContent = isMobileScreen ? `⭐ ${me.score || 0}` : `Puan: ${me.score || 0}`;
 
       if (me.watchOnly || me.spectating) {
         overlayEl.style.display = 'none';
         spectatorBannerEl.style.display = 'block';
+        if (mobileActionBtns) mobileActionBtns.style.display = 'none';
         if (spectatorControlsBarEl && lobbyModal.style.display === 'none') {
           spectatorControlsBarEl.style.display = 'flex';
         }
         if (me.watchOnly) {
-          spectatorBannerEl.textContent = `👀 CANLI MAÇ İZLEME MODU (${mins}:${secs}) — Oyunculara tıklayıp kamerayla takip edebilir veya "🚀 Maça Katıl" ile oyuna girebilirsin!`;
-          myBandsEl.textContent = '👀 Canlı İzleyici Modu';
+          spectatorBannerEl.textContent = isMobileScreen
+            ? `👀 Canlı İzleme — Oyuncuya dokun veya "🚀 Maça Katıl" seç!`
+            : `👀 CANLI MAÇ İZLEME MODU (${mins}:${secs}) — Oyunculara tıklayıp kamerayla takip edebilir veya "🚀 Maça Katıl" ile oyuna girebilirsin!`;
+          myBandsEl.textContent = isMobileScreen ? '👀 İzleyici' : '👀 Canlı İzleyici Modu';
         } else {
-          spectatorBannerEl.textContent = `👀 İZLEYİCİ MODU — Oyuna başlamak için turun bitmesini bekleyiniz! Yeni turda herkesle eşit başlayacaksın (Kalan: ${mins}:${secs})`;
-          myBandsEl.textContent = '⏳ Sonraki Tur Bekleniyor';
+          spectatorBannerEl.textContent = isMobileScreen
+            ? `👀 İzleyici Modu — Yeni tur bekleniyor (${mins}:${secs})`
+            : `👀 İZLEYİCİ MODU — Oyuna başlamak için turun bitmesini bekleyiniz! Yeni turda herkesle eşit başlayacaksın (Kalan: ${mins}:${secs})`;
+          myBandsEl.textContent = isMobileScreen ? '⏳ Bekleniyor' : '⏳ Sonraki Tur Bekleniyor';
         }
       } else if (me.waitingForWall) {
         if (spectatorControlsBarEl) spectatorControlsBarEl.style.display = 'none';
+        if (mobileActionBtns) mobileActionBtns.style.display = 'none';
         overlayEl.style.display = 'none';
         spectatorBannerEl.style.display = 'block';
-        spectatorBannerEl.textContent = '🎯 DUVAR SEÇİMİ — Doğmak istediğin duvara/kayaya Sol Tıkla veya Klavyede [WASD / Yön Tuşları + Space] bas!';
-        myBandsEl.textContent = '🎯 Doğmak İçin Duvara Tıkla / Space Bas!';
+        spectatorBannerEl.textContent = isMobileScreen
+          ? '🎯 Doğmak istediğin duvara veya kayaya dokun!'
+          : '🎯 DUVAR SEÇİMİ — Doğmak istediğin duvara/kayaya Sol Tıkla veya Klavyede [WASD / Yön Tuşları + Space] bas!';
+        myBandsEl.textContent = isMobileScreen ? '🎯 Duvar Seç' : '🎯 Doğmak İçin Duvara Tıkla / Space Bas!';
       } else if (me.alive) {
         if (spectatorControlsBarEl) spectatorControlsBarEl.style.display = 'none';
+        if (mobileActionBtns && (isTouchDevice || isMobileScreen) && lobbyModal.style.display === 'none') {
+          mobileActionBtns.style.display = 'flex';
+        }
         spectatorBannerEl.style.display = 'none';
         overlayEl.style.display = 'none';
         const pMeta = me.activePowerup ? POWERUP_META[me.activePowerup] : null;
-        const pSuffix = pMeta && me.powerupRemaining > 0
-          ? ` | ${pMeta.icon} ${pMeta.name} (${(me.powerupRemaining / 1000).toFixed(1)}s)`
-          : '';
-        myBandsEl.textContent = `🔗 ${count} | 🏹 ${slimeAmmo}${pSuffix}`;
+        if (isMobileScreen) {
+          const pShort = pMeta && me.powerupRemaining > 0 ? ` ${pMeta.icon}${Math.ceil(me.powerupRemaining / 1000)}s` : '';
+          myBandsEl.textContent = `🔗${count} 🏹${slimeAmmo}${pShort}`;
+        } else {
+          const pSuffix = pMeta && me.powerupRemaining > 0
+            ? ` | ${pMeta.icon} ${pMeta.name} (${(me.powerupRemaining / 1000).toFixed(1)}s)`
+            : '';
+          myBandsEl.textContent = `🔗 ${count} | 🏹 ${slimeAmmo}${pSuffix}`;
+        }
       } else {
         if (spectatorControlsBarEl) spectatorControlsBarEl.style.display = 'none';
+        if (mobileActionBtns) mobileActionBtns.style.display = 'none';
         spectatorBannerEl.style.display = 'none';
         overlayEl.style.display = 'block';
         overlayTitleEl.textContent = 'Son Kemerin Koptu!';
@@ -2780,14 +2807,28 @@
     const nowMs = performance.now();
     if (nowMs - lastLeaderboardRenderAt >= 350 || !leaderboardListEl.innerHTML) {
       lastLeaderboardRenderAt = nowMs;
-      const sorted = [...players]
+      const allRanked = [...players]
         .filter((p) => !p.watchOnly || p.id === selfId)
-        .sort((a, b) => (b.score || 0) - (a.score || 0) || b.bands.length - a.bands.length)
-        .slice(0, 8);
-      const topScore = Math.max(100, sorted[0] ? sorted[0].score : 100);
+        .sort((a, b) => (b.score || 0) - (a.score || 0) || b.bands.length - a.bands.length);
 
-      leaderboardListEl.innerHTML = sorted
-        .map((p, idx) => {
+      let displayRows = [];
+      if (isMobileScreen) {
+        // Mobilde ekranı kapatmamak için İlk 4 oyuncu (veya İlk 3 + Kendin) gösterilir
+        displayRows = allRanked.slice(0, 4).map((p, i) => ({ p, rank: i + 1 }));
+        if (selfId && !displayRows.some((r) => r.p.id === selfId)) {
+          const myIdx = allRanked.findIndex((p) => p.id === selfId);
+          if (myIdx !== -1 && displayRows.length >= 4) {
+            displayRows[3] = { p: allRanked[myIdx], rank: myIdx + 1 };
+          }
+        }
+      } else {
+        displayRows = allRanked.slice(0, 8).map((p, i) => ({ p, rank: i + 1 }));
+      }
+
+      const topScore = Math.max(100, allRanked[0] ? allRanked[0].score : 100);
+
+      leaderboardListEl.innerHTML = displayRows
+        .map(({ p, rank }) => {
           const pct = Math.min(100, Math.round(((p.score || 0) / topScore) * 100));
           const isMeClass = p.id === selfId ? 'lb-row is-me' : 'lb-row';
           const ammo = Math.max(0, p.bands.length - 1);
@@ -2797,17 +2838,18 @@
           const safeUser = escapeHtml(p.username || '');
           const safeName = escapeHtml(p.name || 'Slime');
           const safeColor = escapeHtml(p.color || '#00F5D4');
+          const scoreLabel = isMobileScreen ? `${p.score || 0}p` : `${p.score || 0}p 👤`;
           return `<li class="${isMeClass}" data-player-id="${safeId}" data-username="${safeUser}" title="Profili Gör & Takip Et">
             <div class="lb-bar" style="width:${pct}%; background:${safeColor};"></div>
             <div class="lb-left">
-              <span>${idx + 1}.</span>
+              <span>${rank}.</span>
               <span class="lb-dot" style="background:${safeColor}; color:${safeColor};"></span>
-              <span>${followBadge}${teamPrefix}${safeName}</span>
+              <span class="lb-name">${followBadge}${teamPrefix}${safeName}</span>
             </div>
             <div class="lb-right">
               <span class="lb-badge-belt">🔗${p.bands.length} (🏹${ammo})</span>
               <span class="lb-badge-cut">✂️${p.cuts || 0}</span>
-              <span class="lb-score">${p.score || 0}p 👤</span>
+              <span class="lb-score">${scoreLabel}</span>
             </div>
           </li>`;
         })
@@ -5211,7 +5253,7 @@
 
     const nameText = `${familyPrefix}${player.name} [🔗${player.bands.length} | 🏹${ammo}]`;
 
-    // VIP Altın veya Unvan Çerçevesi
+    // VIP Altın veya Unvan Çerçevesi (İsim yazısı ile çakışmaması için baseR + 30 konumunda)
     if (activeTitleMeta) {
       ctx.save();
       ctx.font = '900 10px "Segoe UI", sans-serif';
@@ -5220,14 +5262,14 @@
       ctx.strokeStyle = activeTitleMeta.color;
       ctx.lineWidth = activeTitleMeta.isGoldFrame ? 2 : 1.3;
       ctx.beginPath();
-      ctx.roundRect(-titleW / 2, baseR + 27, titleW, 16, 8);
+      ctx.roundRect(-titleW / 2, baseR + 30, titleW, 16, 8);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = activeTitleMeta.color;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(activeTitleMeta.label, 0, baseR + 35);
+      ctx.fillText(activeTitleMeta.label, 0, baseR + 38);
       ctx.restore();
     }
 
@@ -5235,9 +5277,9 @@
     ctx.textAlign = 'center';
     ctx.strokeStyle = '#080B12';
     ctx.lineWidth = 3.2;
-    ctx.strokeText(nameText, 0, baseR + 20);
+    ctx.strokeText(nameText, 0, baseR + 18);
     ctx.fillStyle = activeTitleMeta && activeTitleMeta.isGoldFrame ? '#FFE066' : '#F8F9FA';
-    ctx.fillText(nameText, 0, baseR + 20);
+    ctx.fillText(nameText, 0, baseR + 18);
     ctx.restore();
   }
 
@@ -5364,18 +5406,17 @@
 
   function drawMinimap() {
     const isSmallScreen = canvas.width < 860;
-    const mapW = isSmallScreen ? 125 : 200;
+    const mapW = isSmallScreen ? 86 : 190;
     const mapH = Math.round(mapW * (config.ARENA_HEIGHT / config.ARENA_WIDTH));
-    const margin = isSmallScreen ? 10 : 16;
-    const mx = margin;
-    const my = isSmallScreen ? 52 : canvas.height - mapH - margin;
+    const mx = isSmallScreen ? 6 : 16;
+    const my = isSmallScreen ? 40 : canvas.height - mapH - 16;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(11, 15, 26, 0.86)';
-    ctx.strokeStyle = 'rgba(0, 245, 212, 0.55)';
-    ctx.lineWidth = 2;
+    ctx.fillStyle = isSmallScreen ? 'rgba(11, 15, 26, 0.72)' : 'rgba(11, 15, 26, 0.86)';
+    ctx.strokeStyle = 'rgba(0, 245, 212, 0.45)';
+    ctx.lineWidth = isSmallScreen ? 1.5 : 2;
     ctx.beginPath();
-    ctx.roundRect(mx, my, mapW, mapH, 8);
+    ctx.roundRect(mx, my, mapW, mapH, isSmallScreen ? 6 : 8);
     ctx.fill();
     ctx.stroke();
 
@@ -5384,25 +5425,29 @@
     const centerX = mx + mapW / 2;
     const centerY = my + mapH / 2;
 
+    // Mobilde engelleri soluk radar noktaları olarak çiz ki oyuncular net seçilsin
+    ctx.fillStyle = isSmallScreen ? 'rgba(148, 163, 184, 0.25)' : 'rgba(0, 245, 212, 0.45)';
+    ctx.beginPath();
     for (const obs of mapObstacles) {
       const ox = centerX + obs.x * scaleX;
       const oy = centerY + obs.y * scaleY;
-      const r = Math.max(1.5, (obs.radius || 55) * scaleX);
-      ctx.beginPath();
+      const r = isSmallScreen ? Math.max(1.0, (obs.radius || 55) * scaleX * 0.7) : Math.max(1.5, (obs.radius || 55) * scaleX);
+      ctx.moveTo(ox + r, oy);
       ctx.arc(ox, oy, r, 0, Math.PI * 2);
-      ctx.fillStyle = obs.color || '#00F5D4';
-      ctx.globalAlpha = 0.65;
-      ctx.fill();
     }
-    ctx.globalAlpha = 1.0;
+    ctx.fill();
 
     // Haritadaki güçlendirme kutularını minimap'te parlak sarı noktalar olarak göster
-    for (const box of renderPowerups) {
-      const bx = centerX + box.x * scaleX;
-      const by = centerY + box.y * scaleY;
-      ctx.beginPath();
-      ctx.arc(bx, by, 2.6, 0, Math.PI * 2);
+    if (renderPowerups.length > 0) {
       ctx.fillStyle = '#FFE066';
+      ctx.beginPath();
+      const pr = isSmallScreen ? 1.8 : 2.5;
+      for (const box of renderPowerups) {
+        const bx = centerX + box.x * scaleX;
+        const by = centerY + box.y * scaleY;
+        ctx.moveTo(bx + pr, by);
+        ctx.arc(bx, by, pr, 0, Math.PI * 2);
+      }
       ctx.fill();
     }
 
@@ -5410,12 +5455,13 @@
       if (!p.alive) continue;
       const px = centerX + p.renderX * scaleX;
       const py = centerY + p.renderY * scaleY;
+      const dotR = p.id === selfId ? (isSmallScreen ? 3.2 : 4) : (isSmallScreen ? 2.1 : 2.8);
       ctx.beginPath();
-      ctx.arc(px, py, p.id === selfId ? 4 : 2.8, 0, Math.PI * 2);
+      ctx.arc(px, py, dotR, 0, Math.PI * 2);
       ctx.fillStyle = p.color;
       ctx.fill();
       if (p.id === selfId) {
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.4;
         ctx.strokeStyle = '#FFFFFF';
         ctx.stroke();
       }
@@ -5433,19 +5479,20 @@
     const angle = Math.atan2(dy, dx);
     const knobX = joystick.startX + Math.cos(angle) * clampedDist;
     const knobY = joystick.startY + Math.sin(angle) * clampedDist;
+    const knobR = canvas.width < 860 ? 19 : 24;
 
     ctx.save();
     ctx.beginPath();
     ctx.arc(joystick.startX, joystick.startY, joystick.maxRadius, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 245, 212, 0.1)';
+    ctx.fillStyle = 'rgba(0, 245, 212, 0.08)';
     ctx.fill();
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = 'rgba(0, 245, 212, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(0, 245, 212, 0.45)';
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(knobX, knobY, 24, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 245, 212, 0.75)';
+    ctx.arc(knobX, knobY, knobR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 245, 212, 0.72)';
     ctx.fill();
     ctx.restore();
   }
