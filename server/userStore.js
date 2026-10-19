@@ -147,16 +147,29 @@ function loadUsers() {
   }
 }
 
+let diskWriteTimer = null;
+
+function flushUsersToDiskAsync() {
+  diskWriteTimer = null;
+  const serialized = JSON.stringify(usersDb, null, 2);
+  fs.promises.writeFile(USERS_FILE, serialized, 'utf8').catch((err) => {
+    console.error('[UserStore] Kullanıcı verisi diske yazılırken hata:', err.message);
+  });
+}
+
 function saveUsers(immediateCloud = true) {
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(usersDb, null, 2), 'utf8');
-  } catch (err) {
-    console.error('[UserStore] Kullanıcı verisi kaydedilirken hata:', err.message);
-  }
   if (immediateCloud) {
+    if (diskWriteTimer) {
+      clearTimeout(diskWriteTimer);
+      diskWriteTimer = null;
+    }
+    flushUsersToDiskAsync();
     syncToSupabaseNow();
   } else {
-    scheduleCloudSync(400);
+    if (!diskWriteTimer) {
+      diskWriteTimer = setTimeout(flushUsersToDiskAsync, 600);
+    }
+    scheduleCloudSync(1200);
   }
 }
 

@@ -5,7 +5,16 @@ class SoundManager {
     this.masterGain = null;
     this.muted = false;
     this.lastMoveSquishTime = 0;
+    this.lastSoundTimes = {};
     this.noiseBuffer = null;
+  }
+
+  _canTrigger(key, minIntervalMs = 55) {
+    const now = performance.now();
+    const prev = this.lastSoundTimes[key] || 0;
+    if (now - prev < minIntervalMs) return false;
+    this.lastSoundTimes[key] = now;
+    return true;
   }
 
   init() {
@@ -138,9 +147,9 @@ class SoundManager {
   // 2) Kayaya / Duvara Yapışma ve Yeni Kemer Kazanma: Islak Vakum + Jöle Sekme ("Squish-Plop-Boing!")
   playWallAttachScream(worldX, worldY, camX, camY) {
     if (this.muted) return;
-    this.init();
     const scale = this.getDistanceScale(worldX, worldY, camX, camY);
-    if (scale <= 0.02) return;
+    if (scale <= 0.02 || !this._canTrigger('wallAttach', 55)) return;
+    this.init();
 
     const t = this.ctx.currentTime;
 
@@ -182,9 +191,9 @@ class SoundManager {
   // 3) Slime Kemeri Koptuğunda: Elastik Jel Kopuşu + Sıvı Sıçraması ("Boing-Şlak!")
   playBandSnap(worldX, worldY, camX, camY) {
     if (this.muted) return;
-    this.init();
     const scale = this.getDistanceScale(worldX, worldY, camX, camY);
-    if (scale <= 0.02) return;
+    if (scale <= 0.02 || !this._canTrigger('bandSnap', 50)) return;
+    this.init();
 
     const t = this.ctx.currentTime;
 
@@ -211,9 +220,9 @@ class SoundManager {
   // 4) Slime Oku Fırlatma: Basınçlı Jel Fırlatma ("Püt-Plop!")
   playArrowShoot(worldX, worldY, camX, camY) {
     if (this.muted) return;
-    this.init();
     const scale = this.getDistanceScale(worldX, worldY, camX, camY);
-    if (scale <= 0.02) return;
+    if (scale <= 0.02 || !this._canTrigger('arrowShoot', 45)) return;
+    this.init();
 
     this._spawnWetSquish(850, 340, 0.055, 0.18 * scale, 0);
     this._spawnBubble(185, 590, 0.09, 0.22 * scale, 0.005);
@@ -223,9 +232,9 @@ class SoundManager {
   // 5) Slime Oku Duvara veya Hedefe Çarptığında: Islak Jöle Yapışması ("Şlap!")
   playSlimeSplat(worldX, worldY, camX, camY) {
     if (this.muted) return;
-    this.init();
     const scale = this.getDistanceScale(worldX, worldY, camX, camY);
-    if (scale <= 0.02) return;
+    if (scale <= 0.02 || !this._canTrigger('slimeSplat', 45)) return;
+    this.init();
 
     const r = 0.85 + Math.random() * 0.3;
     this._spawnWetSquish(680 * r, 240, 0.07, 0.15 * scale, 0);

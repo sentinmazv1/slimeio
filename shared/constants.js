@@ -51,9 +51,10 @@
     POWERUP_WIDE_CAM_MULTIPLIER: 0.65,  // Geniş Kamera FOV zoom-out çarpanı
     POWERUP_DOUBLE_SHOT_SPREAD_RAD: 0.16, // İkili Atış V-açısı (radyan)
 
-    // Online Sunucu Ayarları
+    // Online Sunucu & AFK Askıya Alma Ayarları
     MIN_TOTAL_PLAYERS_WITH_BOTS: 6,
     MAX_PLAYERS_PER_ROOM: 40,
+    AFK_TIMEOUT_MS: 3 * 60 * 1000,      // 3 dakika (180 sn) hareketsiz kalan oyuncuyu askıya al
 
     // Slime Mağazası & Kariyer Puan/Coin Kazanım Kurgusu
     STARTER_SLIME_POINTS: 500,          // Yeni oyunculara hoş geldin Slime Puanı

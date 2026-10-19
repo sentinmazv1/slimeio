@@ -1119,6 +1119,11 @@ function updateRoomArrows(room, now) {
 
     const shooter = room.players.get(arrow.ownerId);
     let consumedArrow = false;
+    const arrowPad = GAME_CONFIG.ARROW_RADIUS + 6;
+    const aMinX = Math.min(arrow.prevX, arrow.x) - arrowPad;
+    const aMaxX = Math.max(arrow.prevX, arrow.x) + arrowPad;
+    const aMinY = Math.min(arrow.prevY, arrow.y) - arrowPad;
+    const aMaxY = Math.max(arrow.prevY, arrow.y) + arrowPad;
 
     for (const owner of room.players.values()) {
       if (owner.id === arrow.ownerId || !owner.alive || !owner.body || owner.bands.length === 0) continue;
@@ -1131,6 +1136,16 @@ function updateRoomArrows(room, now) {
 
       for (let k = owner.bands.length - 1; k >= 0; k--) {
         const band = owner.bands[k];
+        // Hızlı AABB kutu elemesi: Ok bu kemerin bölgesinde değilse trigonometrik/vektör hesabı atla
+        if (
+          Math.max(band.anchorX, ox) < aMinX ||
+          Math.min(band.anchorX, ox) > aMaxX ||
+          Math.max(band.anchorY, oy) < aMinY ||
+          Math.min(band.anchorY, oy) > aMaxY
+        ) {
+          continue;
+        }
+
         const hit = checkBandCut(
           band.anchorX,
           band.anchorY,
@@ -1223,6 +1238,8 @@ function processRoomBandIntersections(room) {
     if (p.alive && p.body) alivePlayers.push(p);
   }
 
+  const cutPad = GAME_CONFIG.PLAYER_RADIUS + 4;
+
   for (let i = 0; i < alivePlayers.length; i++) {
     const cutter = alivePlayers[i];
     if (!cutter.alive || !cutter.body) continue;
@@ -1231,6 +1248,10 @@ function processRoomBandIntersections(room) {
     const cy = cutter.body.position.y;
     const prevX = cutter.prevPos.x;
     const prevY = cutter.prevPos.y;
+    const cMinX = Math.min(prevX, cx) - cutPad;
+    const cMaxX = Math.max(prevX, cx) + cutPad;
+    const cMinY = Math.min(prevY, cy) - cutPad;
+    const cMaxY = Math.max(prevY, cy) + cutPad;
 
     for (let j = 0; j < alivePlayers.length; j++) {
       if (i === j) continue;
@@ -1245,6 +1266,16 @@ function processRoomBandIntersections(room) {
 
       for (let k = owner.bands.length - 1; k >= 0; k--) {
         const band = owner.bands[k];
+        // Hızlı AABB kutu elemesi: Kesici oyuncu bu kemerin kapsama kutusunda değilse hemen geç
+        if (
+          Math.max(band.anchorX, ox) < cMinX ||
+          Math.min(band.anchorX, ox) > cMaxX ||
+          Math.max(band.anchorY, oy) < cMinY ||
+          Math.min(band.anchorY, oy) > cMaxY
+        ) {
+          continue;
+        }
+
         const hit = checkBandCut(
           band.anchorX,
           band.anchorY,
@@ -1852,6 +1883,29 @@ function buildAdminSnapshot() {
 }
 
 setInterval(() => {
+  const now = Date.now();
+  const afkLimitMs = GAME_CONFIG.AFK_TIMEOUT_MS || 180000;
+
+  // 3 dakika boyunca hareketsiz kalan oyuncuları askıya al ve odadan lobiye döndür
+  for (const room of rooms.values()) {
+    for (const [pid, p] of [...room.players.entries()]) {
+      if (p.isBot) continue;
+      const lastAct = p.lastActivityAt || now;
+      if (now - lastAct >= afkLimitMs) {
+        const sock = connectedSockets.get(pid);
+        io.to(pid).emit('afkSuspended', {
+          reason: '⏸️ 3 dakika boyunca hareketsiz kaldığın için oyunun askıya alındı ve lobiye döndürüldün.'
+        });
+        if (sock) {
+          leaveCurrentRoom(sock);
+        } else {
+          clearPlayerPhysics(room, p);
+          room.players.delete(pid);
+        }
+      }
+    }
+  }
+
   io.emit('roomsSummary', getLobbyRoomsSummary());
   if (adminSockets.size > 0) {
     const snap = buildAdminSnapshot();
@@ -2137,6 +2191,7 @@ io.on('connection', (socket) => {
         hasHadBands: false,
         lastBandTime: 0,
         lastArrowTime: 0,
+        lastActivityAt: Date.now(),
         respawnAt: 0,
         score: 0,
         cuts: 0,
@@ -2260,6 +2315,7 @@ io.on('connection', (socket) => {
       hasHadBands: false,
       lastBandTime: 0,
       lastArrowTime: 0,
+      lastActivityAt: Date.now(),
       respawnAt: 0,
       score: 0,
       cuts: 0,
@@ -2296,6 +2352,7 @@ io.on('connection', (socket) => {
     if (!room || !room.isTeam) return;
     const player = room.players.get(socket.id);
     if (!player || room.status !== 'waiting_for_teams') return;
+    player.lastActivityAt = Date.now();
 
     if (teamId !== 'seferogullari' && teamId !== 'telliogullari') return;
     if (player.team === teamId) {
@@ -2364,6 +2421,7 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing') return;
     const player = room.players.get(socket.id);
     if (player && !player.spectating && player.waitingForWall && isValidCoordPair(point)) {
+      player.lastActivityAt = Date.now();
       spawnPlayerAtWallPoint(room, player, clampCoord(point.x), clampCoord(point.y));
     }
   });
@@ -2373,6 +2431,7 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing') return;
     const player = room.players.get(socket.id);
     if (player && player.alive && isValidCoordPair(target)) {
+      player.lastActivityAt = Date.now();
       shootSlimeArrow(room, player, clampCoord(target.x), clampCoord(target.y));
     }
   });
@@ -2382,6 +2441,7 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'playing') return;
     const player = room.players.get(socket.id);
     if (player && player.alive && isValidCoordPair(target)) {
+      player.lastActivityAt = Date.now();
       cutOwnBeltInDirection(room, player, clampCoord(target.x), clampCoord(target.y));
     }
   });
@@ -2391,8 +2451,13 @@ io.on('connection', (socket) => {
     if (!room) return;
     const player = room.players.get(socket.id);
     if (player && isValidCoordPair(target)) {
-      player.input.targetX = clampCoord(target.x);
-      player.input.targetY = clampCoord(target.y);
+      const nx = clampCoord(target.x);
+      const ny = clampCoord(target.y);
+      if (Math.abs(nx - player.input.targetX) > 1.5 || Math.abs(ny - player.input.targetY) > 1.5) {
+        player.lastActivityAt = Date.now();
+      }
+      player.input.targetX = nx;
+      player.input.targetY = ny;
     }
   });
 

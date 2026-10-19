@@ -2138,6 +2138,65 @@
     return smallestDiff <= Math.PI * 0.65 ? bestId : null;
   }
 
+  // --- AFK HAREKETSİZLİK TAKİBİ (3 DAKİKA SONRA ASKIYA ALMA) & DEBOUNCED STORAGE ---
+  let lastUserInteractionMs = performance.now();
+  let storageFlushTimer = null;
+
+  function markUserActive() {
+    lastUserInteractionMs = performance.now();
+  }
+
+  ['mousemove', 'mousedown', 'keydown', 'touchstart', 'touchmove', 'wheel'].forEach((evName) => {
+    window.addEventListener(evName, markUserActive, { passive: true });
+  });
+
+  function scheduleEconomyStorageFlush() {
+    if (storageFlushTimer) return;
+    storageFlushTimer = setTimeout(() => {
+      storageFlushTimer = null;
+      if (currentUser) {
+        saveUserSessionToStorage(currentUser);
+      } else {
+        saveGuestEconomyToStorage();
+      }
+    }, 800);
+  }
+
+  function suspendInactivePlayerToLobby(reasonMsg) {
+    if (lobbyModal && lobbyModal.style.display !== 'none') return;
+    joystick.active = false;
+    joystick.touchId = null;
+    followedPlayerId = null;
+    if (cameraFollowBannerEl) cameraFollowBannerEl.style.display = 'none';
+    if (spectatorControlsBarEl) spectatorControlsBarEl.style.display = 'none';
+    matchEndModal.style.display = 'none';
+    teamWaitingModal.style.display = 'none';
+    spectatorBannerEl.style.display = 'none';
+    overlayEl.style.display = 'none';
+    lobbyModal.style.display = 'flex';
+    if (lobbyErrorMsg) {
+      lobbyErrorMsg.style.color = '#FFE066';
+      lobbyErrorMsg.textContent =
+        reasonMsg || '⏸️ 3 dakika boyunca hareketsiz kaldığın için oyunun askıya alındı ve lobiye döndürüldün.';
+    }
+    socket.emit('leaveRoom');
+  }
+
+  setInterval(() => {
+    if (lobbyModal && lobbyModal.style.display === 'none') {
+      const afkLimit = (config && config.AFK_TIMEOUT_MS) || 180000;
+      if (performance.now() - lastUserInteractionMs >= afkLimit) {
+        suspendInactivePlayerToLobby(
+          '⏸️ 3 dakika boyunca hareketsiz kaldığın için oyunun askıya alındı ve lobiye döndürüldün. Hazır olduğunda tekrar katılabilirsin!'
+        );
+      }
+    }
+  }, 2000);
+
+  socket.on('afkSuspended', (data) => {
+    suspendInactivePlayerToLobby((data && data.reason) || '⏸️ 3 dakika hareketsiz kaldığın için oyunun askıya alındı.');
+  });
+
   // --- SOCKET.IO OLAYLARI ---
   socket.on('init', (data) => {
     selfId = data.selfId;
@@ -2151,6 +2210,7 @@
       storeItems = data.storeItems;
     }
 
+    buildStaticArenaCache();
     resizeCanvas();
     restoreLocalUserSessionImmediately();
     updateAuthUI();
@@ -2220,17 +2280,20 @@
 
   socket.on('arrowSplat', ({ x, y, color }) => {
     window.soundManager.playSlimeSplat(x, y, camera.x, camera.y);
+    if (splatEffects.length >= 20) splatEffects.shift();
     splatEffects.push({ x, y, color: color || '#00F5D4', radius: 7, alpha: 1.0 });
   });
 
   socket.on('bandSnapped', ({ snapX, snapY }) => {
     window.soundManager.playBandSnap(snapX, snapY, camera.x, camera.y);
+    if (snapEffects.length >= 20) snapEffects.shift();
     snapEffects.push({ x: snapX, y: snapY, radius: 8, alpha: 1.0 });
   });
 
   socket.on('noSlimeAmmo', () => {
     const me = renderPlayers.get(selfId);
     if (me) {
+      if (floatingTexts.length >= 16) floatingTexts.shift();
       floatingTexts.push({
         text: '🏹 Ok İçin En Az 2 Kemer Gerekli! Engellere Çarp!',
         x: me.renderX,
@@ -2245,6 +2308,7 @@
   socket.on('cannotCutLastBelt', () => {
     const me = renderPlayers.get(selfId);
     if (me) {
+      if (floatingTexts.length >= 16) floatingTexts.shift();
       floatingTexts.push({
         text: 'Son Kemer Koparılamaz! Önce Başka Engele Bağlan!',
         x: me.renderX,
@@ -2257,7 +2321,10 @@
   });
 
   socket.on('scorePopup', ({ playerId, amount, reason, x, y }) => {
+    // Kaos anında sadece ekrana yakın olan veya kendimize ait puan yazılarını ekle
+    if (playerId !== selfId && Math.hypot((x || 0) - camera.x, (y || 0) - camera.y) > 950) return;
     const p = renderPlayers.get(playerId);
+    if (floatingTexts.length >= 16) floatingTexts.shift();
     floatingTexts.push({
       text: `+${amount} ${reason}`,
       x,
@@ -2269,38 +2336,42 @@
   });
 
   // Canlı Kesim ve Eleme (Öldürme) Slime Puan / Coin Ödülü Bildirimi
-  socket.on('combatReward', ({ points, coins, reason, slimePoints, slimeCoins, totalCuts, totalKills }) => {
-    const addPts = Number(points) || 0;
-    const addCoins = Number(coins) || 0;
+  socket.on('combatReward', (payload = {}) => {
+    const addPts = Number(payload.earnedPoints ?? payload.points) || 0;
+    const addCoins = Number(payload.earnedCoins ?? payload.coins) || 0;
+    const isKill = payload.type === 'kill' || payload.reason === 'Rakip Eleme';
 
     if (currentUser) {
-      if (Number.isFinite(Number(slimePoints))) currentUser.slimePoints = Number(slimePoints);
-      else currentUser.slimePoints = (currentUser.slimePoints || 0) + addPts;
-
-      if (Number.isFinite(Number(slimeCoins))) currentUser.slimeCoins = Number(slimeCoins);
-      else currentUser.slimeCoins = (currentUser.slimeCoins || 0) + addCoins;
-
-      if (!currentUser.stats) currentUser.stats = { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 };
-      if (Number.isFinite(Number(totalCuts))) currentUser.stats.totalCuts = Number(totalCuts);
-      if (Number.isFinite(Number(totalKills))) currentUser.stats.totalKills = Number(totalKills);
-      saveUserSessionToStorage(currentUser);
+      if (payload.user) {
+        currentUser.slimePoints = payload.user.slimePoints;
+        currentUser.slimeCoins = payload.user.slimeCoins;
+        currentUser.stats = payload.user.stats || currentUser.stats;
+      } else {
+        currentUser.slimePoints = (currentUser.slimePoints || 0) + addPts;
+        currentUser.slimeCoins = (currentUser.slimeCoins || 0) + addCoins;
+      }
     } else {
       guestEconomy.slimePoints += addPts;
       guestEconomy.slimeCoins += addCoins;
-      if (reason === 'Kemer Kesimi') guestEconomy.stats.totalCuts += 1;
-      if (reason === 'Rakip Eleme') {
+      if (isKill) {
         guestEconomy.stats.totalKills += 1;
         guestEconomy.stats.totalScore += 50;
       } else {
+        guestEconomy.stats.totalCuts += 1;
         guestEconomy.stats.totalScore += 20;
       }
-      saveGuestEconomyToStorage();
     }
 
-    updateCareerAndShopUI();
+    scheduleEconomyStorageFlush();
+
+    // Sadece lobi veya mağaza açıksa DOM güncelle
+    if ((lobbyModal && lobbyModal.style.display !== 'none') || (shopModal && shopModal.style.display !== 'none')) {
+      updateCareerAndShopUI();
+    }
 
     const me = renderPlayers.get(selfId);
     if (me && addPts > 0) {
+      if (floatingTexts.length >= 16) floatingTexts.shift();
       const coinStr = addCoins > 0 ? ` +${addCoins} 🪙` : '';
       floatingTexts.push({
         text: `+${addPts} 💎 Slime Puan${coinStr}`,
@@ -2326,6 +2397,8 @@
     } else {
       window.soundManager.playPowerupPickup(x, y, camera.x, camera.y);
     }
+    if (splatEffects.length >= 20) splatEffects.shift();
+    if (snapEffects.length >= 20) snapEffects.shift();
     splatEffects.push({ x, y, color: meta.color, radius: 14, alpha: 1.0 });
     snapEffects.push({ x, y, radius: 12, alpha: 1.0, color: meta.color });
   });
@@ -2339,9 +2412,12 @@
   });
 
   function spawnKillAnimation(x, y, effectId, victimColor) {
+    // Kameradan çok uzaktaki bot ölümleri için parçacık patlaması oluşturma
+    if (Math.hypot((Number(x) || 0) - camera.x, (Number(y) || 0) - camera.y) > 1300) return;
+    if (killAnimations.length >= 5) killAnimations.shift();
     const type = effectId || 'kill_confetti';
     const particles = [];
-    const count = type === 'kill_pixel' ? 22 : 18;
+    const count = type === 'kill_pixel' ? 14 : 12;
     const palette = ['#00F5D4', '#FF2A85', '#FFE066', '#00BBF9', '#9B5DE5', '#00F59B', victimColor || '#FF2A85'];
     for (let i = 0; i < count; i++) {
       const ang = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
@@ -2349,7 +2425,7 @@
       particles.push({
         vx: Math.cos(ang) * spd,
         vy: Math.sin(ang) * spd - (type === 'kill_confetti' ? 1.5 : 0),
-        size: 4 + Math.random() * 5,
+        size: 4 + Math.random() * 4.5,
         color: palette[i % palette.length],
         rot: Math.random() * Math.PI * 2,
         vRot: (Math.random() - 0.5) * 0.25
@@ -2361,7 +2437,7 @@
       type,
       color: victimColor || '#FF2A85',
       startTime: performance.now(),
-      duration: 1450,
+      duration: 1350,
       particles
     });
   }
@@ -2795,12 +2871,20 @@
     }
 
     const shades = getSlimeColorShades(effectiveHex);
-    const points = skinCoatingId === 'skin_8bit' ? 12 : 24;
+    const points = skinCoatingId === 'skin_8bit' ? 12 : 18;
 
     targetCtx.save();
     if (skinCoatingId === 'skin_ghost') {
       targetCtx.globalAlpha = 0.58 + Math.sin(time * 0.006) * 0.14;
     }
+
+    // Hızlı 3D Dış Neon Hale (Gaussian shadowBlur yerine sıfır maliyetli yarı saydam dış ışık katmanı)
+    targetCtx.beginPath();
+    targetCtx.arc(0, 0, baseR * 1.18, 0, Math.PI * 2);
+    targetCtx.fillStyle = shades.base;
+    targetCtx.globalAlpha *= 0.22;
+    targetCtx.fill();
+    targetCtx.globalAlpha = skinCoatingId === 'skin_ghost' ? (0.58 + Math.sin(time * 0.006) * 0.14) : 1.0;
 
     targetCtx.beginPath();
     for (let i = 0; i <= points; i++) {
@@ -2816,9 +2900,7 @@
     }
     targetCtx.closePath();
 
-    // 1) Dış Neon Aura + 3D Küresel Radyal Gövde Gradyanı
-    targetCtx.shadowColor = shades.base;
-    targetCtx.shadowBlur = baseR * 0.75;
+    // 1) 3D Küresel Radyal Gövde Gradyanı
     const bodyGrad = targetCtx.createRadialGradient(
       -baseR * 0.32,
       -baseR * 0.36,
@@ -2835,7 +2917,6 @@
 
     targetCtx.fillStyle = bodyGrad;
     targetCtx.fill();
-    targetCtx.shadowBlur = 0;
 
     // Gövde içi klipleme (iç yansımalar, mağaza kaplama dokuları ve kafa üstü kostüm parlaması)
     targetCtx.save();
@@ -2859,8 +2940,6 @@
       }
     } else if (skinCoatingId === 'skin_lava') {
       targetCtx.strokeStyle = '#FEF08A';
-      targetCtx.shadowColor = '#FACC15';
-      targetCtx.shadowBlur = 8;
       targetCtx.lineWidth = 2.2;
       targetCtx.beginPath();
       targetCtx.moveTo(-baseR * 0.7, -baseR * 0.2);
@@ -2869,7 +2948,6 @@
       targetCtx.moveTo(-baseR * 0.2, baseR * 0.15);
       targetCtx.lineTo(baseR * 0.2, baseR * 0.75);
       targetCtx.stroke();
-      targetCtx.shadowBlur = 0;
     } else if (skinCoatingId === 'skin_ice') {
       targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
       targetCtx.lineWidth = 1.8;
@@ -2937,16 +3015,13 @@
       targetCtx.fill();
     }
 
-    // 2) Alt Karın Neon Lazer Yansıması (Görseldeki gövdeyi saran turkuaz/pembe neon ışık yansıması)
+    // 2) Alt Karın Neon Lazer Yansıması
     targetCtx.beginPath();
     targetCtx.arc(0, baseR * 0.14, baseR * 0.82, Math.PI * 0.14, Math.PI * 0.86);
     targetCtx.lineWidth = Math.max(2, baseR * 0.09);
     targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.34)';
-    targetCtx.shadowColor = '#00F5D4';
-    targetCtx.shadowBlur = 8;
     targetCtx.lineCap = 'round';
     targetCtx.stroke();
-    targetCtx.shadowBlur = 0;
 
     // 3) Kafa Üstü 3D Kostüm Işık Yansıması & Gölgesi
     targetCtx.save();
@@ -2956,23 +3031,17 @@
       targetCtx.ellipse(0, -baseR * 0.62, baseR * 0.44, baseR * 0.13, 0, 0, Math.PI * 2);
       targetCtx.strokeStyle = 'rgba(255, 230, 102, 0.75)';
       targetCtx.lineWidth = Math.max(2.2, baseR * 0.095);
-      targetCtx.shadowColor = '#FFE066';
-      targetCtx.shadowBlur = 10;
       targetCtx.stroke();
     } else if (skinId === 'crown' || skinId === 'hat_vip_crown') {
       targetCtx.beginPath();
       targetCtx.ellipse(0, -baseR * 0.68, baseR * 0.56, baseR * 0.16, 0, 0, Math.PI * 2);
       targetCtx.fillStyle = 'rgba(250, 204, 21, 0.34)';
-      targetCtx.shadowColor = '#FACC15';
-      targetCtx.shadowBlur = 10;
       targetCtx.fill();
     } else if (skinId === 'devil' || skinId === 'hat_devil_horns') {
       for (const s of [-1, 1]) {
         targetCtx.beginPath();
         targetCtx.ellipse(s * baseR * 0.46, -baseR * 0.64, baseR * 0.22, baseR * 0.11, s * 0.35, 0, Math.PI * 2);
         targetCtx.fillStyle = 'rgba(255, 42, 133, 0.45)';
-        targetCtx.shadowColor = '#FF2A85';
-        targetCtx.shadowBlur = 10;
         targetCtx.fill();
       }
     } else if (skinId === 'cyber' || skinId === 'headset' || skinId === 'hat_cyber_vr') {
@@ -2980,15 +3049,11 @@
       targetCtx.ellipse(0, -baseR * 0.60, baseR * 0.48, baseR * 0.13, 0, 0, Math.PI * 2);
       targetCtx.strokeStyle = 'rgba(0, 245, 212, 0.58)';
       targetCtx.lineWidth = Math.max(2, baseR * 0.08);
-      targetCtx.shadowColor = '#00F5D4';
-      targetCtx.shadowBlur = 8;
       targetCtx.stroke();
     } else if (skinId === 'wizard' || skinId === 'hat_dark_wizard') {
       targetCtx.beginPath();
       targetCtx.ellipse(0, -baseR * 0.68, baseR * 0.66, baseR * 0.18, 0, 0, Math.PI * 2);
       targetCtx.fillStyle = 'rgba(168, 85, 247, 0.38)';
-      targetCtx.shadowColor = '#C084FC';
-      targetCtx.shadowBlur = 10;
       targetCtx.fill();
     } else {
       targetCtx.beginPath();
@@ -4508,87 +4573,148 @@
     }
   }
 
-  // --- HARİTA VE OYUNCU GÖRSELLEŞTİRME ---
-  function drawOpenWorldAndObstacles(time) {
-    const halfW = config.ARENA_WIDTH / 2;
-    const halfH = config.ARENA_HEIGHT / 2;
+  // --- HARİTA ÖNBELLEĞİ (STATIC ARENA OFFSCREEN CACHE) VE KAMERA FRUSTUM CULLING ---
+  let staticArenaCanvas = null;
+  let staticArenaPad = 80;
+  let viewBounds = { minX: -2000, maxX: 2000, minY: -2000, maxY: 2000 };
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(-halfW, -halfH, config.ARENA_WIDTH, config.ARENA_HEIGHT, 36);
-    ctx.fillStyle = '#0B0F1A';
-    ctx.fill();
-    ctx.clip();
+  function updateViewBounds() {
+    const z = Math.max(0.18, camera.zoom || 1);
+    const halfViewW = (canvas.width * 0.5) / z + 150;
+    const halfViewH = (canvas.height * 0.5) / z + 150;
+    viewBounds.minX = camera.x - halfViewW;
+    viewBounds.maxX = camera.x + halfViewW;
+    viewBounds.minY = camera.y - halfViewH;
+    viewBounds.maxY = camera.y + halfViewH;
+  }
+
+  function isPointInView(x, y, margin = 80) {
+    return (
+      x >= viewBounds.minX - margin &&
+      x <= viewBounds.maxX + margin &&
+      y >= viewBounds.minY - margin &&
+      y <= viewBounds.maxY + margin
+    );
+  }
+
+  function isBoxInView(x1, y1, x2, y2, margin = 80) {
+    const minX = x1 < x2 ? x1 : x2;
+    const maxX = x1 > x2 ? x1 : x2;
+    const minY = y1 < y2 ? y1 : y2;
+    const maxY = y1 > y2 ? y1 : y2;
+    return !(
+      maxX < viewBounds.minX - margin ||
+      minX > viewBounds.maxX + margin ||
+      maxY < viewBounds.minY - margin ||
+      minY > viewBounds.maxY + margin
+    );
+  }
+
+  function buildStaticArenaCache() {
+    const pad = staticArenaPad;
+    const w = (config.ARENA_WIDTH || 2600) + pad * 2;
+    const h = (config.ARENA_HEIGHT || 1800) + pad * 2;
+    const off = document.createElement('canvas');
+    off.width = w;
+    off.height = h;
+    const octx = off.getContext('2d');
+
+    const halfW = (config.ARENA_WIDTH || 2600) / 2;
+    const halfH = (config.ARENA_HEIGHT || 1800) / 2;
+
+    octx.save();
+    octx.translate(w / 2, h / 2);
+
+    // 1) Arena Zemini + Yıldızlar + Siber Izgara
+    octx.save();
+    octx.beginPath();
+    octx.roundRect(-halfW, -halfH, halfW * 2, halfH * 2, 36);
+    octx.fillStyle = '#0B0F1A';
+    octx.fill();
+    octx.clip();
 
     for (const s of stars) {
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-      ctx.fillStyle = s.color;
-      ctx.globalAlpha = s.alpha * (0.7 + 0.3 * Math.sin(time * 0.003 + s.x));
-      ctx.fill();
+      octx.beginPath();
+      octx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      octx.fillStyle = s.color;
+      octx.globalAlpha = s.alpha * 0.85;
+      octx.fill();
     }
-    ctx.globalAlpha = 1.0;
+    octx.globalAlpha = 1.0;
 
-    ctx.strokeStyle = 'rgba(0, 245, 212, 0.055)';
-    ctx.lineWidth = 2;
+    octx.strokeStyle = 'rgba(0, 245, 212, 0.055)';
+    octx.lineWidth = 2;
     const step = 100;
+    octx.beginPath();
     for (let x = -halfW; x <= halfW; x += step) {
-      ctx.beginPath();
-      ctx.moveTo(x, -halfH);
-      ctx.lineTo(x, halfH);
-      ctx.stroke();
+      octx.moveTo(x, -halfH);
+      octx.lineTo(x, halfH);
     }
     for (let y = -halfH; y <= halfH; y += step) {
-      ctx.beginPath();
-      ctx.moveTo(-halfW, y);
-      ctx.lineTo(halfW, y);
-      ctx.stroke();
+      octx.moveTo(-halfW, y);
+      octx.lineTo(halfW, y);
     }
-    ctx.restore();
+    octx.stroke();
+    octx.restore();
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(-halfW, -halfH, config.ARENA_WIDTH, config.ARENA_HEIGHT, 36);
-    ctx.lineWidth = 14;
-    ctx.strokeStyle = '#00F5D4';
-    ctx.shadowColor = '#00F5D4';
-    ctx.shadowBlur = 24;
-    ctx.stroke();
-    ctx.restore();
+    // 2) Neon Arena Dış Duvar Çerçevesi (Tek seferlik shadowBlur önbellekte hesaplanır)
+    octx.save();
+    octx.beginPath();
+    octx.roundRect(-halfW, -halfH, halfW * 2, halfH * 2, 36);
+    octx.lineWidth = 14;
+    octx.strokeStyle = '#00F5D4';
+    octx.shadowColor = '#00F5D4';
+    octx.shadowBlur = 24;
+    octx.stroke();
+    octx.restore();
 
+    // 3) Harita Engelleri (35+ engelin gölgeli neon çizimi önbelleğe alınır)
     for (const obs of mapObstacles) {
-      ctx.save();
-      ctx.beginPath();
+      octx.save();
+      octx.beginPath();
       if (obs.type === 'circle') {
-        ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
+        octx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
       } else if (obs.vertices && obs.vertices.length > 0) {
-        ctx.moveTo(obs.vertices[0].x, obs.vertices[0].y);
+        octx.moveTo(obs.vertices[0].x, obs.vertices[0].y);
         for (let i = 1; i < obs.vertices.length; i++) {
-          ctx.lineTo(obs.vertices[i].x, obs.vertices[i].y);
+          octx.lineTo(obs.vertices[i].x, obs.vertices[i].y);
         }
-        ctx.closePath();
+        octx.closePath();
       }
 
       const neonColor = obs.color || '#00F5D4';
-      ctx.fillStyle = '#131B2E';
-      ctx.fill();
-      ctx.shadowColor = neonColor;
-      ctx.shadowBlur = 18;
-      ctx.lineWidth = 4.5;
-      ctx.strokeStyle = neonColor;
-      ctx.stroke();
+      octx.fillStyle = '#131B2E';
+      octx.fill();
+      octx.shadowColor = neonColor;
+      octx.shadowBlur = 16;
+      octx.lineWidth = 4.5;
+      octx.strokeStyle = neonColor;
+      octx.stroke();
 
       if (obs.type === 'circle' && obs.radius > 42) {
-        ctx.shadowBlur = 0;
-        ctx.beginPath();
-        ctx.arc(obs.x, obs.y, obs.radius * 0.45, 0, Math.PI * 2);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = neonColor;
-        ctx.globalAlpha = 0.45;
-        ctx.stroke();
+        octx.shadowBlur = 0;
+        octx.beginPath();
+        octx.arc(obs.x, obs.y, obs.radius * 0.45, 0, Math.PI * 2);
+        octx.lineWidth = 2;
+        octx.strokeStyle = neonColor;
+        octx.globalAlpha = 0.45;
+        octx.stroke();
       }
-      ctx.restore();
+      octx.restore();
     }
+
+    octx.restore();
+    staticArenaCanvas = off;
+  }
+
+  // --- HARİTA VE OYUNCU GÖRSELLEŞTİRME ---
+  function drawOpenWorldAndObstacles() {
+    if (!staticArenaCanvas) {
+      buildStaticArenaCache();
+    }
+    const halfW = config.ARENA_WIDTH / 2 + staticArenaPad;
+    const halfH = config.ARENA_HEIGHT / 2 + staticArenaPad;
+    ctx.drawImage(staticArenaCanvas, -halfW, -halfH);
   }
 
   function drawBelt(player, band, isTargetedForRightClick, time) {
@@ -4596,6 +4722,9 @@
     const y1 = band.anchorY;
     const x2 = player.renderX;
     const y2 = player.renderY;
+
+    // Kamera görüş alanı dışındaki kemerleri çizme (Frustum Culling)
+    if (!isBoxInView(x1, y1, x2, y2, 90)) return;
 
     const midX = (x1 + x2) * 0.5 + Math.sin(time * 0.004 + band.id) * 14;
     const midY = (y1 + y2) * 0.5 + Math.cos(time * 0.004 + band.id) * 14;
@@ -4606,33 +4735,43 @@
     ctx.lineCap = 'round';
 
     if (isTargetedForRightClick) {
+      // Pahalı shadowBlur yerine katmanlı parlak neon vurgu
       ctx.beginPath();
-      ctx.setLineDash([12, 6]);
-      ctx.lineWidth = 6;
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.shadowColor = '#FFFFFF';
-      ctx.shadowBlur = 16;
       ctx.moveTo(x1, y1);
       ctx.quadraticCurveTo(midX, midY, x2, y2);
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+      ctx.stroke();
+
+      ctx.setLineDash([12, 6]);
+      ctx.lineWidth = 5.5;
+      ctx.strokeStyle = '#FFFFFF';
       ctx.stroke();
       ctx.setLineDash([]);
     } else if (beltEffect === 'belt_lightning') {
-      // ⚡ YILDIRIM AĞI: Yüksek voltajlı zikzaklı elektrik kemeri
-      ctx.strokeStyle = '#38BDF8';
-      ctx.shadowColor = '#00F5D4';
-      ctx.shadowBlur = 18;
-      ctx.lineWidth = 3.5;
+      // ⚡ YILDIRIM AĞI: Yüksek voltajlı zikzaklı elektrik kemeri (Sıfır shadowBlur, çift katmanlı neon)
       ctx.beginPath();
       ctx.moveTo(x1, y1);
-      const steps = 8;
+      const steps = 7;
       for (let i = 1; i < steps; i++) {
         const t = i / steps;
         const bx = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * midX + t * t * x2;
         const by = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * midY + t * t * y2;
-        const jitter = Math.sin(time * 0.04 + i * 3.1 + band.id) * 8;
+        const jitter = Math.sin(time * 0.04 + i * 3.1 + band.id) * 7.5;
         ctx.lineTo(bx + jitter, by - jitter);
       }
       ctx.lineTo(x2, y2);
+
+      ctx.lineWidth = 9.5;
+      ctx.strokeStyle = 'rgba(0, 245, 212, 0.24)';
+      ctx.stroke();
+
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#38BDF8';
+      ctx.stroke();
+
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = '#FFFFFF';
       ctx.stroke();
     } else if (beltEffect === 'belt_rainbow') {
       // 🌈 GÖKKUŞAĞI NEON KEMER
@@ -4643,42 +4782,48 @@
       grad.addColorStop(0.75, '#00BBF9');
       grad.addColorStop(1, '#9B5DE5');
       ctx.beginPath();
-      ctx.lineWidth = 5.5;
-      ctx.strokeStyle = grad;
-      ctx.shadowColor = '#00F5D4';
-      ctx.shadowBlur = 14;
       ctx.moveTo(x1, y1);
       ctx.quadraticCurveTo(midX, midY, x2, y2);
+
+      ctx.lineWidth = 11;
+      ctx.strokeStyle = grad;
+      ctx.globalAlpha = 0.26;
+      ctx.stroke();
+
+      ctx.globalAlpha = 0.95;
+      ctx.lineWidth = 5.2;
       ctx.stroke();
     } else if (beltEffect === 'belt_fire_chain') {
       // 🔥 ATEŞTEN ZİNCİR
       ctx.beginPath();
-      ctx.setLineDash([10, 5]);
-      ctx.lineWidth = 5.2;
-      ctx.strokeStyle = '#F97316';
-      ctx.shadowColor = '#EF4444';
-      ctx.shadowBlur = 16;
       ctx.moveTo(x1, y1);
       ctx.quadraticCurveTo(midX, midY, x2, y2);
+
+      ctx.lineWidth = 11;
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.25)';
+      ctx.stroke();
+
+      ctx.setLineDash([10, 5]);
+      ctx.lineWidth = 5.0;
+      ctx.strokeStyle = '#F97316';
       ctx.stroke();
       ctx.setLineDash([]);
     } else if (beltEffect === 'belt_lightsaber') {
-      // ⚔️ IŞIN KILICI LAZER: Ekstra kalın plazma hüzmesi ve bembeyaz çekirdek
+      // ⚔️ IŞIN KILICI LAZER: Katmanlı plazma hüzmesi ve bembeyaz çekirdek
       ctx.beginPath();
-      ctx.lineWidth = 7.5;
-      ctx.strokeStyle = '#FF2A85';
-      ctx.shadowColor = '#FF2A85';
-      ctx.shadowBlur = 22;
       ctx.moveTo(x1, y1);
       ctx.quadraticCurveTo(midX, midY, x2, y2);
+
+      ctx.lineWidth = 14;
+      ctx.strokeStyle = 'rgba(255, 42, 133, 0.26)';
       ctx.stroke();
 
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.lineWidth = 3.0;
+      ctx.lineWidth = 7.2;
+      ctx.strokeStyle = '#FF2A85';
+      ctx.stroke();
+
+      ctx.lineWidth = 2.8;
       ctx.strokeStyle = '#FFFFFF';
-      ctx.moveTo(x1, y1);
-      ctx.quadraticCurveTo(midX, midY, x2, y2);
       ctx.stroke();
     } else {
       // Standart + diğer özel kemer renkleri (water_hose, gold_rope, ghost, blood_vine, stardust, cyber_matrix)
@@ -4691,67 +4836,80 @@
       else if (beltEffect === 'belt_cyber_matrix') strokeCol = '#00F59B';
 
       ctx.beginPath();
-      if (beltEffect === 'belt_cyber_matrix') ctx.setLineDash([6, 6]);
-      ctx.lineWidth = 4.6;
-      ctx.strokeStyle = strokeCol;
-      ctx.shadowColor = strokeCol;
-      ctx.shadowBlur = 14;
-      ctx.globalAlpha = beltEffect === 'belt_ghost' ? 0.55 : 0.9;
       ctx.moveTo(x1, y1);
       ctx.quadraticCurveTo(midX, midY, x2, y2);
+
+      // Dış yarı-saydam neon hale (shadowBlur yerine 10x daha hızlı GPU çizişi)
+      ctx.lineWidth = 10.5;
+      ctx.strokeStyle = strokeCol;
+      ctx.globalAlpha = beltEffect === 'belt_ghost' ? 0.16 : 0.22;
+      ctx.stroke();
+
+      // Ana kemer gövdesi
+      if (beltEffect === 'belt_cyber_matrix') ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 4.6;
+      ctx.globalAlpha = beltEffect === 'belt_ghost' ? 0.55 : 0.9;
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.lineWidth = 1.6;
+      // İç parlak enerji teli
+      ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#FFFFFF';
-      ctx.globalAlpha = 0.88;
-      ctx.moveTo(x1, y1);
-      ctx.quadraticCurveTo(midX, midY, x2, y2);
+      ctx.globalAlpha = 0.85;
       ctx.stroke();
 
-      // Kemer üstü hareketli parçacıklar (yıldız tozu, su damlası veya sarmaşık dikeni)
+      // Kemer üstü hareketli parçacıklar
       if (beltEffect === 'belt_stardust' || beltEffect === 'belt_water_hose' || beltEffect === 'belt_blood_vine') {
-        for (let i = 1; i <= 4; i++) {
-          const t = ((time * 0.0008 + i * 0.25) % 1);
+        ctx.fillStyle = beltEffect === 'belt_blood_vine' ? '#F43F5E' : '#FFFFFF';
+        ctx.beginPath();
+        for (let i = 1; i <= 3; i++) {
+          const t = ((time * 0.0008 + i * 0.33) % 1);
           const px = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * midX + t * t * x2;
           const py = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * midY + t * t * y2;
-          ctx.beginPath();
-          ctx.arc(px, py, 3.2, 0, Math.PI * 2);
-          ctx.fillStyle = beltEffect === 'belt_blood_vine' ? '#F43F5E' : '#FFFFFF';
-          ctx.fill();
+          ctx.moveTo(px + 3, py);
+          ctx.arc(px, py, 3.0, 0, Math.PI * 2);
         }
+        ctx.fill();
       }
     }
 
     // Duvar Bağlantı Noktasında Parlak Neon Enerji Küresi
-    ctx.globalAlpha = 1.0;
-    ctx.beginPath();
-    ctx.arc(x1, y1, 7.5, 0, Math.PI * 2);
-    ctx.fillStyle = player.color;
-    ctx.shadowColor = player.color;
-    ctx.shadowBlur = 14;
-    ctx.fill();
+    if (isPointInView(x1, y1, 30)) {
+      ctx.globalAlpha = 0.28;
+      ctx.beginPath();
+      ctx.arc(x1, y1, 11.5, 0, Math.PI * 2);
+      ctx.fillStyle = player.color;
+      ctx.fill();
 
-    ctx.shadowBlur = 0;
-    ctx.beginPath();
-    ctx.arc(x1, y1, 3.2, 0, Math.PI * 2);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fill();
+      ctx.globalAlpha = 1.0;
+      ctx.beginPath();
+      ctx.arc(x1, y1, 7.2, 0, Math.PI * 2);
+      ctx.fillStyle = player.color;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(x1, y1, 3.0, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fill();
+    }
     ctx.restore();
   }
 
   function drawSlimeArrows() {
     for (const a of renderArrows) {
+      if (!isPointInView(a.x, a.y, 40)) continue;
       const angle = Math.atan2(a.vy, a.vx);
       ctx.save();
       ctx.translate(a.x, a.y);
       ctx.rotate(angle);
 
-      // Neon Lazer Ok Gövdesi (Görseldeki parlak üçgen neon ok ucuyla birebir uyumlu)
-      ctx.shadowColor = a.color;
-      ctx.shadowBlur = 18;
+      // Dış neon hale (shadowBlur kullanmadan akıcı parlama)
+      ctx.beginPath();
+      ctx.arc(2, 0, 15, 0, Math.PI * 2);
+      ctx.fillStyle = a.color;
+      ctx.globalAlpha = 0.24;
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
 
       ctx.beginPath();
       ctx.moveTo(19, 0);
@@ -4762,12 +4920,11 @@
 
       ctx.fillStyle = a.color;
       ctx.fill();
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.0;
       ctx.strokeStyle = '#FFFFFF';
       ctx.stroke();
 
       // Ok ucu parlak yıldız çekirdeği
-      ctx.shadowBlur = 0;
       ctx.beginPath();
       ctx.arc(14, 0, 2.6, 0, Math.PI * 2);
       ctx.fillStyle = '#FFFFFF';
@@ -4781,9 +4938,6 @@
     const pulse = 1 + Math.sin(time * 0.01) * 0.18;
 
     ctx.save();
-    ctx.shadowColor = me.color || '#00F5D4';
-    ctx.shadowBlur = 16;
-
     ctx.beginPath();
     ctx.arc(preview.anchorX, preview.anchorY, 12 * pulse, 0, Math.PI * 2);
     ctx.fillStyle = me.color || '#00F5D4';
@@ -4817,6 +4971,7 @@
     const boxR = config.POWERUP_RADIUS || 22;
 
     for (const box of renderPowerups) {
+      if (!isPointInView(box.x, box.y, 60)) continue;
       const bobY = Math.sin(time * 0.005 + box.id) * 4.5;
       const pulse = 1 + Math.sin(time * 0.008 + box.id * 1.7) * 0.12;
       const rot = time * 0.0018 + box.id;
@@ -4856,11 +5011,17 @@
       boxGrad.addColorStop(0.5, '#FF2A85');
       boxGrad.addColorStop(1, '#FFE066');
 
+      // Dış parlak hale
+      ctx.fillStyle = glowColor;
+      ctx.globalAlpha = 0.25;
+      ctx.beginPath();
+      ctx.roundRect(-halfS - 5, -halfS - 5, cubeSize + 10, cubeSize + 10, 11);
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+
       ctx.fillStyle = boxGrad;
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 2.6;
-      ctx.shadowColor = glowColor;
-      ctx.shadowBlur = 22;
 
       ctx.beginPath();
       ctx.roundRect(-halfS, -halfS, cubeSize, cubeSize, 8);
@@ -4868,7 +5029,6 @@
       ctx.stroke();
 
       // 3) Küp içi 3D cam parlama şeridi (Specular highlight)
-      ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
       ctx.beginPath();
       ctx.roundRect(-halfS + 3, -halfS + 3, cubeSize - 6, (cubeSize - 6) * 0.42, 5);
@@ -4879,8 +5039,6 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#FFFFFF';
-      ctx.shadowColor = '#080B12';
-      ctx.shadowBlur = 6;
       ctx.fillText('⚡?', 0, 1);
       ctx.restore();
 
@@ -4902,24 +5060,16 @@
     ctx.save();
     ctx.translate(player.renderX, player.renderY);
 
-    // 1) Dış Parlayan 3D Neon Aura Çemberi (Gücün türüne göre farklı renkte ve desende)
+    // 1) Dış Parlayan 3D Neon Aura Çemberi
     const auraR = (baseR + 14) * pulse;
-    const auraGrad = ctx.createRadialGradient(0, 0, baseR * 0.7, 0, 0, auraR + 12);
-    auraGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
-    if (player.activePowerup === 'wide_cam') {
-      auraGrad.addColorStop(0.65, 'rgba(0, 187, 249, 0.28)');
-      auraGrad.addColorStop(1, 'rgba(0, 187, 249, 0)');
-    } else if (player.activePowerup === 'double_shot') {
-      auraGrad.addColorStop(0.65, 'rgba(255, 42, 133, 0.30)');
-      auraGrad.addColorStop(1, 'rgba(255, 42, 133, 0)');
-    } else {
-      auraGrad.addColorStop(0.65, 'rgba(255, 224, 102, 0.32)');
-      auraGrad.addColorStop(1, 'rgba(255, 224, 102, 0)');
-    }
-
-    ctx.fillStyle = auraGrad;
     ctx.beginPath();
-    ctx.arc(0, 0, auraR + 12, 0, Math.PI * 2);
+    ctx.arc(0, 0, auraR + 8, 0, Math.PI * 2);
+    ctx.fillStyle =
+      player.activePowerup === 'wide_cam'
+        ? 'rgba(0, 187, 249, 0.20)'
+        : player.activePowerup === 'double_shot'
+          ? 'rgba(255, 42, 133, 0.22)'
+          : 'rgba(255, 224, 102, 0.24)';
     ctx.fill();
 
     // 2) Kalan 10 Saniye Süre Halkası (Countdown Progress Arc)
@@ -4928,8 +5078,6 @@
     ctx.beginPath();
     ctx.arc(0, 0, baseR + 11, 0, Math.PI * 2 * ratio);
     ctx.strokeStyle = meta.color;
-    ctx.shadowColor = meta.color;
-    ctx.shadowBlur = 16;
     ctx.lineWidth = 3.5;
     ctx.lineCap = 'round';
     ctx.stroke();
@@ -4937,11 +5085,8 @@
 
     // 3) Gücün Türüne Özel Canlı 3D Efekt Detayları
     if (player.activePowerup === 'wide_cam') {
-      // 🔭 GENİŞ KAMERA: Dönen 4 Siber Radar Tarayıcı Yayları
       const radarRot = time * 0.0035;
       ctx.strokeStyle = '#00BBF9';
-      ctx.shadowColor = '#00BBF9';
-      ctx.shadowBlur = 12;
       ctx.lineWidth = 2.2;
       for (let i = 0; i < 4; i++) {
         const a0 = radarRot + i * (Math.PI / 2);
@@ -4950,12 +5095,9 @@
         ctx.stroke();
       }
     } else if (player.activePowerup === 'double_shot') {
-      // 🏹 İKİLİ ATIŞ: Bakış yönünde V şeklinde iki neon lazer nişangah ucu + dönen ikili plazma küresi
       const spread = config.POWERUP_DOUBLE_SHOT_SPREAD_RAD || 0.16;
       ctx.strokeStyle = '#FF2A85';
       ctx.fillStyle = '#FF2A85';
-      ctx.shadowColor = '#FF2A85';
-      ctx.shadowBlur = 14;
       ctx.lineWidth = 2.2;
       for (const s of [-1, 1]) {
         const a = lookAngle + s * spread;
@@ -4973,34 +5115,37 @@
         ctx.fill();
       }
     } else if (player.activePowerup === 'high_speed') {
-      // ⚡ YÜKSEK HIZ: Oyuncunun etrafında dönen altın şimşek kıvılcımları
       const sparkRot = time * 0.008;
       ctx.fillStyle = '#FFE066';
-      ctx.shadowColor = '#FFE066';
-      ctx.shadowBlur = 14;
+      ctx.beginPath();
       for (let i = 0; i < 4; i++) {
         const a = sparkRot + i * (Math.PI / 2);
         const sx = Math.cos(a) * (baseR + 16);
         const sy = Math.sin(a) * (baseR + 16);
-        ctx.beginPath();
+        ctx.moveTo(sx + 3.2, sy);
         ctx.arc(sx, sy, 3.2, 0, Math.PI * 2);
-        ctx.fill();
       }
+      ctx.fill();
     }
 
-    // 4) Kafa üstü / alt isim yanında canlı süre etiketi (Herkes görebilir)
+    // 4) Kafa üstü / alt isim yanında canlı süre etiketi
     const secLeft = (remMs / 1000).toFixed(1);
     ctx.font = '900 12px "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
+    ctx.strokeStyle = '#080B12';
+    ctx.lineWidth = 3;
+    const labelText = `${meta.icon} ${meta.name} (${secLeft}s)`;
+    ctx.strokeText(labelText, 0, baseR + 38);
     ctx.fillStyle = meta.color;
-    ctx.shadowColor = '#080B12';
-    ctx.shadowBlur = 6;
-    ctx.fillText(`${meta.icon} ${meta.name} (${secLeft}s)`, 0, baseR + 38);
+    ctx.fillText(labelText, 0, baseR + 38);
 
     ctx.restore();
   }
 
   function drawJellySlime(player, time) {
+    // Kamera görüş alanı dışındaki oyuncuları çizme (Frustum Culling)
+    if (!isPointInView(player.renderX, player.renderY, 95)) return;
+
     const speed = Math.hypot(player.vx, player.vy);
     const moveAngle = speed > 0.2 ? Math.atan2(player.vy, player.vx) : 0;
 
@@ -5024,12 +5169,12 @@
     const activeCoating = eq.skin || null;
     const activeTitleMeta = eq.title ? TITLE_META[eq.title] : null;
 
-    // 0) Aktif Güçlendirme (Power-Up) Neon Aurası (Diğer tüm oyuncular tarafından görülür)
+    // 0) Aktif Güçlendirme (Power-Up) Neon Aurası
     if (player.activePowerup) {
       drawPlayerPowerupAura(player, time, lookAngle);
     }
 
-    // 1) 3D Parlak Jöle Küre Gövde + Mağaza Kaplaması (Hareket yönüne göre esneyen jelly fizik)
+    // 1) 3D Parlak Jöle Küre Gövde + Mağaza Kaplaması
     ctx.save();
     ctx.translate(player.renderX, player.renderY);
     ctx.rotate(moveAngle);
@@ -5053,8 +5198,6 @@
       ctx.lineWidth = 2.5;
       ctx.setLineDash([8, 5]);
       ctx.strokeStyle = '#EC4899';
-      ctx.shadowColor = '#EC4899';
-      ctx.shadowBlur = 12;
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -5076,14 +5219,11 @@
       ctx.fillStyle = activeTitleMeta.bg;
       ctx.strokeStyle = activeTitleMeta.color;
       ctx.lineWidth = activeTitleMeta.isGoldFrame ? 2 : 1.3;
-      ctx.shadowColor = activeTitleMeta.color;
-      ctx.shadowBlur = activeTitleMeta.isGoldFrame ? 10 : 6;
       ctx.beginPath();
       ctx.roundRect(-titleW / 2, baseR + 27, titleW, 16, 8);
       ctx.fill();
       ctx.stroke();
 
-      ctx.shadowBlur = 0;
       ctx.fillStyle = activeTitleMeta.color;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -5093,9 +5233,10 @@
 
     ctx.font = 'bold 13px "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
+    ctx.strokeStyle = '#080B12';
+    ctx.lineWidth = 3.2;
+    ctx.strokeText(nameText, 0, baseR + 20);
     ctx.fillStyle = activeTitleMeta && activeTitleMeta.isGoldFrame ? '#FFE066' : '#F8F9FA';
-    ctx.shadowColor = '#000000';
-    ctx.shadowBlur = 6;
     ctx.fillText(nameText, 0, baseR + 20);
     ctx.restore();
   }
@@ -5110,6 +5251,8 @@
         killAnimations.splice(i, 1);
         continue;
       }
+      if (!isPointInView(ka.x, ka.y, 120)) continue;
+
       const progress = Math.max(0, Math.min(1, elapsed / ka.duration));
       const alpha = 1 - progress;
 
@@ -5148,7 +5291,6 @@
         ctx.arc(0, 0, Math.max(4, bhR), 0, Math.PI * 2);
         ctx.fill();
       } else if (ka.type === 'kill_ufo') {
-        // 🛸 UFO IŞINLAMASI: Yukarıdan inen yeşil çekim huzmesi ve uçan daire
         ctx.fillStyle = 'rgba(0, 245, 155, 0.28)';
         ctx.beginPath();
         ctx.moveTo(-12, -55);
@@ -5168,8 +5310,6 @@
         ctx.font = '900 26px "Segoe UI", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillStyle = '#00F5D4';
-        ctx.shadowColor = '#FF2A85';
-        ctx.shadowBlur = 16;
         ctx.fillText('⚡ GG! ⚡', 0, -16 - progress * 24);
       } else if (ka.type === 'kill_heartbreak') {
         ctx.font = '30px "Segoe UI Emoji", sans-serif';
@@ -5203,8 +5343,6 @@
     ctx.save();
     ctx.globalAlpha = alpha * 0.85;
     ctx.strokeStyle = '#E2E8F0';
-    ctx.shadowColor = '#00BBF9';
-    ctx.shadowBlur = 12;
     ctx.lineWidth = 2.6;
 
     const cx = canvas.width * 0.5;
@@ -5308,14 +5446,25 @@
     ctx.beginPath();
     ctx.arc(knobX, knobY, 24, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0, 245, 212, 0.75)';
-    ctx.shadowColor = '#00F5D4';
-    ctx.shadowBlur = 14;
     ctx.fill();
     ctx.restore();
   }
 
   function renderLoop(time) {
+    // Sekme arka plandayken GPU/CPU çizimini tamamen durdur
+    if (document.hidden) {
+      requestAnimationFrame(renderLoop);
+      return;
+    }
+
     renderLobbySkinPreview(time);
+
+    // Lobi ekranı açıkken ve aktif bir maçta değilken arka plan arena çizimini atla
+    if (!currentRoomId && lobbyModal && lobbyModal.style.display !== 'none') {
+      requestAnimationFrame(renderLoop);
+      return;
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     for (const p of renderPlayers.values()) {
@@ -5365,6 +5514,8 @@
       }
     }
 
+    updateViewBounds();
+
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.scale(camera.zoom, camera.zoom);
@@ -5387,13 +5538,15 @@
 
     for (let i = snapEffects.length - 1; i >= 0; i--) {
       const fx = snapEffects[i];
-      ctx.beginPath();
-      ctx.arc(fx.x, fx.y, fx.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = fx.color ? fx.color : `rgba(255, 42, 133, ${fx.alpha})`;
-      ctx.globalAlpha = Math.max(0, fx.alpha);
-      ctx.lineWidth = 4;
-      ctx.stroke();
-      ctx.globalAlpha = 1.0;
+      if (isPointInView(fx.x, fx.y, 60)) {
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, fx.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = fx.color ? fx.color : `rgba(255, 42, 133, ${fx.alpha})`;
+        ctx.globalAlpha = Math.max(0, fx.alpha);
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+      }
 
       fx.radius += 2.4;
       fx.alpha -= 0.06;
@@ -5402,12 +5555,14 @@
 
     for (let i = splatEffects.length - 1; i >= 0; i--) {
       const sp = splatEffects[i];
-      ctx.beginPath();
-      ctx.arc(sp.x, sp.y, sp.radius, 0, Math.PI * 2);
-      ctx.fillStyle = sp.color;
-      ctx.globalAlpha = Math.max(0, sp.alpha);
-      ctx.fill();
-      ctx.globalAlpha = 1.0;
+      if (isPointInView(sp.x, sp.y, 60)) {
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, sp.radius, 0, Math.PI * 2);
+        ctx.fillStyle = sp.color;
+        ctx.globalAlpha = Math.max(0, sp.alpha);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      }
 
       sp.radius += 1.6;
       sp.alpha -= 0.05;
@@ -5427,16 +5582,18 @@
 
     for (let i = floatingTexts.length - 1; i >= 0; i--) {
       const ft = floatingTexts[i];
-      ctx.save();
-      ctx.font = '900 18px "Segoe UI", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.globalAlpha = Math.max(0, ft.alpha);
-      ctx.fillStyle = ft.color;
-      ctx.strokeStyle = '#080B12';
-      ctx.lineWidth = 4;
-      ctx.strokeText(ft.text, ft.x, ft.y);
-      ctx.fillText(ft.text, ft.x, ft.y);
-      ctx.restore();
+      if (isPointInView(ft.x, ft.y, 90)) {
+        ctx.save();
+        ctx.font = '900 18px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.globalAlpha = Math.max(0, ft.alpha);
+        ctx.fillStyle = ft.color;
+        ctx.strokeStyle = '#080B12';
+        ctx.lineWidth = 4;
+        ctx.strokeText(ft.text, ft.x, ft.y);
+        ctx.fillText(ft.text, ft.x, ft.y);
+        ctx.restore();
+      }
 
       ft.y += ft.vy;
       ft.alpha -= 0.022;
@@ -5454,3 +5611,4 @@
 
   requestAnimationFrame(renderLoop);
 })();
+
