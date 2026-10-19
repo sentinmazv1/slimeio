@@ -270,9 +270,16 @@
 
   const renderPlayers = new Map();
   let renderArrows = [];
+  let renderPowerups = [];
   const snapEffects = [];
   const splatEffects = [];
   const floatingTexts = [];
+
+  const POWERUP_META = {
+    wide_cam: { id: 'wide_cam', name: 'GENİŞ KAMERA', icon: '🔭', color: '#00BBF9' },
+    double_shot: { id: 'double_shot', name: 'İKİLİ ATIŞ', icon: '🏹', color: '#FF2A85' },
+    high_speed: { id: 'high_speed', name: 'YÜKSEK HIZ', icon: '⚡', color: '#FFE066' }
+  };
 
   const stars = Array.from({ length: 140 }, () => ({
     x: (Math.random() * 2 - 1) * 2800,
@@ -1700,6 +1707,31 @@
     });
   });
 
+  socket.on('powerupCollected', ({ playerId, powerupId, x, y }) => {
+    const meta = POWERUP_META[powerupId] || POWERUP_META.high_speed;
+    const p = renderPlayers.get(playerId);
+    if (p) {
+      p.activePowerup = powerupId;
+      p.powerupRemaining = config.POWERUP_DURATION_MS || 10000;
+      p.impactPulse = 1.2;
+    }
+    if (playerId === selfId) {
+      window.soundManager.playPowerupPickup();
+    } else {
+      window.soundManager.playPowerupPickup(x, y, camera.x, camera.y);
+    }
+    splatEffects.push({ x, y, color: meta.color, radius: 14, alpha: 1.0 });
+    snapEffects.push({ x, y, radius: 12, alpha: 1.0, color: meta.color });
+  });
+
+  socket.on('powerupExpired', ({ playerId }) => {
+    const p = renderPlayers.get(playerId);
+    if (p) {
+      p.activePowerup = null;
+      p.powerupRemaining = 0;
+    }
+  });
+
   socket.on('playerDied', ({ victimId }) => {
     if (victimId === selfId) {
       joystick.active = false;
@@ -1858,7 +1890,8 @@
       onlineCount,
       remainingSec,
       players,
-      arrows
+      arrows,
+      powerups
     } = state;
 
     totalOnline = onlineCount || players.length;
@@ -1879,6 +1912,7 @@
     updateTeamWaitingRoomUI(state);
 
     renderArrows = arrows || [];
+    renderPowerups = powerups || [];
 
     const activeIds = new Set();
     for (const p of players) {
@@ -1907,6 +1941,8 @@
         existing.cuts = p.cuts;
         existing.kills = p.kills;
         existing.respawnRemaining = p.respawnRemaining;
+        existing.activePowerup = p.activePowerup;
+        existing.powerupRemaining = p.powerupRemaining;
         existing.x = p.x;
         existing.y = p.y;
         existing.vx = p.vx;
@@ -1955,7 +1991,11 @@
         if (spectatorControlsBarEl) spectatorControlsBarEl.style.display = 'none';
         spectatorBannerEl.style.display = 'none';
         overlayEl.style.display = 'none';
-        myBandsEl.textContent = `🔗 ${count} | 🏹 ${slimeAmmo}`;
+        const pMeta = me.activePowerup ? POWERUP_META[me.activePowerup] : null;
+        const pSuffix = pMeta && me.powerupRemaining > 0
+          ? ` | ${pMeta.icon} ${pMeta.name} (${(me.powerupRemaining / 1000).toFixed(1)}s)`
+          : '';
+        myBandsEl.textContent = `🔗 ${count} | 🏹 ${slimeAmmo}${pSuffix}`;
       } else {
         if (spectatorControlsBarEl) spectatorControlsBarEl.style.display = 'none';
         spectatorBannerEl.style.display = 'none';
@@ -3299,6 +3339,194 @@
     ctx.restore();
   }
 
+  function drawPowerupBoxes(time) {
+    if (!renderPowerups || renderPowerups.length === 0) return;
+    const boxR = config.POWERUP_RADIUS || 22;
+
+    for (const box of renderPowerups) {
+      const bobY = Math.sin(time * 0.005 + box.id) * 4.5;
+      const pulse = 1 + Math.sin(time * 0.008 + box.id * 1.7) * 0.12;
+      const rot = time * 0.0018 + box.id;
+
+      // Üç gücün renkleri arasında tatlı neon geçişi
+      const hueCycle = Math.floor((time * 0.002 + box.id) % 3);
+      const glowColor = hueCycle === 0 ? '#00BBF9' : hueCycle === 1 ? '#FF2A85' : '#FFE066';
+
+      ctx.save();
+      ctx.translate(box.x, box.y);
+
+      // 1) Zemin üzerindeki 3D süzülme gölgesi ve dış radar halkası
+      ctx.beginPath();
+      ctx.ellipse(0, boxR + 8, boxR * 0.85, boxR * 0.32, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(8, 11, 18, 0.55)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(0, bobY, boxR * 1.32 * pulse, 0, Math.PI * 2);
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.45;
+      ctx.setLineDash([6, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1.0;
+
+      // 2) Süzülen 3D Neon Enerji Küpü Gövdesi
+      ctx.translate(0, bobY);
+      ctx.save();
+      ctx.rotate(Math.sin(rot) * 0.18);
+
+      const cubeSize = boxR * 1.45;
+      const halfS = cubeSize / 2;
+      const boxGrad = ctx.createLinearGradient(-halfS, -halfS, halfS, halfS);
+      boxGrad.addColorStop(0, '#00BBF9');
+      boxGrad.addColorStop(0.5, '#FF2A85');
+      boxGrad.addColorStop(1, '#FFE066');
+
+      ctx.fillStyle = boxGrad;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2.6;
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 22;
+
+      ctx.beginPath();
+      ctx.roundRect(-halfS, -halfS, cubeSize, cubeSize, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      // 3) Küp içi 3D cam parlama şeridi (Specular highlight)
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.beginPath();
+      ctx.roundRect(-halfS + 3, -halfS + 3, cubeSize - 6, (cubeSize - 6) * 0.42, 5);
+      ctx.fill();
+
+      // 4) Küp merkezi soru işareti / yıldız sembolü
+      ctx.font = '900 17px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.shadowColor = '#080B12';
+      ctx.shadowBlur = 6;
+      ctx.fillText('⚡?', 0, 1);
+      ctx.restore();
+
+      ctx.restore();
+    }
+  }
+
+  function drawPlayerPowerupAura(player, time, lookAngle) {
+    if (!player.activePowerup) return;
+    const meta = POWERUP_META[player.activePowerup];
+    if (!meta) return;
+
+    const baseR = config.PLAYER_RADIUS;
+    const totalDur = config.POWERUP_DURATION_MS || 10000;
+    const remMs = Math.max(0, player.powerupRemaining || 0);
+    const ratio = Math.max(0.05, Math.min(1, remMs / totalDur));
+    const pulse = 1 + Math.sin(time * 0.012) * 0.08;
+
+    ctx.save();
+    ctx.translate(player.renderX, player.renderY);
+
+    // 1) Dış Parlayan 3D Neon Aura Çemberi (Gücün türüne göre farklı renkte ve desende)
+    const auraR = (baseR + 14) * pulse;
+    const auraGrad = ctx.createRadialGradient(0, 0, baseR * 0.7, 0, 0, auraR + 12);
+    auraGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    if (player.activePowerup === 'wide_cam') {
+      auraGrad.addColorStop(0.65, 'rgba(0, 187, 249, 0.28)');
+      auraGrad.addColorStop(1, 'rgba(0, 187, 249, 0)');
+    } else if (player.activePowerup === 'double_shot') {
+      auraGrad.addColorStop(0.65, 'rgba(255, 42, 133, 0.30)');
+      auraGrad.addColorStop(1, 'rgba(255, 42, 133, 0)');
+    } else {
+      auraGrad.addColorStop(0.65, 'rgba(255, 224, 102, 0.32)');
+      auraGrad.addColorStop(1, 'rgba(255, 224, 102, 0)');
+    }
+
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, auraR + 12, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2) Kalan 10 Saniye Süre Halkası (Countdown Progress Arc)
+    ctx.save();
+    ctx.rotate(-Math.PI / 2);
+    ctx.beginPath();
+    ctx.arc(0, 0, baseR + 11, 0, Math.PI * 2 * ratio);
+    ctx.strokeStyle = meta.color;
+    ctx.shadowColor = meta.color;
+    ctx.shadowBlur = 16;
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
+
+    // 3) Gücün Türüne Özel Canlı 3D Efekt Detayları
+    if (player.activePowerup === 'wide_cam') {
+      // 🔭 GENİŞ KAMERA: Dönen 4 Siber Radar Tarayıcı Yayları
+      const radarRot = time * 0.0035;
+      ctx.strokeStyle = '#00BBF9';
+      ctx.shadowColor = '#00BBF9';
+      ctx.shadowBlur = 12;
+      ctx.lineWidth = 2.2;
+      for (let i = 0; i < 4; i++) {
+        const a0 = radarRot + i * (Math.PI / 2);
+        ctx.beginPath();
+        ctx.arc(0, 0, baseR + 17, a0, a0 + 0.45);
+        ctx.stroke();
+      }
+    } else if (player.activePowerup === 'double_shot') {
+      // 🏹 İKİLİ ATIŞ: Bakış yönünde V şeklinde iki neon lazer nişangah ucu + dönen ikili plazma küresi
+      const spread = config.POWERUP_DOUBLE_SHOT_SPREAD_RAD || 0.16;
+      ctx.strokeStyle = '#FF2A85';
+      ctx.fillStyle = '#FF2A85';
+      ctx.shadowColor = '#FF2A85';
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 2.2;
+      for (const s of [-1, 1]) {
+        const a = lookAngle + s * spread;
+        const x1 = Math.cos(a) * (baseR + 8);
+        const y1 = Math.sin(a) * (baseR + 8);
+        const x2 = Math.cos(a) * (baseR + 24);
+        const y2 = Math.sin(a) * (baseR + 24);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(x2, y2, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (player.activePowerup === 'high_speed') {
+      // ⚡ YÜKSEK HIZ: Oyuncunun etrafında dönen altın şimşek kıvılcımları
+      const sparkRot = time * 0.008;
+      ctx.fillStyle = '#FFE066';
+      ctx.shadowColor = '#FFE066';
+      ctx.shadowBlur = 14;
+      for (let i = 0; i < 4; i++) {
+        const a = sparkRot + i * (Math.PI / 2);
+        const sx = Math.cos(a) * (baseR + 16);
+        const sy = Math.sin(a) * (baseR + 16);
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // 4) Kafa üstü / alt isim yanında canlı süre etiketi (Herkes görebilir)
+    const secLeft = (remMs / 1000).toFixed(1);
+    ctx.font = '900 12px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = meta.color;
+    ctx.shadowColor = '#080B12';
+    ctx.shadowBlur = 6;
+    ctx.fillText(`${meta.icon} ${meta.name} (${secLeft}s)`, 0, baseR + 38);
+
+    ctx.restore();
+  }
+
   function drawJellySlime(player, time) {
     const speed = Math.hypot(player.vx, player.vy);
     const moveAngle = speed > 0.2 ? Math.atan2(player.vy, player.vx) : 0;
@@ -3308,6 +3536,20 @@
     player.impactPulse *= 0.88;
 
     const baseR = config.PLAYER_RADIUS;
+
+    const lookAngle =
+      player.id === selfId
+        ? joystick.active
+          ? joystick.aimAngle
+          : keyboard.mode === 'keyboard'
+            ? keyboard.aimAngle
+            : Math.atan2(mouseWorld.y - player.renderY, mouseWorld.x - player.renderX)
+        : moveAngle;
+
+    // 0) Aktif Güçlendirme (Power-Up) Neon Aurası (Diğer tüm oyuncular tarafından görülür)
+    if (player.activePowerup) {
+      drawPlayerPowerupAura(player, time, lookAngle);
+    }
 
     // 1) 3D Parlak Jöle Küre Gövde (Hareket yönüne göre esneyen jelly fizik)
     ctx.save();
@@ -3320,14 +3562,6 @@
     // 2) 3D İri Parlak Gözler, Allık, Tebessüm ve Neon Kostüm Aksesuarı
     ctx.save();
     ctx.translate(player.renderX, player.renderY);
-    const lookAngle =
-      player.id === selfId
-        ? joystick.active
-          ? joystick.aimAngle
-          : keyboard.mode === 'keyboard'
-            ? keyboard.aimAngle
-            : Math.atan2(mouseWorld.y - player.renderY, mouseWorld.x - player.renderX)
-        : moveAngle;
     const lookX = Math.cos(lookAngle) * 4.2;
     const lookY = Math.sin(lookAngle) * 4.2;
 
@@ -3397,6 +3631,16 @@
       ctx.fill();
     }
     ctx.globalAlpha = 1.0;
+
+    // Haritadaki güçlendirme kutularını minimap'te parlak sarı noktalar olarak göster
+    for (const box of renderPowerups) {
+      const bx = centerX + box.x * scaleX;
+      const by = centerY + box.y * scaleY;
+      ctx.beginPath();
+      ctx.arc(bx, by, 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFE066';
+      ctx.fill();
+    }
 
     for (const p of renderPlayers.values()) {
       if (!p.alive) continue;
@@ -3468,7 +3712,11 @@
       }
     } else if (me) {
       if (me.alive && !me.spectating && !me.waitingForWall) {
-        camera.zoom += (camera.targetGameplayZoom - camera.zoom) * 0.08;
+        // Geniş Kamera (wide_cam) aktifse sadece kutuyu alan oyuncunun FOV'u (kamera açısı) genişler (zoom-out)
+        const desiredZoom = me.activePowerup === 'wide_cam'
+          ? camera.targetGameplayZoom * (config.POWERUP_WIDE_CAM_MULTIPLIER || 0.65)
+          : camera.targetGameplayZoom;
+        camera.zoom += (desiredZoom - camera.zoom) * 0.08;
         camera.x += (me.renderX - camera.x) * 0.16;
         camera.y += (me.renderY - camera.y) * 0.16;
 
@@ -3497,6 +3745,7 @@
     ctx.translate(-camera.x, -camera.y);
 
     drawOpenWorldAndObstacles(time);
+    drawPowerupBoxes(time);
 
     const targetedBeltId = me ? getTargetedOwnBeltId(me) : null;
 
@@ -3514,9 +3763,11 @@
       const fx = snapEffects[i];
       ctx.beginPath();
       ctx.arc(fx.x, fx.y, fx.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(255, 42, 133, ${fx.alpha})`;
+      ctx.strokeStyle = fx.color ? fx.color : `rgba(255, 42, 133, ${fx.alpha})`;
+      ctx.globalAlpha = Math.max(0, fx.alpha);
       ctx.lineWidth = 4;
       ctx.stroke();
+      ctx.globalAlpha = 1.0;
 
       fx.radius += 2.4;
       fx.alpha -= 0.06;

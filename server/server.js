@@ -6,6 +6,7 @@ const Matter = require('matter-js');
 
 const {
   GAME_CONFIG,
+  POWERUP_TYPES,
   SLIME_COLORS,
   BASIC_10_SKINS,
   GAME_MODES,
@@ -237,6 +238,7 @@ const adminSockets = new Set(); // admin yetkili socketId'ler
 
 let nextBandId = 1;
 let nextArrowId = 1;
+let nextPowerupId = 1;
 let botCounter = 1;
 
 const BOT_NAMES = [
@@ -244,6 +246,61 @@ const BOT_NAMES = [
   'KemerAvcısı', 'Plazma', 'Boncuk', 'Elastik',
   'TosunPaşa', 'KüçükEnişte', 'LütfüBey', 'Suphi'
 ];
+
+// Haritada engellerle çakışmayan güvenli rastgele güçlendirme (Power-Up) koordinatı bul
+function findSafePowerupPosition(room) {
+  const halfW = GAME_CONFIG.ARENA_WIDTH / 2 - 200;
+  const halfH = GAME_CONFIG.ARENA_HEIGHT / 2 - 200;
+
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const rx = Math.round((Math.random() * 2 - 1) * halfW);
+    const ry = Math.round((Math.random() * 2 - 1) * halfH);
+
+    let clearOfObstacles = true;
+    for (const obs of sharedMapObstacles) {
+      const approxR = (obs.radius || Math.max(obs.w || 80, obs.h || 80) * 0.55) + 75;
+      if (Math.hypot(rx - obs.x, ry - obs.y) < approxR) {
+        clearOfObstacles = false;
+        break;
+      }
+    }
+    if (!clearOfObstacles) continue;
+
+    if (room && Array.isArray(room.powerups)) {
+      let clearOfOthers = true;
+      for (const existing of room.powerups) {
+        if (Math.hypot(rx - existing.x, ry - existing.y) < 240) {
+          clearOfOthers = false;
+          break;
+        }
+      }
+      if (!clearOfOthers) continue;
+    }
+
+    return { x: rx, y: ry };
+  }
+
+  return {
+    x: Math.round((Math.random() * 2 - 1) * 900),
+    y: Math.round((Math.random() * 2 - 1) * 600)
+  };
+}
+
+function spawnPowerupBox(room) {
+  if (!room || !Array.isArray(room.powerups)) return null;
+  if (room.powerups.length >= (GAME_CONFIG.MAX_POWERUPS_PER_ROOM || 5)) return null;
+
+  const pos = findSafePowerupPosition(room);
+  const box = {
+    id: nextPowerupId++,
+    x: pos.x,
+    y: pos.y,
+    createdAt: Date.now()
+  };
+  room.powerups.push(box);
+  room.lastPowerupSpawnAt = Date.now();
+  return box;
+}
 
 // --- ODA OLUŞTURMA ---
 function createRoom(modeConfig) {
@@ -263,12 +320,19 @@ function createRoom(modeConfig) {
     engine,
     players: new Map(),
     arrows: [],
+    powerups: [],
+    lastPowerupSpawnAt: Date.now(),
     status: modeConfig.isTeam ? 'waiting_for_teams' : 'playing', // 'waiting_for_teams' | 'starting_countdown' | 'playing' | 'match_over'
     countdownEndTime: 0,
     matchEndTime: Date.now() + GAME_CONFIG.MATCH_DURATION_SEC * 1000,
     matchStartTime: Date.now(),
     matchRestartTimer: null
   };
+
+  // Başlangıçta haritaya 3 adet rastgele güçlendirme kutusu yerleştir
+  for (let i = 0; i < 3; i++) {
+    spawnPowerupBox(room);
+  }
 
   Events.on(engine, 'collisionStart', (event) => {
     if (room.status !== 'playing') return;
@@ -393,6 +457,12 @@ function snapToNearestWallOrObstacle(x, y) {
 function clearPlayerPhysics(room, player) {
   if (!player) return;
   player.bands = [];
+  if (player.powerupTimer) {
+    clearTimeout(player.powerupTimer);
+    player.powerupTimer = null;
+  }
+  player.activePowerup = null;
+  player.powerupUntil = 0;
   if (player.body && room && room.engine) {
     World.remove(room.engine.world, player.body);
     player.body = null;
@@ -573,36 +643,50 @@ function shootSlimeArrow(room, player, targetWorldX, targetWorldY) {
   const py = player.body.position.y;
   const dx = targetWorldX - px;
   const dy = targetWorldY - py;
-  const len = Math.hypot(dx, dy) || 1;
-  const dirX = dx / len;
-  const dirY = dy / len;
+  const baseAngle = Math.atan2(dy, dx);
 
-  const spawnX = px + dirX * (GAME_CONFIG.PLAYER_RADIUS + 10);
-  const spawnY = py + dirY * (GAME_CONFIG.PLAYER_RADIUS + 10);
+  const hasDoubleShot =
+    player.activePowerup === 'double_shot' && now < (player.powerupUntil || 0);
+  const spread = GAME_CONFIG.POWERUP_DOUBLE_SHOT_SPREAD_RAD || 0.16;
+  const angles = hasDoubleShot
+    ? [baseAngle - spread, baseAngle + spread]
+    : [baseAngle];
 
-  const arrow = {
-    id: nextArrowId++,
-    ownerId: player.id,
-    team: player.team || null,
-    color: player.color,
-    x: spawnX,
-    y: spawnY,
-    prevX: px,
-    prevY: py,
-    vx: dirX * GAME_CONFIG.ARROW_SPEED,
-    vy: dirY * GAME_CONFIG.ARROW_SPEED,
-    createdAt: now
-  };
+  let firstArrow = null;
+  for (const ang of angles) {
+    const dirX = Math.cos(ang);
+    const dirY = Math.sin(ang);
+    const spawnX = px + dirX * (GAME_CONFIG.PLAYER_RADIUS + 10);
+    const spawnY = py + dirY * (GAME_CONFIG.PLAYER_RADIUS + 10);
 
-  room.arrows.push(arrow);
+    const arrow = {
+      id: nextArrowId++,
+      ownerId: player.id,
+      team: player.team || null,
+      color: hasDoubleShot ? '#FF2A85' : player.color,
+      x: spawnX,
+      y: spawnY,
+      prevX: px,
+      prevY: py,
+      vx: dirX * GAME_CONFIG.ARROW_SPEED,
+      vy: dirY * GAME_CONFIG.ARROW_SPEED,
+      createdAt: now
+    };
 
-  io.to(room.id).emit('arrowShot', {
-    arrowId: arrow.id,
-    playerId: player.id,
-    consumedBandId: consumedBand ? consumedBand.id : null,
-    x: Math.round(spawnX),
-    y: Math.round(spawnY)
-  });
+    if (!firstArrow) firstArrow = arrow;
+    room.arrows.push(arrow);
+  }
+
+  if (firstArrow) {
+    io.to(room.id).emit('arrowShot', {
+      arrowId: firstArrow.id,
+      playerId: player.id,
+      doubleShot: hasDoubleShot,
+      consumedBandId: consumedBand ? consumedBand.id : null,
+      x: Math.round(firstArrow.x),
+      y: Math.round(firstArrow.y)
+    });
+  }
 }
 
 function cutOwnBeltInDirection(room, player, targetWorldX, targetWorldY) {
@@ -1152,6 +1236,94 @@ function processRoomBandIntersections(room) {
   }
 }
 
+// --- RASTGELE GÜÇLENDİRME (POWER-UP) KUTULARI SPAWN VE ÇARPIŞMA DÖNGÜSÜ ---
+function updateRoomPowerups(room, now) {
+  if (!room || room.status !== 'playing') return;
+
+  // Belirli aralıklarla haritanın rastgele koordinatlarında yeni güçlendirme kutusu oluştur
+  const spawnInterval = GAME_CONFIG.POWERUP_SPAWN_INTERVAL_MS || 6000;
+  const maxBoxes = GAME_CONFIG.MAX_POWERUPS_PER_ROOM || 5;
+  if (
+    room.powerups.length < maxBoxes &&
+    now - (room.lastPowerupSpawnAt || 0) >= spawnInterval
+  ) {
+    spawnPowerupBox(room);
+  }
+
+  if (room.powerups.length === 0) return;
+
+  const pickupDist = (GAME_CONFIG.PLAYER_RADIUS || 24) + (GAME_CONFIG.POWERUP_RADIUS || 22);
+
+  for (const p of room.players.values()) {
+    if (!p.alive || !p.body || p.spectating || p.watchOnly) continue;
+
+    const px = p.body.position.x;
+    const py = p.body.position.y;
+
+    for (let i = room.powerups.length - 1; i >= 0; i--) {
+      const box = room.powerups[i];
+      const d = Math.hypot(px - box.x, py - box.y);
+      if (d <= pickupDist) {
+        // Kutuyu haritadan sil
+        room.powerups.splice(i, 1);
+
+        // 3 farklı güçten birini rastgele seç (Geniş Kamera, İkili Atış, Yüksek Hız)
+        const pool = Array.isArray(POWERUP_TYPES) && POWERUP_TYPES.length > 0
+          ? POWERUP_TYPES
+          : [
+              { id: 'wide_cam', name: 'Geniş Kamera', icon: '🔭', color: '#00BBF9' },
+              { id: 'double_shot', name: 'İkili Atış', icon: '🏹', color: '#FF2A85' },
+              { id: 'high_speed', name: 'Yüksek Hız', icon: '⚡', color: '#FFE066' }
+            ];
+        const chosen = pool[Math.floor(Math.random() * pool.length)];
+        const durationMs = GAME_CONFIG.POWERUP_DURATION_MS || 10000;
+
+        // Önceki aktif güç sayacı varsa temizle
+        if (p.powerupTimer) {
+          clearTimeout(p.powerupTimer);
+          p.powerupTimer = null;
+        }
+
+        p.activePowerup = chosen.id;
+        p.powerupUntil = now + durationMs;
+
+        // Tam 10 saniye sonra gücü ve aurayı sıfırla
+        p.powerupTimer = setTimeout(() => {
+          p.activePowerup = null;
+          p.powerupUntil = 0;
+          p.powerupTimer = null;
+          io.to(room.id).emit('powerupExpired', {
+            playerId: p.id
+          });
+        }, durationMs);
+
+        addScore(
+          room,
+          p,
+          GAME_CONFIG.SCORE_PER_POWERUP || 25,
+          `${chosen.icon} ${chosen.name.toUpperCase()} (10sn)!`,
+          box.x,
+          box.y
+        );
+
+        io.to(room.id).emit('powerupCollected', {
+          playerId: p.id,
+          playerName: p.name,
+          powerupId: chosen.id,
+          powerupName: chosen.name,
+          powerupIcon: chosen.icon,
+          color: chosen.color,
+          durationMs,
+          x: box.x,
+          y: box.y
+        });
+
+        break;
+      }
+    }
+  }
+}
+
 // --- MAÇ BAŞLATMA VE BİTİRME ---
 function startNewMatch(room) {
   if (!room) return;
@@ -1161,6 +1333,10 @@ function startNewMatch(room) {
   }
 
   room.arrows.length = 0;
+  room.powerups.length = 0;
+  for (let i = 0; i < 3; i++) {
+    spawnPowerupBox(room);
+  }
   room.status = 'playing';
   room.matchStartTime = Date.now();
   room.matchEndTime = Date.now() + GAME_CONFIG.MATCH_DURATION_SEC * 1000;
@@ -1343,12 +1519,15 @@ setInterval(() => {
           const throttle = Math.min(dist / GAME_CONFIG.MAX_INPUT_DIST, 1.0);
           const dirX = dx / dist;
           const dirY = dy / dist;
-          const fx = dirX * GAME_CONFIG.BASE_MOVE_FORCE * throttle;
-          const fy = dirY * GAME_CONFIG.BASE_MOVE_FORCE * throttle;
+          const hasHighSpeed = p.activePowerup === 'high_speed' && now < (p.powerupUntil || 0);
+          const speedMult = hasHighSpeed ? (GAME_CONFIG.POWERUP_SPEED_MULTIPLIER || 1.72) : 1.0;
+
+          const fx = dirX * GAME_CONFIG.BASE_MOVE_FORCE * speedMult * throttle;
+          const fy = dirY * GAME_CONFIG.BASE_MOVE_FORCE * speedMult * throttle;
           Body.applyForce(p.body, p.body.position, { x: fx, y: fy });
 
           // Fare yönüne anında ve akıcı dönüş desteği (Steering Assist)
-          const desiredSpeed = 9.2 * throttle;
+          const desiredSpeed = 9.2 * speedMult * throttle;
           const nextVx = p.body.velocity.x * 0.90 + dirX * desiredSpeed * 0.10;
           const nextVy = p.body.velocity.y * 0.90 + dirY * desiredSpeed * 0.10;
           Body.setVelocity(p.body, { x: nextVx, y: nextVy });
@@ -1371,6 +1550,7 @@ setInterval(() => {
     }
 
     Engine.update(room.engine, dt);
+    updateRoomPowerups(room, now);
     updateRoomArrows(room, now);
     processRoomBandIntersections(room);
   }
@@ -1402,6 +1582,8 @@ setInterval(() => {
         telliScore += p.score || 0;
       }
 
+      const hasActivePower = Boolean(p.activePowerup && now < (p.powerupUntil || 0));
+
       snapshot.push({
         id: p.id,
         name: p.name,
@@ -1417,6 +1599,8 @@ setInterval(() => {
         score: p.score,
         cuts: p.cuts,
         kills: p.kills,
+        activePowerup: hasActivePower ? p.activePowerup : null,
+        powerupRemaining: hasActivePower ? Math.max(0, p.powerupUntil - now) : 0,
         respawnRemaining: p.alive || p.waitingForWall || p.spectating ? 0 : Math.max(0, p.respawnAt - now),
         x: p.body ? Math.round(p.body.position.x * 10) / 10 : 0,
         y: p.body ? Math.round(p.body.position.y * 10) / 10 : 0,
@@ -1438,6 +1622,12 @@ setInterval(() => {
       y: Math.round(a.y),
       vx: Math.round(a.vx * 10) / 10,
       vy: Math.round(a.vy * 10) / 10
+    }));
+
+    const activePowerups = (room.powerups || []).map((box) => ({
+      id: box.id,
+      x: box.x,
+      y: box.y
     }));
 
     const remainingSec =
@@ -1463,7 +1653,8 @@ setInterval(() => {
       humanCount,
       remainingSec,
       players: snapshot,
-      arrows: activeArrows
+      arrows: activeArrows,
+      powerups: activePowerups
     });
   }
 }, 1000 / GAME_CONFIG.NETWORK_RATE);

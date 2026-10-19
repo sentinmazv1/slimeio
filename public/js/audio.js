@@ -272,6 +272,25 @@ class SoundManager {
     this._spawnBubble(290, 620, 0.065, 0.14, 0);
     this._spawnBubble(420, 840, 0.055, 0.1, 0.05);
   }
+
+  // 8) Güçlendirme Kutusu (Power-Up) Alındığında: Neşeli Yükselen Kristal-Jöle Melodisi ("Blup-Bling-Pop!")
+  playPowerupPickup(worldX, worldY, camX, camY) {
+    if (this.muted) return;
+    this.init();
+    const scale = this.getDistanceScale(worldX, worldY, camX, camY);
+    if (scale <= 0.02) return;
+
+    const notes = [
+      { f1: 310, f2: 640, delay: 0.0, gain: 0.18 * scale },
+      { f1: 420, f2: 880, delay: 0.055, gain: 0.2 * scale },
+      { f1: 560, f2: 1180, delay: 0.11, gain: 0.22 * scale }
+    ];
+    for (const n of notes) {
+      this._spawnBubble(n.f1, n.f2, 0.08, n.gain, n.delay);
+    }
+    this._spawnWetSquish(520, 1280, 0.075, 0.14 * scale, 0.02);
+  }
 }
 
 window.soundManager = new SoundManager();
+

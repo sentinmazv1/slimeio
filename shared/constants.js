@@ -40,11 +40,46 @@
     SCORE_PER_ARROW_HIT: 75,
     SCORE_PER_KILL: 150,
     SCORE_HOLD_PER_BELT_SEC: 2,
+    SCORE_PER_POWERUP: 25,
+
+    // 10 Saniyelik Geçici Güçlendirme (Power-Up) Sistemi Ayarları
+    POWERUP_DURATION_MS: 10000,         // Tam 10 saniye (10000 ms) aktif kalır
+    POWERUP_SPAWN_INTERVAL_MS: 6000,    // Her 6 saniyede bir rastgele koordinatta yeni kutu belirir
+    MAX_POWERUPS_PER_ROOM: 5,           // Haritada aynı anda bulunabilecek maksimum kutu sayısı
+    POWERUP_RADIUS: 22,                 // Güçlendirme kutusu çarpışma yarıçapı
+    POWERUP_SPEED_MULTIPLIER: 1.72,     // Yüksek Hız gücü hareket hızı çarpanı (+%72 hız)
+    POWERUP_WIDE_CAM_MULTIPLIER: 0.65,  // Geniş Kamera FOV zoom-out çarpanı
+    POWERUP_DOUBLE_SHOT_SPREAD_RAD: 0.16, // İkili Atış V-açısı (radyan)
 
     // Online Sunucu Ayarları
     MIN_TOTAL_PLAYERS_WITH_BOTS: 6,
     MAX_PLAYERS_PER_ROOM: 40
   };
+
+  // Rastgele Verilen 3 Geçici Güçlendirme Türü (10 Saniye Süreli)
+  exports.POWERUP_TYPES = [
+    {
+      id: 'wide_cam',
+      name: 'Geniş Kamera',
+      icon: '🔭',
+      color: '#00BBF9',
+      desc: '10 Saniye Geniş Görüş Açısı (FOV Zoom-Out)!'
+    },
+    {
+      id: 'double_shot',
+      name: 'İkili Atış',
+      icon: '🏹',
+      color: '#FF2A85',
+      desc: '10 Saniye V Şeklinde Çift Ok Fırlatma!'
+    },
+    {
+      id: 'high_speed',
+      name: 'Yüksek Hız',
+      icon: '⚡',
+      color: '#FFE066',
+      desc: '10 Saniye Süper Hareket Hızı!'
+    }
+  ];
 
   // Üyelerin seçebileceği 10 Neon Slime Rengi
   exports.SLIME_COLORS = [
