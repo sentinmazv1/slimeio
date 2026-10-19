@@ -162,9 +162,11 @@
   const shopWalletPointsEl = document.getElementById('shop-wallet-points');
   const shopWalletCoinsEl = document.getElementById('shop-wallet-coins');
   const shopItemsContainer = document.getElementById('shop-items-container');
-  const shopFeedbackMsg = document.getElementById('shop-feedback-msg');
+  const shopFeedbackMsg = document.getElementById('shop-feedback-msg') || document.getElementById('shop-feedback-banner');
   const shopClaimPackBtn = document.getElementById('shop-claim-pack-btn');
   const shopEquippedBadgesEl = document.getElementById('shop-equipped-badges');
+  const shopPreviewStatusEl = document.getElementById('shop-preview-status');
+  const shopResetPreviewBtn = document.getElementById('shop-reset-preview-btn');
   const shopTabBtns = document.querySelectorAll('.shop-tab-btn');
 
   const lobbyWalletPointsEl = document.getElementById('lobby-wallet-points');
@@ -188,6 +190,9 @@
   let roomsSummary = [];
   let storeItems = [];
   let currentShopTab = 'hat';
+  let shopPreviewLoadout = { hat: null, skin: null, belt: null, kill_effect: null, title: null };
+  let shopPreviewActiveItemId = null;
+  let shopPreviewKillStartMs = 0;
 
   let currentUser = null; // Giriş yapmış üye bilgisi
   let guestFriends = []; // Misafir oturumda takip edilen oyuncular
@@ -551,6 +556,53 @@
     }
   }
 
+  function previewShopItem(itemId) {
+    const item = storeItems.find((it) => it.id === itemId);
+    if (!item) return;
+    window.soundManager.init();
+    window.soundManager.playUiPop();
+
+    shopPreviewActiveItemId = item.id;
+    shopPreviewLoadout[item.type] = item.id;
+    if (item.type === 'kill_effect') {
+      shopPreviewKillStartMs = performance.now();
+    }
+
+    if (shopPreviewStatusEl) {
+      shopPreviewStatusEl.style.color = '#FFE066';
+      shopPreviewStatusEl.style.borderColor = 'rgba(255,224,102,0.55)';
+      shopPreviewStatusEl.style.background = 'rgba(255,224,102,0.14)';
+      shopPreviewStatusEl.innerHTML = `👁️ Önizleniyor: <b>${escapeHtml(item.icon || '✨')} ${escapeHtml(item.name)}</b>`;
+    }
+    if (shopResetPreviewBtn) {
+      shopResetPreviewBtn.style.display = 'inline-block';
+    }
+    renderShopModal();
+  }
+
+  function resetShopPreview() {
+    shopPreviewLoadout = { hat: null, skin: null, belt: null, kill_effect: null, title: null };
+    shopPreviewActiveItemId = null;
+    if (shopPreviewStatusEl) {
+      shopPreviewStatusEl.style.color = '#00F5D4';
+      shopPreviewStatusEl.style.borderColor = 'rgba(0,245,212,0.3)';
+      shopPreviewStatusEl.style.background = 'rgba(0,245,212,0.1)';
+      shopPreviewStatusEl.textContent = '👁️ Herhangi bir eşyaya tıklayarak 3D önizle!';
+    }
+    if (shopResetPreviewBtn) {
+      shopResetPreviewBtn.style.display = 'none';
+    }
+    renderShopModal();
+  }
+
+  if (shopResetPreviewBtn) {
+    shopResetPreviewBtn.addEventListener('click', () => {
+      window.soundManager.init();
+      window.soundManager.playUiPop();
+      resetShopPreview();
+    });
+  }
+
   function renderShopModal() {
     if (!shopItemsContainer) return;
     const eco = getActiveEconomy();
@@ -574,6 +626,7 @@
     shopItemsContainer.innerHTML = filtered.map((item) => {
       const isOwned = Boolean(item.isOwned);
       const isEquipped = eq[item.type] === item.id;
+      const isPreviewing = shopPreviewLoadout[item.type] === item.id;
       const isVipOnly = item.pricePoint === 0 && item.priceCoin > 0;
       const canAffordPoint = item.pricePoint > 0 && eco.slimePoints >= item.pricePoint;
       const canAffordCoin = item.priceCoin > 0 && eco.slimeCoins >= item.priceCoin;
@@ -582,16 +635,19 @@
         'shop-item-card',
         isOwned ? 'owned' : '',
         isEquipped ? 'equipped' : '',
+        isPreviewing ? 'previewing' : '',
         isVipOnly ? 'vip-only' : ''
       ].filter(Boolean).join(' ');
 
       const badgeHtml = isEquipped
         ? `<span class="shop-badge equipped">✨ KUŞANILDI</span>`
-        : isOwned
-          ? `<span class="shop-badge owned">✓ SAHİPSİN</span>`
-          : isVipOnly
-            ? `<span class="shop-badge vip">👑 VIP ÖZEL</span>`
-            : `<span class="shop-badge category">${escapeHtml(item.category || item.type)}</span>`;
+        : isPreviewing
+          ? `<span class="shop-badge preview">👁️ ÖNİZLEMEDE</span>`
+          : isOwned
+            ? `<span class="shop-badge owned">✓ SAHİPSİN</span>`
+            : isVipOnly
+              ? `<span class="shop-badge vip">👑 VIP ÖZEL</span>`
+              : `<span class="shop-badge category">${escapeHtml(item.category || item.type)}</span>`;
 
       const priceRowHtml = `
         <div class="shop-price-row">
@@ -604,10 +660,17 @@
         </div>
       `;
 
+      const previewBtnHtml = `
+        <button type="button" class="shop-btn btn-preview-item ${isPreviewing ? 'active' : ''}" data-action="preview" data-id="${escapeHtml(item.id)}" title="Satın almadan önce karakterin üzerinde canlı 3D gör!">
+          ${isPreviewing ? '👁️ Önizleniyor ✓' : '👁️ 3D Önizle'}
+        </button>
+      `;
+
       let actionsHtml = '';
       if (isOwned) {
         actionsHtml = `
           <div class="shop-buy-actions">
+            ${previewBtnHtml}
             <button type="button" class="shop-btn ${isEquipped ? 'btn-equipped' : 'btn-equip'}" data-action="equip" data-id="${escapeHtml(item.id)}">
               ${isEquipped ? '✓ Kuşanıldı (Çıkar)' : '✨ Hemen Kuşan'}
             </button>
@@ -616,6 +679,7 @@
       } else {
         actionsHtml = `
           <div class="shop-buy-actions">
+            ${previewBtnHtml}
             ${item.pricePoint > 0 ? `
               <button type="button" class="shop-btn btn-buy-point" data-action="buy-point" data-id="${escapeHtml(item.id)}" ${canAffordPoint ? '' : 'disabled'} title="${canAffordPoint ? 'Slime Puan ile Satın Al' : 'Yeterli Slime Puanın yok (Kesme ve öldürme yaparak kazanabilirsin!)'}">
                 💎 ${item.pricePoint.toLocaleString('tr-TR')} Al
@@ -631,7 +695,7 @@
       }
 
       return `
-        <div class="${cardClasses}">
+        <div class="${cardClasses}" data-card-item-id="${escapeHtml(item.id)}" style="cursor:pointer;">
           <div class="shop-item-top">
             <div class="shop-item-icon">${item.icon || '✨'}</div>
             ${badgeHtml}
@@ -644,15 +708,31 @@
       `;
     }).join('');
 
+    // Karta tıklandığında (satın alma butonu hariç) doğrudan canlı 3D önizlemeye al
+    shopItemsContainer.querySelectorAll('.shop-item-card[data-card-item-id]').forEach((cardEl) => {
+      cardEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (btn && btn.dataset.action !== 'preview') return;
+        const itemId = cardEl.dataset.cardItemId;
+        if (itemId) previewShopItem(itemId);
+      });
+    });
+
     shopItemsContainer.querySelectorAll('button[data-action]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const action = btn.dataset.action;
         const itemId = btn.dataset.id;
-        if (action === 'buy-point') {
+        if (action === 'preview') {
+          previewShopItem(itemId);
+        } else if (action === 'buy-point') {
+          previewShopItem(itemId);
           handleBuyShopItem(itemId, 'point');
         } else if (action === 'buy-coin') {
+          previewShopItem(itemId);
           handleBuyShopItem(itemId, 'coin');
         } else if (action === 'equip') {
+          previewShopItem(itemId);
           handleEquipShopItem(itemId);
         }
       });
@@ -661,7 +741,10 @@
 
   function showShopFeedback(msg, isError = false) {
     if (!shopFeedbackMsg) return;
+    shopFeedbackMsg.style.display = msg ? 'block' : 'none';
     shopFeedbackMsg.style.color = isError ? '#FF2A85' : '#00F59B';
+    shopFeedbackMsg.style.borderColor = isError ? '#FF2A85' : '#00F59B';
+    shopFeedbackMsg.style.background = isError ? 'rgba(255,42,133,0.14)' : 'rgba(0,245,155,0.16)';
     shopFeedbackMsg.textContent = msg;
   }
 
@@ -765,14 +848,24 @@
     updateCareerAndShopUI();
   }
 
+  function setActiveShopCategoryTab(tabName) {
+    currentShopTab = tabName || 'hat';
+    document.querySelectorAll('.shop-tab-btn').forEach((b) => {
+      const cat = b.dataset.shopCat || b.dataset.shopTab;
+      b.classList.toggle('active', cat === currentShopTab);
+    });
+    renderShopModal();
+  }
+
   function openShopModal(tab = null) {
     window.soundManager.init();
     window.soundManager.playUiPop();
     if (tab && typeof tab === 'string') {
-      currentShopTab = tab;
-      shopTabBtns.forEach((b) => b.classList.toggle('active', b.dataset.shopTab === currentShopTab));
+      setActiveShopCategoryTab(tab);
+    } else {
+      setActiveShopCategoryTab(currentShopTab || 'hat');
     }
-    if (shopFeedbackMsg) shopFeedbackMsg.textContent = '';
+    showShopFeedback('', false);
     updateCareerAndShopUI();
     if (shopModal) shopModal.style.display = 'flex';
   }
@@ -792,37 +885,20 @@
     });
   }
 
-  shopTabBtns.forEach((btn) => {
+  document.querySelectorAll('.shop-tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       window.soundManager.init();
       window.soundManager.playUiPop();
-      currentShopTab = btn.dataset.shopTab || 'hat';
-      shopTabBtns.forEach((b) => b.classList.toggle('active', b.dataset.shopTab === currentShopTab));
-      renderShopModal();
+      const targetTab = btn.dataset.shopCat || btn.dataset.shopTab || 'hat';
+      setActiveShopCategoryTab(targetTab);
     });
   });
 
   if (shopClaimPackBtn) {
     shopClaimPackBtn.addEventListener('click', () => {
       window.soundManager.init();
-      if (currentUser) {
-        socket.emit('shopClaimCoinPack', {}, (res) => {
-          if (res && res.ok && res.user) {
-            currentUser = res.user;
-            saveUserSessionToStorage(currentUser);
-            window.soundManager.playPowerupPickup();
-            showShopFeedback(res.message || '🎁 +250 🪙 Slime Coin ve +1.000 💎 Slime Puan eklendi!', false);
-            updateCareerAndShopUI();
-          }
-        });
-      } else {
-        guestEconomy.slimeCoins += 250;
-        guestEconomy.slimePoints += 1000;
-        saveGuestEconomyToStorage();
-        window.soundManager.playPowerupPickup();
-        showShopFeedback('🎁 +250 🪙 Slime Coin ve +1.000 💎 Slime Puan cüzdanına eklendi!', false);
-        updateCareerAndShopUI();
-      }
+      window.soundManager.playUiPop();
+      showShopFeedback('🪙 Gerçek Slime Coin satın alma paketleri çok yakında aktif olacak! Şimdilik maçlarda kemer keserek ve rakip eleyerek 💎 Slime Puan kazanabilirsin.', false);
     });
   }
 
@@ -4130,20 +4206,256 @@
     targetCtx.restore();
   }
 
+  function drawPreviewBeltOnCanvas(targetCtx, beltEffect, x1, y1, x2, y2, playerColor, time) {
+    const midX = (x1 + x2) * 0.5 + Math.sin(time * 0.004) * 10;
+    const midY = (y1 + y2) * 0.5 + Math.cos(time * 0.004) * 10;
+
+    targetCtx.save();
+    targetCtx.lineCap = 'round';
+
+    if (beltEffect === 'belt_lightning') {
+      targetCtx.strokeStyle = '#38BDF8';
+      targetCtx.shadowColor = '#00F5D4';
+      targetCtx.shadowBlur = 14;
+      targetCtx.lineWidth = 3.2;
+      targetCtx.beginPath();
+      targetCtx.moveTo(x1, y1);
+      const steps = 7;
+      for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const bx = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * midX + t * t * x2;
+        const by = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * midY + t * t * y2;
+        const jitter = Math.sin(time * 0.04 + i * 3.1) * 6;
+        targetCtx.lineTo(bx + jitter, by - jitter);
+      }
+      targetCtx.lineTo(x2, y2);
+      targetCtx.stroke();
+    } else if (beltEffect === 'belt_rainbow') {
+      const grad = targetCtx.createLinearGradient(x1, y1, x2, y2);
+      grad.addColorStop(0, '#FF2A85');
+      grad.addColorStop(0.25, '#FFE066');
+      grad.addColorStop(0.5, '#00F59B');
+      grad.addColorStop(0.75, '#00BBF9');
+      grad.addColorStop(1, '#9B5DE5');
+      targetCtx.beginPath();
+      targetCtx.lineWidth = 5;
+      targetCtx.strokeStyle = grad;
+      targetCtx.shadowColor = '#00F5D4';
+      targetCtx.shadowBlur = 12;
+      targetCtx.moveTo(x1, y1);
+      targetCtx.quadraticCurveTo(midX, midY, x2, y2);
+      targetCtx.stroke();
+    } else if (beltEffect === 'belt_fire_chain') {
+      targetCtx.beginPath();
+      targetCtx.setLineDash([8, 4]);
+      targetCtx.lineWidth = 4.8;
+      targetCtx.strokeStyle = '#F97316';
+      targetCtx.shadowColor = '#EF4444';
+      targetCtx.shadowBlur = 14;
+      targetCtx.moveTo(x1, y1);
+      targetCtx.quadraticCurveTo(midX, midY, x2, y2);
+      targetCtx.stroke();
+      targetCtx.setLineDash([]);
+    } else if (beltEffect === 'belt_lightsaber') {
+      targetCtx.beginPath();
+      targetCtx.lineWidth = 7;
+      targetCtx.strokeStyle = '#FF2A85';
+      targetCtx.shadowColor = '#FF2A85';
+      targetCtx.shadowBlur = 18;
+      targetCtx.moveTo(x1, y1);
+      targetCtx.quadraticCurveTo(midX, midY, x2, y2);
+      targetCtx.stroke();
+
+      targetCtx.shadowBlur = 0;
+      targetCtx.beginPath();
+      targetCtx.lineWidth = 2.6;
+      targetCtx.strokeStyle = '#FFFFFF';
+      targetCtx.moveTo(x1, y1);
+      targetCtx.quadraticCurveTo(midX, midY, x2, y2);
+      targetCtx.stroke();
+    } else {
+      let strokeCol = playerColor || '#00F5D4';
+      if (beltEffect === 'belt_gold_rope') strokeCol = '#FACC15';
+      else if (beltEffect === 'belt_water_hose') strokeCol = '#38BDF8';
+      else if (beltEffect === 'belt_ghost') strokeCol = '#A5F3FC';
+      else if (beltEffect === 'belt_blood_vine') strokeCol = '#10B981';
+      else if (beltEffect === 'belt_stardust') strokeCol = '#E879F9';
+      else if (beltEffect === 'belt_cyber_matrix') strokeCol = '#00F59B';
+
+      targetCtx.beginPath();
+      if (beltEffect === 'belt_cyber_matrix') targetCtx.setLineDash([5, 5]);
+      targetCtx.lineWidth = 4.2;
+      targetCtx.strokeStyle = strokeCol;
+      targetCtx.shadowColor = strokeCol;
+      targetCtx.shadowBlur = 12;
+      targetCtx.globalAlpha = beltEffect === 'belt_ghost' ? 0.55 : 0.92;
+      targetCtx.moveTo(x1, y1);
+      targetCtx.quadraticCurveTo(midX, midY, x2, y2);
+      targetCtx.stroke();
+      targetCtx.setLineDash([]);
+
+      targetCtx.shadowBlur = 0;
+      targetCtx.beginPath();
+      targetCtx.lineWidth = 1.5;
+      targetCtx.strokeStyle = '#FFFFFF';
+      targetCtx.globalAlpha = 0.85;
+      targetCtx.moveTo(x1, y1);
+      targetCtx.quadraticCurveTo(midX, midY, x2, y2);
+      targetCtx.stroke();
+
+      if (beltEffect === 'belt_stardust' || beltEffect === 'belt_water_hose' || beltEffect === 'belt_blood_vine') {
+        for (let i = 1; i <= 4; i++) {
+          const t = ((time * 0.0009 + i * 0.25) % 1);
+          const px = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * midX + t * t * x2;
+          const py = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * midY + t * t * y2;
+          targetCtx.beginPath();
+          targetCtx.arc(px, py, 2.8, 0, Math.PI * 2);
+          targetCtx.fillStyle = beltEffect === 'belt_blood_vine' ? '#F43F5E' : '#FFFFFF';
+          targetCtx.fill();
+        }
+      }
+    }
+
+    targetCtx.globalAlpha = 1;
+    targetCtx.beginPath();
+    targetCtx.arc(x1, y1, 6, 0, Math.PI * 2);
+    targetCtx.fillStyle = playerColor || '#00F5D4';
+    targetCtx.shadowColor = playerColor || '#00F5D4';
+    targetCtx.shadowBlur = 10;
+    targetCtx.fill();
+    targetCtx.restore();
+  }
+
+  function drawPreviewKillEffectOnCanvas(targetCtx, killType, cx, cy, w, h, time) {
+    if (!killType) return;
+    const cycleMs = 1800;
+    const elapsed = (time - (shopPreviewKillStartMs || 0)) % cycleMs;
+    const progress = Math.max(0, Math.min(1, elapsed / cycleMs));
+    const alpha = Math.max(0.15, 1 - progress * 0.85);
+
+    targetCtx.save();
+    targetCtx.translate(cx, cy);
+    targetCtx.globalAlpha = alpha;
+
+    const colors = ['#00F5D4', '#FF2A85', '#FFE066', '#00BBF9', '#9B5DE5', '#00F59B'];
+    for (let i = 0; i < 14; i++) {
+      const a = (Math.PI * 2 * i) / 14 + progress * 1.4;
+      const dist = 12 + progress * 56 * (0.65 + (i % 3) * 0.2);
+      const px = Math.cos(a) * dist;
+      const py = Math.sin(a) * dist + (killType === 'kill_confetti' ? progress * progress * 18 : 0);
+      targetCtx.save();
+      targetCtx.translate(px, py);
+      targetCtx.rotate(progress * 5 + i);
+      targetCtx.fillStyle = killType === 'kill_blackhole' ? '#A855F7' : colors[i % colors.length];
+      if (killType === 'kill_pixel') {
+        targetCtx.fillRect(-3.5, -3.5, 7, 7);
+      } else {
+        targetCtx.beginPath();
+        targetCtx.arc(0, 0, 3.6 * (1 - progress * 0.35), 0, Math.PI * 2);
+        targetCtx.fill();
+      }
+      targetCtx.restore();
+    }
+
+    if (killType === 'kill_blackhole') {
+      const bhR = 32 * Math.sin(progress * Math.PI);
+      const grad = targetCtx.createRadialGradient(0, 0, 2, 0, 0, Math.max(4, bhR));
+      grad.addColorStop(0, '#000000');
+      grad.addColorStop(0.6, '#3B0764');
+      grad.addColorStop(1, 'rgba(168, 85, 247, 0)');
+      targetCtx.fillStyle = grad;
+      targetCtx.beginPath();
+      targetCtx.arc(0, 0, Math.max(4, bhR), 0, Math.PI * 2);
+      targetCtx.fill();
+    } else if (killType === 'kill_ufo') {
+      targetCtx.fillStyle = 'rgba(0, 245, 155, 0.28)';
+      targetCtx.beginPath();
+      targetCtx.moveTo(-10, -48);
+      targetCtx.lineTo(10, -48);
+      targetCtx.lineTo(24, 10);
+      targetCtx.lineTo(-24, 10);
+      targetCtx.closePath();
+      targetCtx.fill();
+      targetCtx.font = '22px "Segoe UI Emoji", sans-serif';
+      targetCtx.textAlign = 'center';
+      targetCtx.fillText('🛸', 0, -44 - progress * 14);
+    } else if (killType === 'kill_tombstone') {
+      targetCtx.font = '24px "Segoe UI Emoji", sans-serif';
+      targetCtx.textAlign = 'center';
+      targetCtx.fillText('🪦 R.I.P', 0, -28);
+    } else if (killType === 'kill_gg_neon') {
+      targetCtx.font = '900 20px "Segoe UI", sans-serif';
+      targetCtx.textAlign = 'center';
+      targetCtx.fillStyle = '#00F5D4';
+      targetCtx.shadowColor = '#FF2A85';
+      targetCtx.shadowBlur = 14;
+      targetCtx.fillText('⚡ GG! ⚡', 0, -28 - progress * 14);
+    } else if (killType === 'kill_heartbreak') {
+      targetCtx.font = '24px "Segoe UI Emoji", sans-serif';
+      targetCtx.textAlign = 'center';
+      targetCtx.fillText('💔', 0, -26 - progress * 14);
+    } else if (killType === 'kill_fireworks') {
+      targetCtx.strokeStyle = '#FFE066';
+      targetCtx.lineWidth = 2.2;
+      targetCtx.beginPath();
+      targetCtx.arc(0, 0, progress * 46, 0, Math.PI * 2);
+      targetCtx.stroke();
+    } else if (killType === 'kill_bomb_crater') {
+      targetCtx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+      targetCtx.strokeStyle = '#F97316';
+      targetCtx.lineWidth = 2.5;
+      targetCtx.beginPath();
+      targetCtx.ellipse(0, 6, 24, 11, 0, 0, Math.PI * 2);
+      targetCtx.fill();
+      targetCtx.stroke();
+    } else if (killType === 'kill_screen_crack') {
+      targetCtx.strokeStyle = '#E2E8F0';
+      targetCtx.shadowColor = '#00BBF9';
+      targetCtx.shadowBlur = 10;
+      targetCtx.lineWidth = 2;
+      const rays = [0.3, 1.1, 2.0, 2.9, 3.8, 4.9, 5.7];
+      for (const a of rays) {
+        targetCtx.beginPath();
+        targetCtx.moveTo(0, 0);
+        targetCtx.lineTo(Math.cos(a) * 32, Math.sin(a) * 32);
+        targetCtx.lineTo(Math.cos(a + 0.14) * 68, Math.sin(a + 0.14) * 68);
+        targetCtx.stroke();
+      }
+    }
+
+    targetCtx.restore();
+  }
+
   function renderPreviewOnCanvas(targetCanvas, targetCtx, time) {
     if (!targetCanvas || !targetCtx) return;
     const w = targetCanvas.width;
     const h = targetCanvas.height;
     targetCtx.clearRect(0, 0, w, h);
 
+    const isShopCanvas = targetCanvas === shopPreviewCanvas;
     const eco = getActiveEconomy();
     const eq = (eco && eco.equipped) || {};
-    const activeHat = eq.hat || selectedSkin || 'crown';
-    const activeSkinCoating = eq.skin || null;
+
+    const activeHat = (isShopCanvas && shopPreviewLoadout.hat) || eq.hat || selectedSkin || 'crown';
+    const activeSkinCoating = (isShopCanvas && shopPreviewLoadout.skin) || eq.skin || null;
+    const activeBelt = (isShopCanvas && shopPreviewLoadout.belt) || eq.belt || null;
+    const activeKill = isShopCanvas
+      ? (shopPreviewLoadout.kill_effect || (currentShopTab === 'kill_effect' ? eq.kill_effect : null))
+      : null;
+    const activeTitleId = (isShopCanvas && shopPreviewLoadout.title) || eq.title || null;
+    const activeTitleMeta = activeTitleId ? TITLE_META[activeTitleId] : null;
+
+    const cx = w / 2;
+    const cy = isShopCanvas ? h / 2 - 4 : h / 2 + 12;
+    const r = Math.min(w, h) * (isShopCanvas ? 0.23 : 0.27);
+
+    // 0) Mağaza önizlemesinde Kemer / Lazer Efekti (Sol üst duvar ankrajından karaktere uzanan canlı kemer)
+    if (isShopCanvas && (activeBelt || currentShopTab === 'belt')) {
+      drawPreviewBeltOnCanvas(targetCtx, activeBelt || 'belt_water_hose', 24, 26, cx, cy, selectedColor, time);
+    }
 
     targetCtx.save();
-    targetCtx.translate(w / 2, h / 2 + 12);
-    const r = Math.min(w, h) * 0.27;
+    targetCtx.translate(cx, cy);
 
     // 1) 3D Parlak Jöle Gövde + Mağaza Kaplaması
     draw3DSlimeBody(targetCtx, r, selectedColor, time, 0.5, activeHat, activeSkinCoating);
@@ -4156,6 +4468,35 @@
     // 3) 3D Neon Kostüm / Mağaza Şapkası Aksesuarı
     drawSkinAccessory(targetCtx, activeHat, r, time);
     targetCtx.restore();
+
+    // 4) Mağaza önizlemesinde Ölüm / Kill Efekti (Secildiğinde döngüsel olarak patlar)
+    if (isShopCanvas && activeKill) {
+      drawPreviewKillEffectOnCanvas(targetCtx, activeKill, cx, cy, w, h, time);
+    }
+
+    // 5) Mağaza önizlemesinde Unvan & VIP Altın Çerçeve
+    if (isShopCanvas && activeTitleMeta) {
+      targetCtx.save();
+      targetCtx.font = '900 9.5px "Segoe UI", sans-serif';
+      const titleW = Math.min(w - 14, Math.max(84, targetCtx.measureText(activeTitleMeta.label).width + 14));
+      const boxY = h - 24;
+      targetCtx.fillStyle = activeTitleMeta.bg;
+      targetCtx.strokeStyle = activeTitleMeta.color;
+      targetCtx.lineWidth = activeTitleMeta.isGoldFrame ? 2 : 1.3;
+      targetCtx.shadowColor = activeTitleMeta.color;
+      targetCtx.shadowBlur = activeTitleMeta.isGoldFrame ? 10 : 6;
+      targetCtx.beginPath();
+      targetCtx.roundRect(cx - titleW / 2, boxY, titleW, 17, 8);
+      targetCtx.fill();
+      targetCtx.stroke();
+
+      targetCtx.shadowBlur = 0;
+      targetCtx.fillStyle = activeTitleMeta.color;
+      targetCtx.textAlign = 'center';
+      targetCtx.textBaseline = 'middle';
+      targetCtx.fillText(activeTitleMeta.label, cx, boxY + 8.5);
+      targetCtx.restore();
+    }
   }
 
   function renderLobbySkinPreview(time) {

@@ -741,23 +741,23 @@
       }
     }
     .shop-preview-sidebar {
-      background: rgba(8, 11, 18, 0.85);
-      border: 1.5px solid rgba(0, 245, 212, 0.28);
+      background: rgba(8, 11, 18, 0.9);
+      border: 1.5px solid rgba(0, 245, 212, 0.35);
       border-radius: 18px;
       padding: 12px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
       text-align: center;
     }
     .shop-items-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
       gap: 11px;
       overflow-y: auto;
       padding-right: 4px;
-      max-height: 58vh;
+      max-height: 60vh;
       touch-action: pan-y;
       -webkit-overflow-scrolling: touch;
     }
@@ -769,31 +769,150 @@
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      gap: 8px;
+      gap: 7px;
       transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
       position: relative;
+      cursor: pointer;
     }
     .shop-item-card:hover {
       transform: translateY(-2px);
       border-color: #00F5D4;
-      box-shadow: 0 0 20px rgba(0, 245, 212, 0.2);
+      box-shadow: 0 0 20px rgba(0, 245, 212, 0.22);
+    }
+    .shop-item-card.previewing {
+      border-color: #00BBF9;
+      box-shadow: 0 0 24px rgba(0, 187, 249, 0.48), inset 0 0 14px rgba(0, 187, 249, 0.16);
+      background: linear-gradient(160deg, rgba(0, 187, 249, 0.13) 0%, rgba(17, 24, 39, 0.96) 100%);
     }
     .shop-item-card.owned {
       border-color: rgba(0, 245, 155, 0.55);
-      background: linear-gradient(160deg, rgba(0, 245, 155, 0.07) 0%, rgba(17, 24, 39, 0.95) 100%);
+      background: linear-gradient(160deg, rgba(0, 245, 155, 0.08) 0%, rgba(17, 24, 39, 0.95) 100%);
     }
     .shop-item-card.equipped {
       border-color: #FFE066;
       box-shadow: 0 0 22px rgba(255, 224, 102, 0.35);
     }
-    .shop-item-card.vip-card {
+    .shop-item-card.vip-only {
       border-color: rgba(255, 184, 0, 0.65);
       background: linear-gradient(160deg, rgba(255, 184, 0, 0.12) 0%, rgba(17, 24, 39, 0.95) 100%);
     }
-    .shop-buy-row {
+    .shop-item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+    .shop-item-icon {
+      font-size: 26px;
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .shop-badge {
+      font-size: 10px;
+      font-weight: 900;
+      padding: 3px 8px;
+      border-radius: 999px;
+      text-transform: uppercase;
+    }
+    .shop-badge.category {
+      background: rgba(0, 187, 249, 0.16);
+      color: #38BDF8;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+    }
+    .shop-badge.preview {
+      background: rgba(0, 245, 212, 0.22);
+      color: #00F5D4;
+      border: 1px solid #00F5D4;
+    }
+    .shop-badge.owned {
+      background: rgba(0, 245, 155, 0.2);
+      color: #00F59B;
+      border: 1px solid #00F59B;
+    }
+    .shop-badge.equipped {
+      background: rgba(255, 224, 102, 0.24);
+      color: #FFE066;
+      border: 1px solid #FFE066;
+    }
+    .shop-badge.vip {
+      background: linear-gradient(135deg, #FFB800, #FF2A85);
+      color: #080B12;
+    }
+    .shop-item-name {
+      font-size: 14px;
+      font-weight: 900;
+      color: #F8FAFC;
+    }
+    .shop-item-desc {
+      font-size: 11px;
+      color: #94A3B8;
+      line-height: 1.35;
+      min-height: 28px;
+    }
+    .shop-price-row {
       display: flex;
       gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 2px;
+    }
+    .shop-price-tag {
+      font-size: 11px;
+      font-weight: 900;
+      padding: 3px 8px;
+      border-radius: 8px;
+    }
+    .shop-price-tag.point {
+      background: rgba(0, 245, 212, 0.14);
+      color: #00F5D4;
+      border: 1px solid rgba(0, 245, 212, 0.4);
+    }
+    .shop-price-tag.coin {
+      background: rgba(255, 184, 0, 0.16);
+      color: #FFE066;
+      border: 1px solid rgba(255, 184, 0, 0.45);
+    }
+    .shop-price-tag.vip-lock {
+      background: rgba(255, 42, 133, 0.16);
+      color: #FF70A6;
+      border: 1px solid rgba(255, 42, 133, 0.4);
+    }
+    .shop-buy-actions {
+      display: flex;
+      gap: 5px;
       margin-top: 4px;
+      flex-wrap: wrap;
+    }
+    .shop-btn {
+      flex: 1;
+      border-radius: 9px;
+      padding: 6px 8px;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: all 0.15s;
+      border: none;
+    }
+    .shop-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .btn-preview-item {
+      background: rgba(0, 187, 249, 0.18);
+      color: #38BDF8;
+      border: 1.5px solid #00BBF9;
+      flex: 0 0 auto;
+      padding: 6px 9px;
+    }
+    .btn-preview-item:hover, .btn-preview-item.active {
+      background: #00BBF9;
+      color: #080B12;
     }
     .btn-buy-point {
       flex: 1;
@@ -802,12 +921,12 @@
       border: 1.5px solid #00F5D4;
       border-radius: 9px;
       padding: 6px 8px;
-      font-size: 11.5px;
+      font-size: 11px;
       font-weight: 900;
       cursor: pointer;
       transition: all 0.15s;
     }
-    .btn-buy-point:hover {
+    .btn-buy-point:hover:not(:disabled) {
       background: #00F5D4;
       color: #080B12;
     }
@@ -818,36 +937,23 @@
       border: 1.5px solid #FFB800;
       border-radius: 9px;
       padding: 6px 8px;
-      font-size: 11.5px;
+      font-size: 11px;
       font-weight: 900;
       cursor: pointer;
       transition: all 0.15s;
     }
-    .btn-buy-coin:hover {
+    .btn-buy-coin:hover:not(:disabled) {
       background: #FFB800;
       color: #080B12;
     }
-    .btn-equip-item {
-      width: 100%;
+    .btn-equip {
       background: linear-gradient(135deg, #00F59B, #00BBF9);
       color: #080B12;
-      border: none;
-      border-radius: 9px;
-      padding: 7px 10px;
-      font-size: 12px;
-      font-weight: 900;
-      cursor: pointer;
     }
-    .btn-equipped-active {
-      width: 100%;
+    .btn-equipped {
       background: rgba(255, 224, 102, 0.2);
       color: #FFE066;
       border: 1.5px solid #FFE066;
-      border-radius: 9px;
-      padding: 7px 10px;
-      font-size: 12px;
-      font-weight: 900;
-      cursor: pointer;
     }
     .career-stats-grid {
       display: grid;
@@ -1145,7 +1251,7 @@
             🛒 SLIME NEON MAĞAZASI &amp; CEPHANELİK
           </h2>
           <p style="font-size:12px; color:#94A3B8; font-weight:700;">
-            Maçlarda kemer keserek ve rakip eleyerek kazandığın 💎 Slime Puan veya 🪙 Slime Coin ile karakterini güçlendir!
+            Bir eşyaya tıklayarak <b>satın almadan önce</b> sol tarafta canlı 3D önizlemesini inceleyebilirsin!
           </p>
         </div>
 
@@ -1158,8 +1264,8 @@
             <span>🪙 Slime Coin:</span>
             <span id="shop-wallet-coins">100</span>
           </div>
-          <button id="shop-claim-pack-btn" type="button" style="background:linear-gradient(135deg,#FFB800,#FF2A85); color:#080B12; border:none; border-radius:999px; padding:7px 13px; font-size:11.5px; font-weight:900; cursor:pointer; box-shadow:0 0 16px rgba(255,184,0,0.4);">
-            🎁 +250 Coin &amp; +500 Puan Paketi Al
+          <button id="shop-claim-pack-btn" type="button" style="background:linear-gradient(135deg,#FFB800,#FF2A85); color:#080B12; border:none; border-radius:999px; padding:7px 14px; font-size:11.5px; font-weight:900; cursor:pointer; box-shadow:0 0 16px rgba(255,184,0,0.35);">
+            🪙 Coin Paketi Al (Yakında)
           </button>
           <button id="shop-close-btn" type="button" style="background:rgba(255,255,255,0.12); color:#FFFFFF; border:1px solid rgba(255,255,255,0.25); border-radius:10px; padding:7px 14px; font-size:12.5px; font-weight:900; cursor:pointer;">
             ✕ Kapat
@@ -1169,27 +1275,31 @@
 
       <!-- 5 Kategori Sekmeleri -->
       <div class="shop-tabs">
-        <button class="shop-tab-btn active" data-shop-cat="hat">🎩 1. Şapkalar &amp; Başlıklar (15)</button>
-        <button class="shop-tab-btn" data-shop-cat="skin">🎨 2. Slime Kaplamaları (10)</button>
-        <button class="shop-tab-btn" data-shop-cat="belt">⚡ 3. Kemer / Lazer Efektleri (10)</button>
-        <button class="shop-tab-btn" data-shop-cat="kill_effect">💥 4. Ölüm / Kill Efektleri (10)</button>
-        <button class="shop-tab-btn" data-shop-cat="title">🏷️ 5. İsim Unvanları &amp; Çerçeveler (5)</button>
+        <button type="button" class="shop-tab-btn active" data-shop-cat="hat" data-shop-tab="hat">🎩 1. Şapkalar &amp; Başlıklar (15)</button>
+        <button type="button" class="shop-tab-btn" data-shop-cat="skin" data-shop-tab="skin">🎨 2. Slime Kaplamaları (10)</button>
+        <button type="button" class="shop-tab-btn" data-shop-cat="belt" data-shop-tab="belt">⚡ 3. Kemer / Lazer Efektleri (10)</button>
+        <button type="button" class="shop-tab-btn" data-shop-cat="kill_effect" data-shop-tab="kill_effect">💥 4. Ölüm / Kill Efektleri (10)</button>
+        <button type="button" class="shop-tab-btn" data-shop-cat="title" data-shop-tab="title">🏷️ 5. İsim Unvanları &amp; Çerçeveler (5)</button>
       </div>
 
-      <div id="shop-feedback-banner" style="display:none; background:rgba(0,245,155,0.16); border:1.5px solid #00F59B; color:#00F59B; padding:7px 12px; border-radius:10px; font-size:12px; font-weight:900; text-align:center;"></div>
+      <div id="shop-feedback-msg" style="display:none; background:rgba(0,245,155,0.16); border:1.5px solid #00F59B; color:#00F59B; padding:8px 12px; border-radius:10px; font-size:12px; font-weight:900; text-align:center;"></div>
 
       <div class="shop-body-layout">
-        <!-- Sol Canlı 3D Karakter & Kuşanılan Ekipman Önizlemesi -->
+        <!-- Sol Canlı 3D Karakter & Kuşanılan / Önizlenen Ekipman -->
         <div class="shop-preview-sidebar">
-          <div style="font-size:12px; font-weight:900; color:#00F5D4;">✨ Canlı 3D Görünüm</div>
-          <canvas id="shopPreviewCanvas" width="190" height="145" style="background:#060911; border-radius:14px; border:1px solid rgba(0,245,212,0.2);"></canvas>
-          <div style="width:100%; text-align:left; font-size:11px; color:#CBD5E1; display:flex; flex-direction:column; gap:5px; margin-top:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+            <span style="font-size:12px; font-weight:900; color:#00F5D4;">✨ Canlı 3D Önizleme</span>
+            <button id="shop-reset-preview-btn" type="button" style="display:none; background:rgba(255,255,255,0.1); color:#FFE066; border:1px solid rgba(255,224,102,0.4); border-radius:6px; padding:2px 7px; font-size:10px; font-weight:800; cursor:pointer;">
+              ↺ Sıfırla
+            </button>
+          </div>
+          <canvas id="shopPreviewCanvas" width="210" height="195" style="background:#060911; border-radius:14px; border:1.5px solid rgba(0,245,212,0.3); box-shadow:inset 0 0 22px rgba(0,245,212,0.08);"></canvas>
+          <div id="shop-preview-status" style="width:100%; background:rgba(0,245,212,0.1); border:1px solid rgba(0,245,212,0.3); border-radius:8px; padding:5px 8px; font-size:10.5px; font-weight:800; color:#00F5D4; text-align:center;">
+            👁️ Herhangi bir eşyaya tıklayarak 3D önizle!
+          </div>
+          <div style="width:100%; text-align:left; font-size:11px; color:#CBD5E1; display:flex; flex-direction:column; gap:5px; margin-top:2px;">
             <div style="font-weight:900; color:#FFE066; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:3px;">🎒 Aktif Kuşanılanlar:</div>
-            <div id="eq-slot-hat">🎩 Şapka: Varsayılan</div>
-            <div id="eq-slot-skin">🎨 Kaplama: Standart Jöle</div>
-            <div id="eq-slot-belt">⚡ Kemer: Standart Lazer</div>
-            <div id="eq-slot-kill">💥 Kill Efekti: Konfeti</div>
-            <div id="eq-slot-title">🏷️ Unvan: Yok</div>
+            <div id="shop-equipped-badges" style="display:flex; flex-direction:column; gap:4px;"></div>
           </div>
         </div>
 
@@ -1335,9 +1445,9 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/vendor/matter.min.js"></script>
-  <script src="/shared/constants.js?v=3.0"></script>
-  <script src="/shared/geometry.js?v=3.0"></script>
-  <script src="/js/audio.js?v=3.0"></script>
-  <script src="/js/client.js?v=3.0"></script>
+  <script src="/shared/constants.js?v=3.1"></script>
+  <script src="/shared/geometry.js?v=3.1"></script>
+  <script src="/js/audio.js?v=3.1"></script>
+  <script src="/js/client.js?v=3.1"></script>
 </body>
 </html>

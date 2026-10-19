@@ -2017,16 +2017,13 @@ io.on('connection', (socket) => {
     if (typeof ack === 'function') ack(res);
   });
 
-  socket.on('shopClaimCoinPack', (payload, ack) => {
-    if (!socket.user) {
-      if (typeof ack === 'function') ack({ ok: false, isGuest: true });
-      return;
+  socket.on('shopClaimCoinPack', (_payload, ack) => {
+    if (typeof ack === 'function') {
+      ack({
+        ok: false,
+        error: '🪙 Gerçek Slime Coin satın alma paketleri çok yakında aktif olacak!'
+      });
     }
-    const res = userStore.claimCoinPack(socket.user.username, payload || {});
-    if (res.ok) {
-      socket.user = res.user;
-    }
-    if (typeof ack === 'function') ack(res);
   });
 
   socket.on('syncGuestLoadout', (payload) => {
