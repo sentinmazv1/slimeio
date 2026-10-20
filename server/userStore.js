@@ -430,7 +430,7 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
   return { ok: true, user: sanitizeUser(restored) };
 }
 
-function updateUserCustomization(username, { color, skin, equipped }) {
+function updateUserCustomization(username, { color, skin, equipped, displayName, fullName }) {
   const cleanUser = normalizeUsername(username);
   const record = usersDb[cleanUser];
   if (!record) return { ok: false, error: 'Kullanıcı bulunamadı.' };
@@ -438,6 +438,18 @@ function updateUserCustomization(username, { color, skin, equipped }) {
   ensureUserEconomy(record);
   if (color && isValidColor(color)) record.color = color;
   if (skin && isValidSkin(skin)) record.skin = skin;
+  if (typeof displayName === 'string') {
+    const cleanDisp = sanitizeText(displayName, 16);
+    if (cleanDisp.length >= 2) {
+      record.displayName = cleanDisp;
+    }
+  }
+  if (typeof fullName === 'string') {
+    const cleanFull = sanitizeText(fullName, 36);
+    if (cleanFull.length >= 2) {
+      record.fullName = cleanFull;
+    }
+  }
   if (equipped && typeof equipped === 'object') {
     for (const slot of ['hat', 'skin', 'belt', 'kill_effect', 'title']) {
       if (slot in equipped) {
@@ -451,6 +463,33 @@ function updateUserCustomization(username, { color, skin, equipped }) {
   saveUsers();
 
   return { ok: true, user: sanitizeUser(record) };
+}
+
+function updateUserProfileName(username, newName) {
+  const cleanUser = normalizeUsername(username);
+  const record = usersDb[cleanUser];
+  if (!record) return { ok: false, error: 'Kullanıcı bulunamadı.' };
+
+  const cleanDisp = sanitizeText(newName || '', 16);
+  if (!cleanDisp || cleanDisp.length < 2) {
+    return { ok: false, error: 'Yeni oyuncu adı en az 2 karakter olmalıdır!' };
+  }
+
+  ensureUserEconomy(record);
+  record.displayName = cleanDisp;
+  saveUsers();
+  return { ok: true, user: sanitizeUser(record) };
+}
+
+function renameVirtualBotProfile(oldName, newName) {
+  const oldKey = normalizeUsername(oldName);
+  const cleanDisp = sanitizeText(newName || '', 16);
+  if (!cleanDisp) return;
+  if (oldKey && usersDb[oldKey] && usersDb[oldKey].isVirtualProfile) {
+    usersDb[oldKey].displayName = cleanDisp;
+    usersDb[oldKey].fullName = 'Yapay Zeka Slime Botu';
+    saveUsers();
+  }
 }
 
 function purchaseStoreItem(username, { itemId, currency = 'point' }) {
@@ -740,6 +779,8 @@ module.exports = {
   loginUser,
   restoreOrLoginUser,
   updateUserCustomization,
+  updateUserProfileName,
+  renameVirtualBotProfile,
   purchaseStoreItem,
   equipStoreItem,
   claimCoinPack,

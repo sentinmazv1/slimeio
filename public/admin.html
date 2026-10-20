@@ -453,22 +453,38 @@
       });
     });
 
-    sendBotBtn.addEventListener('click', () => {
+    function triggerTopAddBot() {
       socket.emit('adminAddBot', {
         roomId: botRoomSelect.value,
         name: botNameInput.value.trim(),
         team: botTeamSelect.value,
         skin: botSkinSelect.value
       }, (res) => {
+        if (!res || !res.ok) {
+          flashSavedBadge('❌ ' + ((res && res.error) || 'Bot eklenemedi!'));
+          return;
+        }
         botNameInput.value = '';
         saveFormSelections();
-        if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
-        flashSavedBadge('✅ Yeni Bot Eklendi ve Kaydedildi!');
+        if (res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
+        flashSavedBadge(`✅ Yeni Bot Eklendi (${res.botName || 'Bot'}) ve Kaydedildi!`);
       });
+    }
+
+    sendBotBtn.addEventListener('click', triggerTopAddBot);
+    botNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') triggerTopAddBot();
     });
 
+    let lastSnap = null;
+    let lastStructureSig = '';
+    let activeRenameKey = null; // "${roomId}:${botId}"
+    let activeRenameDraft = '';
+    const roomQuickNameDrafts = {}; // roomId -> string
+
     socket.on('adminStateUpdate', (snap) => {
-      renderDashboard(snap);
+      lastSnap = snap;
+      renderDashboard(snap, false);
     });
 
     function formatStatus(room) {
@@ -488,52 +504,134 @@
       return `🟢 Oynanıyor (${m}:${s})`;
     }
 
-    window.quickAddBot = (roomId, team) => {
-      const customName = prompt('Gönderilecek botun ismini yazın (boş bırakılırsa otomatik isim verilir):', '');
-      if (customName === null) return;
-      socket.emit('adminAddBot', { roomId, name: customName, team }, (res) => {
-        if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
-        flashSavedBadge('✅ Bot Eklendi ve Kaydedildi!');
+    function formatTeamInfoHtml(room) {
+      return room.isTeam
+        ? `<div style="font-size:12px; font-weight:800; color:#E2E8F0;">
+            🟢 Seferoğulları: ${room.seferCount}/${room.teamSize} &nbsp;|&nbsp; 🔴 Tellioğulları: ${room.telliCount}/${room.teamSize}
+           </div>`
+        : `<div style="font-size:12px; color:#94A3B8;">🧑 Gerçek: ${room.humans} | 🤖 Bot: ${room.bots}</div>`;
+    }
+
+    window.onQuickNameInput = (roomId, val) => {
+      roomQuickNameDrafts[roomId] = val;
+    };
+
+    window.onQuickNameKeydown = (e, roomId, team) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        window.quickAddBot(roomId, team || 'auto');
+      }
+    };
+
+    window.quickAddBot = (roomId, team = 'auto') => {
+      const inputEl = document.getElementById(`quick-bot-name-${roomId}`);
+      const customName = inputEl ? inputEl.value.trim() : (roomQuickNameDrafts[roomId] || '').trim();
+      socket.emit('adminAddBot', {
+        roomId,
+        name: customName,
+        team: team || 'auto',
+        skin: botSkinSelect ? botSkinSelect.value : 'crown'
+      }, (res) => {
+        if (!res || !res.ok) {
+          flashSavedBadge('❌ ' + ((res && res.error) || 'Bot eklenemedi!'));
+          return;
+        }
+        roomQuickNameDrafts[roomId] = '';
+        if (inputEl) inputEl.value = '';
+        if (res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
+        flashSavedBadge(`✅ Bot Eklendi: ${res.botName || 'Bot'}`);
       });
     };
 
     window.fillRoomWithBots = (roomId) => {
       socket.emit('adminFillRoomWithBots', { roomId }, (res) => {
         if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
-        flashSavedBadge('✅ Eksik Koltuklar Botla Dolduruldu ve Kaydedildi!');
+        flashSavedBadge(`✅ Eksik Koltuklar Botla Dolduruldu (+${(res && res.added) || 0} Bot)!`);
       });
     };
 
-    window.renameBot = (roomId, botId, currentName) => {
-      const nextName = prompt('Bot için yeni isim girin:', currentName);
-      if (nextName && nextName.trim()) {
-        socket.emit('adminRenameBot', { roomId, botId, newName: nextName.trim() }, (res) => {
-          if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
-          flashSavedBadge('✅ Bot İsmi Güncellendi ve Kaydedildi!');
-        });
+    window.startRenameBot = (roomId, botId) => {
+      const room = lastSnap && (lastSnap.rooms || []).find((r) => r.id === roomId);
+      const bot = room && (room.players || []).find((p) => p.id === botId);
+      activeRenameKey = `${roomId}:${botId}`;
+      activeRenameDraft = bot ? String(bot.name || '').replace(/^\[BOT\]\s*/i, '') : '';
+      if (lastSnap) renderDashboard(lastSnap, true);
+      setTimeout(() => {
+        const inp = document.getElementById(`rename-bot-input-${roomId}-${botId}`);
+        if (inp) {
+          inp.focus();
+          inp.select();
+        }
+      }, 20);
+    };
+
+    window.onRenameDraftInput = (val) => {
+      activeRenameDraft = val;
+    };
+
+    window.onRenameInputKeydown = (e, roomId, botId) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        window.commitRenameBot(roomId, botId);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        window.cancelRenameBot();
       }
     };
 
+    window.commitRenameBot = (roomId, botId) => {
+      const inp = document.getElementById(`rename-bot-input-${roomId}-${botId}`);
+      const nextName = (inp ? inp.value : activeRenameDraft || '').trim();
+      if (!nextName || nextName.length < 2) {
+        flashSavedBadge('⚠️ Bot ismi en az 2 karakter olmalıdır!');
+        return;
+      }
+      activeRenameKey = null;
+      activeRenameDraft = '';
+      socket.emit('adminRenameBot', { roomId, botId, newName: nextName }, (res) => {
+        if (!res || !res.ok) {
+          flashSavedBadge('❌ ' + ((res && res.error) || 'Bot ismi değiştirilemedi!'));
+          return;
+        }
+        if (res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
+        flashSavedBadge(`✅ Bot İsmi Güncellendi: ${res.newName}`);
+      });
+    };
+
+    window.cancelRenameBot = () => {
+      activeRenameKey = null;
+      activeRenameDraft = '';
+      if (lastSnap) renderDashboard(lastSnap, true);
+    };
+
     window.removeBot = (roomId, botId) => {
+      if (activeRenameKey === `${roomId}:${botId}`) {
+        activeRenameKey = null;
+      }
       socket.emit('adminRemoveBot', { roomId, botId }, (res) => {
         if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
-        flashSavedBadge('✅ Bot Çıkarıldı ve Kaydedildi!');
+        flashSavedBadge('✅ Bot Odadan Çıkarıldı ve Kaydedildi!');
       });
     };
 
     window.clearRoomBots = (roomId) => {
+      activeRenameKey = null;
       socket.emit('adminClearRoomBots', { roomId }, (res) => {
         if (res && res.savedBotConfig) persistBotConfigLocally(res.savedBotConfig);
-        flashSavedBadge('✅ Odadaki Botlar Temizlendi ve Kaydedildi!');
+        flashSavedBadge('✅ Odadaki Tüm Botlar Temizlendi!');
       });
     };
 
     window.forceStartRoom = (roomId) => {
-      socket.emit('adminForceStartMatch', { roomId });
+      socket.emit('adminForceStartMatch', { roomId }, () => {
+        flashSavedBadge('🔄 Yeni Tur Başlatıldı!');
+      });
     };
 
     window.forceEndRoom = (roomId) => {
-      socket.emit('adminForceEndMatch', { roomId });
+      socket.emit('adminForceEndMatch', { roomId }, () => {
+        flashSavedBadge('🏁 Tur Bitirildi!');
+      });
     };
 
     function escapeHtml(str) {
@@ -545,7 +643,15 @@
         .replace(/'/g, '&#39;');
     }
 
-    function renderDashboard(snap) {
+    function buildStructureSig(snap) {
+      if (!snap || !Array.isArray(snap.rooms)) return '';
+      return snap.rooms.map((r) => {
+        const pSig = (r.players || []).map((p) => `${p.id}:${p.name}:${p.team || ''}:${p.isBot ? 1 : 0}:${p.spectating ? 1 : 0}`).join(',');
+        return `${r.id}#${r.isTeam ? 1 : 0}#${r.bots > 0 ? 1 : 0}#${pSig}`;
+      }).join('||') + `||edit:${activeRenameKey || ''}`;
+    }
+
+    function renderDashboard(snap, forceFullRebuild = false) {
       if (!snap) return;
       if (snap.savedBotConfig) {
         persistBotConfigLocally(snap.savedBotConfig);
@@ -559,12 +665,36 @@
       statBots.textContent = snap.totalBotsInRooms;
       statUsers.textContent = snap.registeredUsersCount;
 
+      const nextSig = buildStructureSig(snap);
+      const activeEl = document.activeElement;
+      const isTypingInsideRooms = Boolean(
+        activeEl &&
+        roomsContainer.contains(activeEl) &&
+        (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT')
+      );
+
+      // Eğer yapısal değişiklik yoksa (veya admin inputa yazı yazıyorsa) DOM'u silmeden sadece sayaç/puan hücrelerini güncelle!
+      if (!forceFullRebuild && (nextSig === lastStructureSig || isTypingInsideRooms) && roomsContainer.children.length > 0) {
+        for (const room of snap.rooms || []) {
+          const stEl = document.getElementById(`room-status-${room.id}`);
+          if (stEl) stEl.textContent = formatStatus(room);
+          const infoEl = document.getElementById(`room-info-${room.id}`);
+          if (infoEl) infoEl.innerHTML = formatTeamInfoHtml(room);
+          for (const p of room.players || []) {
+            const statCell = document.getElementById(`p-stat-${room.id}-${p.id}`);
+            if (statCell) {
+              statCell.textContent = `🔗 ${p.bandsCount} | 🏆 ${p.score}p`;
+            }
+          }
+        }
+        return;
+      }
+
+      lastStructureSig = nextSig;
+
       roomsContainer.innerHTML = (snap.rooms || []).map((room) => {
-        const teamInfo = room.isTeam
-          ? `<div style="font-size:12px; font-weight:800; color:#E2E8F0;">
-              🟢 Seferoğulları: ${room.seferCount}/${room.teamSize} &nbsp;|&nbsp; 🔴 Tellioğulları: ${room.telliCount}/${room.teamSize}
-             </div>`
-          : `<div style="font-size:12px; color:#94A3B8;">🧑 Gerçek: ${room.humans} | 🤖 Bot: ${room.bots}</div>`;
+        const teamInfo = formatTeamInfoHtml(room);
+        const draftVal = escapeHtml(roomQuickNameDrafts[room.id] || '');
 
         const rows = (room.players || []).map((p) => {
           const safeName = escapeHtml(p.name || 'Slime');
@@ -578,16 +708,31 @@
               ? '<span style="color:#FF2A85; font-weight:800;">🔴 Telli</span>'
               : '-';
 
+          const isEditingThisBot = p.isBot && activeRenameKey === `${room.id}:${p.id}`;
+
+          const nameCellContent = isEditingThisBot
+            ? `<div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                 ${badge}
+                 <input id="rename-bot-input-${room.id}-${p.id}" type="text" value="${escapeHtml(activeRenameDraft)}" maxlength="16"
+                   oninput="onRenameDraftInput(this.value)"
+                   onkeydown="onRenameInputKeydown(event, '${room.id}', '${p.id}')"
+                   style="background:#080B12; color:#FFF; border:1.5px solid #00F5D4; border-radius:7px; padding:4px 8px; font-size:12px; font-weight:800; width:135px;" />
+               </div>`
+            : `${badge} <strong>${safeName}</strong>`;
+
           const actions = p.isBot
-            ? `<button class="btn-sm" style="background:#00BBF9; color:#080B12;" onclick="renameBot('${room.id}','${p.id}','${safeName}')">✏️ İsim</button>
-               <button class="btn-sm" style="background:#FF2A85; color:#FFF;" onclick="removeBot('${room.id}','${p.id}')">❌ Çıkar</button>`
+            ? (isEditingThisBot
+                ? `<button type="button" class="btn-sm" style="background:#00F59B; color:#080B12;" onclick="commitRenameBot('${room.id}','${p.id}')">✓ Kaydet</button>
+                   <button type="button" class="btn-sm" style="background:#475569; color:#FFF;" onclick="cancelRenameBot()">✕ İptal</button>`
+                : `<button type="button" class="btn-sm" style="background:#00BBF9; color:#080B12;" onclick="startRenameBot('${room.id}','${p.id}')">✏️ İsim</button>
+                   <button type="button" class="btn-sm" style="background:#FF2A85; color:#FFF;" onclick="removeBot('${room.id}','${p.id}')">❌ Çıkar</button>`)
             : `<span style="color:#64748B; font-size:11px;">${safeUser ? '@' + safeUser : 'Misafir'}</span>`;
 
           return `<tr>
-            <td>${badge} <strong>${safeName}</strong></td>
+            <td>${nameCellContent}</td>
             <td>${teamTag}</td>
-            <td>🔗 ${p.bandsCount} | 🏆 ${p.score}p</td>
-            <td style="text-align:right;">${actions}</td>
+            <td id="p-stat-${room.id}-${p.id}">🔗 ${p.bandsCount} | 🏆 ${p.score}p</td>
+            <td style="text-align:right; white-space:nowrap;">${actions}</td>
           </tr>`;
         }).join('') || `<tr><td colspan="4" style="text-align:center; color:#64748B; padding:12px;">Bu odada henüz kimse yok.</td></tr>`;
 
@@ -595,16 +740,24 @@
           <div class="room-top">
             <div>
               <h3>${room.name}</h3>
-              ${teamInfo}
+              <div id="room-info-${room.id}">${teamInfo}</div>
             </div>
-            <span class="status-badge">${formatStatus(room)}</span>
+            <span id="room-status-${room.id}" class="status-badge">${formatStatus(room)}</span>
           </div>
-          <div class="room-actions">
-            <button style="background:#00F59B;" onclick="quickAddBot('${room.id}', 'auto')">+ İsimli Bot Ekle</button>
-            ${room.isTeam ? `<button style="background:#FFE066;" onclick="fillRoomWithBots('${room.id}')">⚡ Eksik Koltukları Botla Doldur</button>` : ''}
-            ${room.bots > 0 ? `<button style="background:#FF2A85; color:#FFF;" onclick="clearRoomBots('${room.id}')">🗑️ Botları Temizle</button>` : ''}
-            <button style="background:#00BBF9;" onclick="forceStartRoom('${room.id}')">🔄 Yeni Tur Başlat</button>
-            <button style="background:#9B5DE5; color:#FFF;" onclick="forceEndRoom('${room.id}')">🏁 Turu Bitir</button>
+          <div class="room-actions" style="align-items:center;">
+            <input id="quick-bot-name-${room.id}" type="text" value="${draftVal}" placeholder="Bot adı (boş=otomatik)..." maxlength="16"
+              oninput="onQuickNameInput('${room.id}', this.value)"
+              onkeydown="onQuickNameKeydown(event, '${room.id}', 'auto')"
+              style="background:#080B12; color:#FFF; border:1.5px solid rgba(0,245,212,0.45); border-radius:8px; padding:6px 9px; font-size:11.5px; font-weight:700; width:155px;" />
+            <button type="button" style="background:#00F59B; color:#080B12;" onclick="quickAddBot('${room.id}', 'auto')">+ Bot Ekle</button>
+            ${room.isTeam ? `
+              <button type="button" style="background:rgba(0,245,155,0.22); color:#00F59B; border:1px solid #00F59B;" onclick="quickAddBot('${room.id}', 'seferogullari')">+🟢 Sefer Bot</button>
+              <button type="button" style="background:rgba(255,42,133,0.22); color:#FF70A6; border:1px solid #FF2A85;" onclick="quickAddBot('${room.id}', 'telliogullari')">+🔴 Telli Bot</button>
+              <button type="button" style="background:#FFE066; color:#080B12;" onclick="fillRoomWithBots('${room.id}')">⚡ Eksik Kadroyu Doldur</button>
+            ` : ''}
+            ${room.bots > 0 ? `<button type="button" style="background:#FF2A85; color:#FFF;" onclick="clearRoomBots('${room.id}')">🗑️ Botları Temizle (${room.bots})</button>` : ''}
+            <button type="button" style="background:#00BBF9; color:#080B12;" onclick="forceStartRoom('${room.id}')">🔄 Yeni Tur Başlat</button>
+            <button type="button" style="background:#9B5DE5; color:#FFF;" onclick="forceEndRoom('${room.id}')">🏁 Turu Bitir</button>
           </div>
           <table class="player-table">
             <thead>

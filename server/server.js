@@ -827,10 +827,12 @@ function checkTeamRoomReady(room) {
 function createBotInRoom(room, options = {}) {
   if (!room) return null;
 
-  let assignedTeam = options.team || null;
+  let assignedTeam = null;
   if (room.isTeam) {
     const { seferCount, telliCount } = getTeamCounts(room);
-    if (assignedTeam !== 'seferogullari' && assignedTeam !== 'telliogullari') {
+    if (options.team === 'seferogullari' || options.team === 'telliogullari') {
+      assignedTeam = options.team;
+    } else {
       if (seferCount < room.teamSize && seferCount <= telliCount) {
         assignedTeam = 'seferogullari';
       } else if (telliCount < room.teamSize) {
@@ -842,15 +844,31 @@ function createBotInRoom(room, options = {}) {
   }
 
   const id = `bot_${botCounter++}`;
-  const defaultColor = assignedTeam
+  const defaultColor = (assignedTeam && TEAMS[assignedTeam])
     ? TEAMS[assignedTeam].color
     : SLIME_COLORS[room.players.size % SLIME_COLORS.length].id;
-  const color = options.color || defaultColor;
+  const color = (room.isTeam && assignedTeam && TEAMS[assignedTeam])
+    ? TEAMS[assignedTeam].color
+    : (options.color || defaultColor);
   const skin = options.skin || BASIC_10_SKINS[botCounter % BASIC_10_SKINS.length].id;
   const cleanCustom = userStore.sanitizeText(options.name || '', 16);
-  const customName = cleanCustom
-    ? cleanCustom
-    : `[BOT] ${BOT_NAMES[(botCounter - 2) % BOT_NAMES.length]}`;
+
+  let customName = cleanCustom;
+  if (!customName) {
+    const existingNames = new Set();
+    for (const p of room.players.values()) {
+      existingNames.add(String(p.name || '').toLowerCase());
+    }
+    let picked = null;
+    for (let i = 0; i < BOT_NAMES.length; i++) {
+      const candidate = `[BOT] ${BOT_NAMES[(botCounter + i) % BOT_NAMES.length]}`;
+      if (!existingNames.has(candidate.toLowerCase())) {
+        picked = candidate;
+        break;
+      }
+    }
+    customName = picked || `[BOT] ${BOT_NAMES[(botCounter - 2) % BOT_NAMES.length]} #${botCounter}`;
+  }
 
   const bot = {
     id,
@@ -892,22 +910,32 @@ function createBotInRoom(room, options = {}) {
 
 function removeBotFromRoom(room, botId = null) {
   if (!room) return false;
+  let removedBot = null;
   if (botId && room.players.has(botId)) {
     const b = room.players.get(botId);
     if (b && b.isBot) {
       clearPlayerPhysics(room, b);
       room.players.delete(botId);
-      return true;
+      removedBot = b;
+    }
+  } else {
+    for (const [id, p] of room.players.entries()) {
+      if (p.isBot) {
+        clearPlayerPhysics(room, p);
+        room.players.delete(id);
+        removedBot = p;
+        break;
+      }
     }
   }
-  for (const [id, p] of room.players.entries()) {
-    if (p.isBot) {
-      clearPlayerPhysics(room, p);
-      room.players.delete(id);
-      return true;
+
+  if (removedBot && room.isTeam && room.status === 'starting_countdown') {
+    const { seferCount, telliCount } = getTeamCounts(room);
+    if (seferCount < room.teamSize || telliCount < room.teamSize) {
+      room.status = 'waiting_for_teams';
     }
   }
-  return false;
+  return Boolean(removedBot);
 }
 
 function updateBotAI(room, bot, now) {
@@ -1026,8 +1054,6 @@ if (initialAdminSettings && initialAdminSettings.initialized && initialAdminSett
 userStore.initCloudStore().then((cloudState) => {
   if (cloudState && cloudState.adminSettings && cloudState.adminSettings.initialized && cloudState.adminSettings.roomBots) {
     applySavedBotConfigToRooms(cloudState.adminSettings.roomBots);
-  } else {
-    persistCurrentAdminBotSettings();
   }
 }).catch((err) => {
   console.error('[Server] Supabase başlangıç senkronizasyonu hatası:', err.message);
@@ -2005,18 +2031,41 @@ io.on('connection', (socket) => {
   });
 
   socket.on('updateCustomization', (payload, ack) => {
+    const data = payload || {};
     if (!socket.user) {
-      if (typeof ack === 'function') ack({ ok: false, error: 'Kostüm ve renk seçimi için üye girişi yapmalısınız.' });
-      return;
-    }
-    const res = userStore.updateUserCustomization(socket.user.username, payload || {});
-    if (res.ok) {
-      socket.user = res.user;
-      // Eğer aktif bir odadaysa rengini, kostümünü ve ekipmanlarını güncelle
+      // Misafir oyuncular için de renk, kostüm, ekipman ve isim senkronizasyonu
+      if (data.equipped && typeof data.equipped === 'object') {
+        socket.guestEquipped = data.equipped;
+      }
+      if (data.guestName) {
+        const cleanGuest = userStore.sanitizeText(data.guestName, 14);
+        if (cleanGuest.length >= 2) {
+          socket.guestName = cleanGuest;
+        }
+      }
       if (socket.currentRoomId) {
         const room = rooms.get(socket.currentRoomId);
         const p = room ? room.players.get(socket.id) : null;
         if (p) {
+          if (!room.isTeam && data.color) p.color = data.color;
+          if (data.skin) p.skin = data.skin;
+          if (socket.guestEquipped) p.equipped = socket.guestEquipped;
+          if (socket.guestName) p.name = socket.guestName;
+        }
+      }
+      if (typeof ack === 'function') ack({ ok: true, isGuest: true });
+      return;
+    }
+
+    const res = userStore.updateUserCustomization(socket.user.username, data);
+    if (res.ok) {
+      socket.user = res.user;
+      // Eğer aktif bir odadaysa ismini, rengini, kostümünü ve ekipmanlarını güncelle
+      if (socket.currentRoomId) {
+        const room = rooms.get(socket.currentRoomId);
+        const p = room ? room.players.get(socket.id) : null;
+        if (p) {
+          p.name = userStore.sanitizeText(res.user.displayName || res.user.username, 16);
           if (!room.isTeam) p.color = res.user.color;
           p.skin = res.user.skin;
           p.equipped = res.user.equipped || p.equipped;
@@ -2024,6 +2073,48 @@ io.on('connection', (socket) => {
       }
     }
     if (typeof ack === 'function') ack(res);
+  });
+
+  socket.on('changePlayerName', (payload, ack) => {
+    const rawName = payload && (payload.newName || payload.name);
+    if (socket.user) {
+      const res = userStore.updateUserProfileName(socket.user.username, rawName);
+      if (!res.ok) {
+        if (typeof ack === 'function') ack(res);
+        return;
+      }
+      socket.user = res.user;
+      if (socket.currentRoomId) {
+        const room = rooms.get(socket.currentRoomId);
+        const p = room ? room.players.get(socket.id) : null;
+        if (p) {
+          p.name = res.user.displayName;
+        }
+      }
+      if (typeof ack === 'function') {
+        ack({ ok: true, newName: res.user.displayName, user: res.user });
+      }
+      return;
+    }
+
+    const cleanGuest = userStore.sanitizeText(rawName || '', 14);
+    if (!cleanGuest || cleanGuest.length < 2) {
+      if (typeof ack === 'function') {
+        ack({ ok: false, error: 'Slime adın en az 2 karakter olmalıdır!' });
+      }
+      return;
+    }
+    socket.guestName = cleanGuest;
+    if (socket.currentRoomId) {
+      const room = rooms.get(socket.currentRoomId);
+      const p = room ? room.players.get(socket.id) : null;
+      if (p) {
+        p.name = cleanGuest;
+      }
+    }
+    if (typeof ack === 'function') {
+      ack({ ok: true, newName: cleanGuest });
+    }
   });
 
   // 2b) Slime Mağazası (Shop) Satın Alma, Kuşanma ve Coin Paketi İşlemleri
@@ -2082,13 +2173,24 @@ io.on('connection', (socket) => {
 
   socket.on('syncGuestLoadout', (payload) => {
     if (!payload || typeof payload !== 'object') return;
+    const eqSrc = (payload.equipped && typeof payload.equipped === 'object') ? payload.equipped : payload;
     socket.guestEquipped = {
-      hat: typeof payload.hat === 'string' ? payload.hat : null,
-      skin: typeof payload.skin === 'string' ? payload.skin : null,
-      belt: typeof payload.belt === 'string' ? payload.belt : null,
-      kill_effect: typeof payload.kill_effect === 'string' ? payload.kill_effect : null,
-      title: typeof payload.title === 'string' ? payload.title : null
+      hat: typeof eqSrc.hat === 'string' ? eqSrc.hat : null,
+      skin: typeof eqSrc.skin === 'string' ? eqSrc.skin : null,
+      belt: typeof eqSrc.belt === 'string' ? eqSrc.belt : null,
+      kill_effect: typeof eqSrc.kill_effect === 'string' ? eqSrc.kill_effect : null,
+      title: typeof eqSrc.title === 'string' ? eqSrc.title : null
     };
+    if (typeof payload.color === 'string' && payload.color.startsWith('#')) {
+      socket.guestColor = payload.color;
+    }
+    if (typeof payload.skin === 'string') {
+      socket.guestSkin = payload.skin;
+    }
+    if (payload.guestName) {
+      const cleanG = userStore.sanitizeText(payload.guestName, 14);
+      if (cleanG.length >= 2) socket.guestName = cleanG;
+    }
     if (socket.currentRoomId) {
       const room = rooms.get(socket.currentRoomId);
       const p = room ? room.players.get(socket.id) : null;
@@ -2096,6 +2198,14 @@ io.on('connection', (socket) => {
         p.equipped = socket.guestEquipped;
         if (socket.guestEquipped.hat) {
           p.skin = socket.guestEquipped.hat;
+        } else if (socket.guestSkin) {
+          p.skin = socket.guestSkin;
+        }
+        if (!room.isTeam && socket.guestColor) {
+          p.color = socket.guestColor;
+        }
+        if (socket.guestName) {
+          p.name = socket.guestName;
         }
       }
     }
@@ -2408,7 +2518,76 @@ io.on('connection', (socket) => {
     if (room.status !== 'playing') {
       startNewMatch(room);
     }
+    io.emit('roomsSummary', getLobbyRoomsSummary());
     if (typeof ack === 'function') ack({ ok: true });
+  });
+
+  // Takım Bekleme Odasında Tekil Bot Ekle / Çıkar / İsim Değiştir
+  socket.on('teamLobbyAddBot', (payload, ack) => {
+    const room = socket.currentRoomId ? rooms.get(socket.currentRoomId) : null;
+    if (!room || !room.isTeam) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Takım odasında değilsiniz.' });
+      return;
+    }
+    const targetTeam = payload && (payload.team === 'seferogullari' || payload.team === 'telliogullari')
+      ? payload.team
+      : null;
+    const counts = getTeamCounts(room);
+    if (targetTeam === 'seferogullari' && counts.seferCount >= room.teamSize) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Seferoğulları kadrosu zaten dolu!' });
+      return;
+    }
+    if (targetTeam === 'telliogullari' && counts.telliCount >= room.teamSize) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Tellioğulları kadrosu zaten dolu!' });
+      return;
+    }
+    const bot = createBotInRoom(room, {
+      team: targetTeam,
+      name: payload && payload.name ? payload.name : ''
+    });
+    io.emit('roomsSummary', getLobbyRoomsSummary());
+    const snap = buildAdminSnapshot();
+    for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
+    if (typeof ack === 'function') ack({ ok: Boolean(bot), botId: bot ? bot.id : null, botName: bot ? bot.name : null });
+  });
+
+  socket.on('teamLobbyRemoveBot', (payload, ack) => {
+    const room = socket.currentRoomId ? rooms.get(socket.currentRoomId) : null;
+    if (!room || !room.isTeam) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Takım odasında değilsiniz.' });
+      return;
+    }
+    const botId = payload && payload.botId ? payload.botId : null;
+    const removed = removeBotFromRoom(room, botId);
+    io.emit('roomsSummary', getLobbyRoomsSummary());
+    const snap = buildAdminSnapshot();
+    for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
+    if (typeof ack === 'function') ack({ ok: removed });
+  });
+
+  socket.on('teamLobbyRenameBot', (payload, ack) => {
+    const room = socket.currentRoomId ? rooms.get(socket.currentRoomId) : null;
+    if (!room) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Odada değilsiniz.' });
+      return;
+    }
+    const botId = payload && payload.botId;
+    const cleanNewName = userStore.sanitizeText((payload && payload.newName) || '', 16);
+    const bot = botId ? room.players.get(botId) : null;
+    if (!bot || !bot.isBot) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Bot bulunamadı.' });
+      return;
+    }
+    if (!cleanNewName || cleanNewName.length < 2) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Bot adı en az 2 karakter olmalı.' });
+      return;
+    }
+    const oldName = bot.name;
+    bot.name = cleanNewName;
+    userStore.renameVirtualBotProfile(oldName, cleanNewName);
+    const snap = buildAdminSnapshot();
+    for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
+    if (typeof ack === 'function') ack({ ok: true, botId: bot.id, newName: bot.name });
   });
 
   socket.on('leaveRoom', () => {
@@ -2853,15 +3032,29 @@ io.on('connection', (socket) => {
     }
     const bot = createBotInRoom(room, { name, team, color, skin });
     persistCurrentAdminBotSettings();
+    io.emit('roomsSummary', getLobbyRoomsSummary());
     const snap = buildAdminSnapshot();
     for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
-    if (typeof ack === 'function') ack({ ok: true, botId: bot ? bot.id : null, savedBotConfig: snap.savedBotConfig });
+    if (typeof ack === 'function') {
+      ack({
+        ok: Boolean(bot),
+        botId: bot ? bot.id : null,
+        botName: bot ? bot.name : null,
+        savedBotConfig: snap.savedBotConfig
+      });
+    }
   });
 
   socket.on('adminFillRoomWithBots', ({ roomId }, ack) => {
-    if (!adminSockets.has(socket.id)) return;
+    if (!adminSockets.has(socket.id)) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Yetkisiz işlem!' });
+      return;
+    }
     const room = rooms.get(roomId);
-    if (!room || !room.isTeam) return;
+    if (!room || !room.isTeam) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Takım odası bulunamadı.' });
+      return;
+    }
     let added = 0;
     while (true) {
       const { seferCount, telliCount } = getTeamCounts(room);
@@ -2876,50 +3069,80 @@ io.on('connection', (socket) => {
       if (added > 20) break;
     }
     persistCurrentAdminBotSettings();
+    io.emit('roomsSummary', getLobbyRoomsSummary());
     const snap = buildAdminSnapshot();
     for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
     if (typeof ack === 'function') ack({ ok: true, added, savedBotConfig: snap.savedBotConfig });
   });
 
   socket.on('adminRenameBot', ({ roomId, botId, newName }, ack) => {
-    if (!adminSockets.has(socket.id)) return;
+    if (!adminSockets.has(socket.id)) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Yetkisiz işlem!' });
+      return;
+    }
     const room = rooms.get(roomId);
     const bot = room ? room.players.get(botId) : null;
-    const cleanNewName = userStore.sanitizeText(newName || '', 16);
-    if (bot && bot.isBot && cleanNewName) {
-      bot.name = cleanNewName;
+    if (!bot || !bot.isBot) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Bot bulunamadı.' });
+      return;
     }
+    const cleanNewName = userStore.sanitizeText(newName || '', 16);
+    if (!cleanNewName || cleanNewName.length < 2) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Yeni bot adı en az 2 karakter olmalıdır!' });
+      return;
+    }
+    const oldName = bot.name;
+    bot.name = cleanNewName;
+    userStore.renameVirtualBotProfile(oldName, cleanNewName);
     persistCurrentAdminBotSettings();
     const snap = buildAdminSnapshot();
     for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
-    if (typeof ack === 'function') ack({ ok: true, savedBotConfig: snap.savedBotConfig });
+    if (typeof ack === 'function') {
+      ack({ ok: true, botId: bot.id, newName: bot.name, savedBotConfig: snap.savedBotConfig });
+    }
   });
 
   socket.on('adminRemoveBot', ({ roomId, botId }, ack) => {
-    if (!adminSockets.has(socket.id)) return;
+    if (!adminSockets.has(socket.id)) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Yetkisiz işlem!' });
+      return;
+    }
     const room = rooms.get(roomId || 'ffa');
     const removed = removeBotFromRoom(room, botId);
     persistCurrentAdminBotSettings();
+    io.emit('roomsSummary', getLobbyRoomsSummary());
     const snap = buildAdminSnapshot();
     for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
     if (typeof ack === 'function') ack({ ok: removed, savedBotConfig: snap.savedBotConfig });
   });
 
   socket.on('adminClearRoomBots', ({ roomId }, ack) => {
-    if (!adminSockets.has(socket.id)) return;
+    if (!adminSockets.has(socket.id)) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Yetkisiz işlem!' });
+      return;
+    }
     const room = rooms.get(roomId || 'ffa');
+    let removedCount = 0;
     if (room) {
       for (const [pid, p] of [...room.players.entries()]) {
         if (p.isBot) {
           clearPlayerPhysics(room, p);
           room.players.delete(pid);
+          removedCount++;
+        }
+      }
+      if (room.isTeam && room.status === 'starting_countdown') {
+        const { seferCount, telliCount } = getTeamCounts(room);
+        if (seferCount < room.teamSize || telliCount < room.teamSize) {
+          room.status = 'waiting_for_teams';
         }
       }
     }
     persistCurrentAdminBotSettings();
+    io.emit('roomsSummary', getLobbyRoomsSummary());
     const snap = buildAdminSnapshot();
     for (const sid of adminSockets) io.to(sid).emit('adminStateUpdate', snap);
-    if (typeof ack === 'function') ack({ ok: true, savedBotConfig: snap.savedBotConfig });
+    if (typeof ack === 'function') ack({ ok: true, removedCount, savedBotConfig: snap.savedBotConfig });
   });
 
   socket.on('adminSaveSettings', (_payload, ack) => {

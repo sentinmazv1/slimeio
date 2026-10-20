@@ -74,6 +74,7 @@
   const authFeedback = document.getElementById('auth-feedback');
 
   const guestNameInput = document.getElementById('guest-name-input');
+  const guestSaveNameBtn = document.getElementById('guest-save-name-btn');
   const loginUsernameInput = document.getElementById('login-username');
   const loginPasswordInput = document.getElementById('login-password');
   const doLoginBtn = document.getElementById('do-login-btn');
@@ -85,6 +86,9 @@
 
   const memberDisplayNameEl = document.getElementById('member-display-name');
   const memberFullnameEl = document.getElementById('member-fullname');
+  const memberRenameInput = document.getElementById('member-rename-input');
+  const memberRenameBtn = document.getElementById('member-rename-btn');
+  const memberRenameFeedback = document.getElementById('member-rename-feedback');
   const memberFriendsStatEl = document.getElementById('member-friends-stat');
   const memberWinsStatEl = document.getElementById('member-wins-stat');
   const logoutBtn = document.getElementById('logout-btn');
@@ -393,10 +397,12 @@
 
   function syncGuestLoadoutToServer() {
     if (currentUser || !socket || !socket.connected) return;
+    const gName = guestNameInput ? guestNameInput.value.trim() : '';
     socket.emit('syncGuestLoadout', {
       color: selectedColor,
       skin: selectedSkin,
-      equipped: guestEconomy.equipped
+      equipped: guestEconomy.equipped,
+      guestName: gName
     });
   }
 
@@ -910,8 +916,12 @@
     if (currentUser) {
       authGuestOrMemberBox.style.display = 'none';
       loggedInUserBox.style.display = 'flex';
-      memberDisplayNameEl.textContent = `@${currentUser.username}`;
+      const disp = currentUser.displayName || currentUser.username;
+      memberDisplayNameEl.textContent = `${disp} (@${currentUser.username})`;
       memberFullnameEl.textContent = currentUser.fullName;
+      if (memberRenameInput && document.activeElement !== memberRenameInput) {
+        memberRenameInput.value = disp;
+      }
       memberFriendsStatEl.textContent = `👥 ${currentUser.friendCount || 0} Arkadaş`;
       memberWinsStatEl.textContent = `🏆 ${(currentUser.stats && currentUser.stats.wins) || 0} Galibiyet`;
       myFriendCountBadge.textContent = String(currentUser.friendCount || 0);
@@ -930,6 +940,83 @@
     renderColorAndSkinSelectors();
     renderModesList();
     updateCareerAndShopUI();
+  }
+
+  function submitPlayerNameChange(rawName, feedbackEl) {
+    window.soundManager.init();
+    window.soundManager.playUiPop();
+    const clean = String(rawName || '').trim();
+    if (clean.length < 2) {
+      if (feedbackEl) {
+        feedbackEl.style.display = 'block';
+        feedbackEl.style.color = '#FF2A85';
+        feedbackEl.textContent = '⚠️ Slime adın en az 2 karakter olmalıdır!';
+      }
+      return;
+    }
+
+    if (!currentUser) {
+      try {
+        localStorage.setItem('slimeio_guest_name', clean);
+      } catch (_e) {}
+      if (guestNameInput) guestNameInput.value = clean;
+    }
+
+    socket.emit('changePlayerName', { newName: clean }, (res) => {
+      if (!res || !res.ok) {
+        if (feedbackEl) {
+          feedbackEl.style.display = 'block';
+          feedbackEl.style.color = '#FF2A85';
+          feedbackEl.textContent = (res && res.error) || 'İsim değiştirilemedi.';
+        }
+        return;
+      }
+
+      if (currentUser && res.user) {
+        currentUser = res.user;
+        saveUserSessionToStorage(currentUser);
+      } else if (currentUser && res.newName) {
+        currentUser.displayName = res.newName;
+        saveUserSessionToStorage(currentUser);
+      }
+
+      const me = renderPlayers.get(selfId);
+      if (me && res.newName) {
+        me.name = res.newName;
+      }
+
+      updateAuthUI();
+
+      if (feedbackEl) {
+        feedbackEl.style.display = 'block';
+        feedbackEl.style.color = '#00F59B';
+        feedbackEl.textContent = `✓ Slime adın "${res.newName || clean}" olarak güncellendi!`;
+      }
+    });
+  }
+
+  window.submitProfileModalNameChange = () => {
+    const inp = document.getElementById('profile-self-rename-input');
+    if (!inp) return;
+    submitPlayerNameChange(inp.value, profileFeedbackMsg);
+  };
+
+  if (memberRenameBtn && memberRenameInput) {
+    memberRenameBtn.addEventListener('click', () => {
+      submitPlayerNameChange(memberRenameInput.value, memberRenameFeedback);
+    });
+    memberRenameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitPlayerNameChange(memberRenameInput.value, memberRenameFeedback);
+      }
+    });
+  }
+
+  if (guestSaveNameBtn && guestNameInput) {
+    guestSaveNameBtn.addEventListener('click', () => {
+      submitPlayerNameChange(guestNameInput.value, authFeedback);
+    });
   }
 
   function renderColorAndSkinSelectors() {
@@ -1342,6 +1429,19 @@
             <div style="font-size:15px; font-weight:900; color:#00BBF9;">🏆 ${(pf.stats && pf.stats.wins) || 0}</div>
           </div>
         </div>
+        ${isSelf ? `
+        <div style="background:rgba(0,245,212,0.08); border:1px solid rgba(0,245,212,0.35); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:6px; text-align:left;">
+          <label style="font-size:11px; font-weight:900; color:#00F5D4;">✏️ Oyun İçi Slime Adını Değiştir</label>
+          <div style="display:flex; gap:6px;">
+            <input id="profile-self-rename-input" type="text" value="${escapeHtml(pf.displayName || '')}" maxlength="16" placeholder="Yeni Slime adın..."
+              onkeydown="if(event.key==='Enter'){event.preventDefault();window.submitProfileModalNameChange();}"
+              style="flex:1; background:#080B12; color:#FFF; border:1.5px solid #00F5D4; border-radius:8px; padding:6px 10px; font-size:12.5px; font-weight:800; user-select:text; -webkit-user-select:text;" />
+            <button type="button" onclick="window.submitProfileModalNameChange()" style="background:#00F59B; color:#080B12; border:none; border-radius:8px; padding:6px 12px; font-size:12px; font-weight:900; cursor:pointer; white-space:nowrap;">
+              💾 Kaydet
+            </button>
+          </div>
+        </div>
+        ` : ''}
       `;
 
       if (profileFeedbackMsg) {
@@ -2586,7 +2686,113 @@
     overlayEl.style.display = 'none';
   });
 
+  let teamLobbyEditingBotId = null;
+  let teamLobbyEditingDraft = '';
+  let lastTeamWaitingState = null;
+
+  window.teamLobbyAddBot = (teamId, ev) => {
+    if (ev) ev.stopPropagation();
+    window.soundManager.init();
+    window.soundManager.playUiPop();
+    socket.emit('teamLobbyAddBot', { team: teamId }, (res) => {
+      if (res && !res.ok && res.error && teamLobbyStatusEl) {
+        teamLobbyStatusEl.style.color = '#FF2A85';
+        teamLobbyStatusEl.textContent = res.error;
+      }
+    });
+  };
+
+  window.teamLobbyRemoveBot = (botId, ev) => {
+    if (ev) ev.stopPropagation();
+    window.soundManager.init();
+    window.soundManager.playUiPop();
+    if (teamLobbyEditingBotId === botId) teamLobbyEditingBotId = null;
+    socket.emit('teamLobbyRemoveBot', { botId });
+  };
+
+  window.teamLobbyStartRenameBot = (botId, currentName, ev) => {
+    if (ev) ev.stopPropagation();
+    teamLobbyEditingBotId = botId;
+    teamLobbyEditingDraft = String(currentName || '').replace(/^\[BOT\]\s*/i, '');
+    lastTeamSlotsSignature = '';
+    if (lastTeamWaitingState) updateTeamWaitingRoomUI(lastTeamWaitingState);
+    setTimeout(() => {
+      const inp = document.getElementById(`tl-rename-input-${botId}`);
+      if (inp) {
+        inp.focus();
+        inp.select();
+      }
+    }, 20);
+  };
+
+  window.teamLobbyCommitRenameBot = (botId, ev) => {
+    if (ev) ev.stopPropagation();
+    const inp = document.getElementById(`tl-rename-input-${botId}`);
+    const nextName = (inp ? inp.value : teamLobbyEditingDraft || '').trim();
+    if (nextName.length < 2) return;
+    teamLobbyEditingBotId = null;
+    lastTeamSlotsSignature = '';
+    socket.emit('teamLobbyRenameBot', { botId, newName: nextName });
+  };
+
+  window.teamLobbyCancelRenameBot = (ev) => {
+    if (ev) ev.stopPropagation();
+    teamLobbyEditingBotId = null;
+    lastTeamSlotsSignature = '';
+    if (lastTeamWaitingState) updateTeamWaitingRoomUI(lastTeamWaitingState);
+  };
+
+  function renderTeamSlotRow(p, index, teamKey) {
+    const isSefer = teamKey === 'seferogullari';
+    const dotEmoji = isSefer ? '🟢' : '🔴';
+    const accentColor = isSefer ? '#00F59B' : '#FF2A85';
+    if (!p) {
+      return `<div class="team-slot" style="color:#64748B; align-items:center;">
+        <span>Boş Koltuk #${index + 1}</span>
+        <button type="button" onclick="window.teamLobbyAddBot('${teamKey}', event)"
+          style="background:rgba(255,255,255,0.08); color:${accentColor}; border:1px solid ${accentColor}; border-radius:7px; padding:3px 9px; font-size:11px; font-weight:800; cursor:pointer;">
+          + 🤖 Bot Ekle
+        </button>
+      </div>`;
+    }
+
+    const safeId = escapeHtml(p.id || '');
+    const safeUser = escapeHtml(p.username || '');
+    const safeName = escapeHtml(p.name || 'Slime');
+
+    if (p.isBot && teamLobbyEditingBotId === p.id) {
+      return `<div class="team-slot" style="align-items:center; gap:6px;" onclick="event.stopPropagation()">
+        <input id="tl-rename-input-${safeId}" type="text" value="${escapeHtml(teamLobbyEditingDraft)}" maxlength="16"
+          oninput="window._tlDraft=this.value"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();window.teamLobbyCommitRenameBot('${safeId}',event);}else if(event.key==='Escape'){event.preventDefault();window.teamLobbyCancelRenameBot(event);}"
+          style="flex:1; background:#080B12; color:#FFF; border:1.5px solid #00F5D4; border-radius:6px; padding:3px 7px; font-size:12px; font-weight:800; min-width:80px;" />
+        <div style="display:flex; gap:4px;">
+          <button type="button" onclick="window.teamLobbyCommitRenameBot('${safeId}', event)" style="background:#00F59B; color:#080B12; border:none; border-radius:6px; padding:3px 7px; font-size:11px; font-weight:900; cursor:pointer;">✓</button>
+          <button type="button" onclick="window.teamLobbyCancelRenameBot(event)" style="background:#475569; color:#FFF; border:none; border-radius:6px; padding:3px 7px; font-size:11px; font-weight:900; cursor:pointer;">✕</button>
+        </div>
+      </div>`;
+    }
+
+    if (p.isBot) {
+      return `<div class="team-slot" data-player-id="${safeId}" data-username="${safeUser}" style="cursor:pointer; align-items:center;" onclick="inspectPlayerProfile('${safeId}','${safeUser}')">
+        <span>${dotEmoji} ${safeName}</span>
+        <span style="display:inline-flex; align-items:center; gap:5px;">
+          <button type="button" title="Bot İsmini Değiştir" onclick="window.teamLobbyStartRenameBot('${safeId}', '${safeName}', event)"
+            style="background:rgba(0,187,249,0.2); color:#00BBF9; border:1px solid #00BBF9; border-radius:6px; padding:2px 6px; font-size:10.5px; font-weight:800; cursor:pointer;">✏️ İsim</button>
+          <button type="button" title="Botu Çıkar" onclick="window.teamLobbyRemoveBot('${safeId}', event)"
+            style="background:rgba(255,42,133,0.2); color:#FF70A6; border:1px solid #FF2A85; border-radius:6px; padding:2px 6px; font-size:10.5px; font-weight:800; cursor:pointer;">❌ Çıkar</button>
+        </span>
+      </div>`;
+    }
+
+    return `<div class="team-slot" data-player-id="${safeId}" data-username="${safeUser}" style="cursor:pointer; align-items:center;" onclick="inspectPlayerProfile('${safeId}','${safeUser}')">
+      <span>${dotEmoji} ${safeName} ${p.id === selfId ? '(Sen)' : ''}</span>
+      <span style="color:${accentColor};">👤 Profil / Hazır ✓</span>
+    </div>`;
+  }
+
   function updateTeamWaitingRoomUI(state) {
+    lastTeamWaitingState = state;
     const meInState = (state.players || []).find((p) => p.id === selfId);
     if (!state.isTeam || (meInState && meInState.watchOnly)) {
       teamWaitingModal.style.display = 'none';
@@ -2615,41 +2821,19 @@
 
       const seferPlayers = state.players.filter((p) => p.team === 'seferogullari');
       const telliPlayers = state.players.filter((p) => p.team === 'telliogullari');
-      const sig = `${state.teamSize}|${seferPlayers.map((p) => p.id + ':' + p.name).join(',')}|${telliPlayers.map((p) => p.id + ':' + p.name).join(',')}`;
+      const sig = `${state.teamSize}|${teamLobbyEditingBotId || ''}|${seferPlayers.map((p) => p.id + ':' + p.name).join(',')}|${telliPlayers.map((p) => p.id + ':' + p.name).join(',')}`;
       if (sig === lastTeamSlotsSignature) return;
       lastTeamSlotsSignature = sig;
 
       let seferHtml = '';
       for (let i = 0; i < state.teamSize; i++) {
-        const p = seferPlayers[i];
-        if (p) {
-          const safeId = escapeHtml(p.id || '');
-          const safeUser = escapeHtml(p.username || '');
-          const safeName = escapeHtml(p.name || 'Slime');
-          seferHtml += `<div class="team-slot" data-player-id="${safeId}" data-username="${safeUser}" style="cursor:pointer;" onclick="inspectPlayerProfile('${safeId}','${safeUser}')">
-            <span>🟢 ${safeName} ${p.id === selfId ? '(Sen)' : ''}</span>
-            <span style="color:#00F59B;">👤 Profil / Hazır ✓</span>
-          </div>`;
-        } else {
-          seferHtml += `<div class="team-slot" style="color:#64748B;"><span>Boş Koltuk #${i + 1}</span><span>Bekleniyor...</span></div>`;
-        }
+        seferHtml += renderTeamSlotRow(seferPlayers[i], i, 'seferogullari');
       }
       seferSlotsListEl.innerHTML = seferHtml;
 
       let telliHtml = '';
       for (let i = 0; i < state.teamSize; i++) {
-        const p = telliPlayers[i];
-        if (p) {
-          const safeId = escapeHtml(p.id || '');
-          const safeUser = escapeHtml(p.username || '');
-          const safeName = escapeHtml(p.name || 'Slime');
-          telliHtml += `<div class="team-slot" data-player-id="${safeId}" data-username="${safeUser}" style="cursor:pointer;" onclick="inspectPlayerProfile('${safeId}','${safeUser}')">
-            <span>🔴 ${safeName} ${p.id === selfId ? '(Sen)' : ''}</span>
-            <span style="color:#FF2A85;">👤 Profil / Hazır ✓</span>
-          </div>`;
-        } else {
-          telliHtml += `<div class="team-slot" style="color:#64748B;"><span>Boş Koltuk #${i + 1}</span><span>Bekleniyor...</span></div>`;
-        }
+        telliHtml += renderTeamSlotRow(telliPlayers[i], i, 'telliogullari');
       }
       telliSlotsListEl.innerHTML = telliHtml;
     } else {

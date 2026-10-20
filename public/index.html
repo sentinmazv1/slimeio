@@ -1317,7 +1317,12 @@
             <div id="tab-guest" style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
               <div class="form-field">
                 <label>Slime Takma Adın (Zorunlu)</label>
-                <input id="guest-name-input" type="text" placeholder="Örn: NeonAvcı..." maxlength="14" />
+                <div style="display:flex; gap:6px;">
+                  <input id="guest-name-input" type="text" placeholder="Örn: NeonAvcı..." maxlength="14" style="flex:1;" />
+                  <button id="guest-save-name-btn" type="button" style="background:rgba(0,245,212,0.18); color:#00F5D4; border:1.5px solid #00F5D4; border-radius:9px; padding:0 11px; font-size:11.5px; font-weight:900; cursor:pointer; white-space:nowrap;">
+                    ✏️ Kaydet
+                  </button>
+                </div>
               </div>
               <div style="font-size:11px; color:#94A3B8; background:rgba(255,184,0,0.1); border:1px solid rgba(255,184,0,0.35); padding:8px; border-radius:10px;">
                 💡 <strong>Bilgi:</strong> Kazandığın Slime Puanları ve mağaza eşyalarını kalıcı olarak buluta kaydetmek ve <strong>Takım Savaşlarına (2v2, 4v4, 8v8)</strong> girmek için yukarıdan <em>Hızlı Üye Ol</em>!
@@ -1366,6 +1371,13 @@
               </div>
               <span style="background:rgba(0,245,155,0.2); color:#00F59B; padding:3px 8px; border-radius:999px; font-size:10.5px; font-weight:900;">✓ ÜYE</span>
             </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <input id="member-rename-input" type="text" placeholder="Oyun içi Slime adın..." maxlength="16" style="flex:1; background:#080B12; color:#FFF; border:1px solid rgba(0,245,212,0.45); border-radius:8px; padding:5px 8px; font-size:11.5px; font-weight:800; user-select:text; -webkit-user-select:text;" />
+              <button id="member-rename-btn" type="button" style="background:#00F5D4; color:#080B12; border:none; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:900; cursor:pointer; white-space:nowrap;">
+                ✏️ İsim Değiştir
+              </button>
+            </div>
+            <div id="member-rename-feedback" style="font-size:11px; font-weight:800; color:#00F59B; display:none;"></div>
             <div style="display:flex; gap:10px; font-size:11.5px; font-weight:800; color:#FFE066;">
               <span id="member-friends-stat">👥 0 Arkadaş</span>
               <span>•</span>
@@ -1657,9 +1669,9 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/vendor/matter.min.js"></script>
-  <script src="/shared/constants.js?v=3.3"></script>
-  <script src="/shared/geometry.js?v=3.3"></script>
-  <script src="/js/audio.js?v=3.3"></script>
-  <script src="/js/client.js?v=3.3"></script>
+  <script src="/shared/constants.js?v=3.4"></script>
+  <script src="/shared/geometry.js?v=3.4"></script>
+  <script src="/js/audio.js?v=3.4"></script>
+  <script src="/js/client.js?v=3.4"></script>
 </body>
 </html>
