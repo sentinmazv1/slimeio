@@ -942,14 +942,16 @@ function updateBotAI(room, bot, now) {
   if (!bot.alive || !bot.body) return;
   if (now < bot.aiNextDecision) return;
 
-  bot.aiNextDecision = now + 420 + Math.random() * 420;
+  // Daha yavaş ve insansı karar verme aralığı (1.0 - 1.9 saniye)
+  bot.aiNextDecision = now + 950 + Math.random() * 950;
   const bx = bot.body.position.x;
   const by = bot.body.position.y;
 
-  // Botun 3+ kemeri varsa menzildeki DÜŞMANLARA Slime Oku atsın (Takım arkadaşını vurmaz!)
-  if (bot.bands.length >= 3 && Math.random() < 0.45) {
+  // Botun 4+ kemeri varsa nadiren (%14 ihtimalle ve en az 4.5 sn arayla) yüksek sapma payıyla ok atsın
+  const canBotShootNow = bot.bands.length >= 4 && (now - (bot.lastArrowTime || 0) > 4500);
+  if (canBotShootNow && Math.random() < 0.14) {
     let nearestEnemy = null;
-    let minDist = 950;
+    let minDist = 580;
     for (const other of room.players.values()) {
       if (other.id === bot.id || !other.alive || !other.body) continue;
       if (room.isTeam && bot.team && other.team === bot.team) continue; // Dost ateşi kapalı!
@@ -960,36 +962,56 @@ function updateBotAI(room, bot, now) {
       }
     }
     if (nearestEnemy) {
-      shootSlimeArrow(room, bot, nearestEnemy.body.position.x, nearestEnemy.body.position.y);
+      // Keskin nişancı gibi tam isabet atmaması için geniş sapma payı (±180px)
+      const aimErrorX = (Math.random() - 0.5) * 360;
+      const aimErrorY = (Math.random() - 0.5) * 360;
+      shootSlimeArrow(
+        room,
+        bot,
+        nearestEnemy.body.position.x + aimErrorX,
+        nearestEnemy.body.position.y + aimErrorY
+      );
     }
   }
 
-  // Yakındaki engellerden kemer/cephane topla
-  if (bot.bands.length < 5 || Math.random() < 0.6) {
-    let bestObs = null;
-    let bestScore = Infinity;
-    for (let k = 0; k < 6; k++) {
-      const candidate = sharedMapObstacles[Math.floor(Math.random() * sharedMapObstacles.length)];
-      if (!candidate) continue;
-      const d = Math.hypot(candidate.x - bx, candidate.y - by);
-      if (d > 140 && d < bestScore) {
-        bestScore = d;
-        bestObs = candidate;
+  // Çoğunlukla (%84) haritada rahatça dolaşsın veya engellerden birkaç kemer toplasın
+  if (bot.bands.length < 3 || Math.random() < 0.84) {
+    if (bot.bands.length < 3 && Math.random() < 0.65) {
+      let bestObs = null;
+      let bestScore = Infinity;
+      for (let k = 0; k < 4; k++) {
+        const candidate = sharedMapObstacles[Math.floor(Math.random() * sharedMapObstacles.length)];
+        if (!candidate) continue;
+        const d = Math.hypot(candidate.x - bx, candidate.y - by);
+        if (d > 140 && d < bestScore) {
+          bestScore = d;
+          bestObs = candidate;
+        }
+      }
+      if (bestObs) {
+        bot.input.targetX = bestObs.x + (Math.random() - 0.5) * 90;
+        bot.input.targetY = bestObs.y + (Math.random() - 0.5) * 90;
+        return;
       }
     }
-    if (bestObs) {
-      bot.input.targetX = bestObs.x;
-      bot.input.targetY = bestObs.y;
-      return;
-    }
+
+    // Rastgele serbest gezinme (oyuncuları darlamadan arenada dolaşma)
+    const halfW = GAME_CONFIG.ARENA_WIDTH * 0.42;
+    const halfH = GAME_CONFIG.ARENA_HEIGHT * 0.42;
+    bot.input.targetX = Math.max(-halfW, Math.min(halfW, bx + (Math.random() - 0.5) * 750));
+    bot.input.targetY = Math.max(-halfH, Math.min(halfH, by + (Math.random() - 0.5) * 750));
+    return;
   }
 
+  // Çok düşük ihtimalle (%16) sadece yakındaki ve en az 2 kemeri olan bir rakibin kemerine doğru yönelsin
   for (const other of room.players.values()) {
-    if (other.id === bot.id || !other.alive || !other.body || other.bands.length === 0) continue;
+    if (other.id === bot.id || !other.alive || !other.body || other.bands.length < 2) continue;
     if (room.isTeam && bot.team && other.team === bot.team) continue; // Dost kemerini kesmeye gitmez!
+    const distToOther = Math.hypot(other.body.position.x - bx, other.body.position.y - by);
+    if (distToOther > 520) continue;
     const band = other.bands[0];
-    bot.input.targetX = (band.anchorX + other.body.position.x) * 0.5;
-    bot.input.targetY = (band.anchorY + other.body.position.y) * 0.5;
+    bot.input.targetX = (band.anchorX + other.body.position.x) * 0.5 + (Math.random() - 0.5) * 180;
+    bot.input.targetY = (band.anchorY + other.body.position.y) * 0.5 + (Math.random() - 0.5) * 180;
     return;
   }
 }
@@ -1667,7 +1689,8 @@ setInterval(() => {
           const dirX = dx / dist;
           const dirY = dy / dist;
           const hasHighSpeed = p.activePowerup === 'high_speed' && now < (p.powerupUntil || 0);
-          const speedMult = hasHighSpeed ? (GAME_CONFIG.POWERUP_SPEED_MULTIPLIER || 1.72) : 1.0;
+          const botHandicap = p.isBot ? 0.75 : 1.0;
+          const speedMult = (hasHighSpeed ? (GAME_CONFIG.POWERUP_SPEED_MULTIPLIER || 1.72) : 1.0) * botHandicap;
 
           const fx = dirX * GAME_CONFIG.BASE_MOVE_FORCE * speedMult * throttle;
           const fy = dirY * GAME_CONFIG.BASE_MOVE_FORCE * speedMult * throttle;

@@ -437,7 +437,13 @@ function updateUserCustomization(username, { color, skin, equipped, displayName,
 
   ensureUserEconomy(record);
   if (color && isValidColor(color)) record.color = color;
-  if (skin && isValidSkin(skin)) record.skin = skin;
+  if (skin && isValidSkin(skin)) {
+    record.skin = skin;
+    // Lobiden ücretsiz/temel 10 şapkadan biri seçildiyse mağaza şapkası kuşanmasını kaldır
+    if (BASIC_10_SKINS.some((s) => s.id === skin)) {
+      record.equipped.hat = null;
+    }
+  }
   if (typeof displayName === 'string') {
     const cleanDisp = sanitizeText(displayName, 16);
     if (cleanDisp.length >= 2) {
@@ -454,8 +460,16 @@ function updateUserCustomization(username, { color, skin, equipped, displayName,
     for (const slot of ['hat', 'skin', 'belt', 'kill_effect', 'title']) {
       if (slot in equipped) {
         const val = equipped[slot];
-        if (!val || record.ownedItems.includes(val)) {
-          record.equipped[slot] = val || null;
+        if (!val || val === 'none') {
+          record.equipped[slot] = null;
+          if (slot === 'hat' && !BASIC_10_SKINS.some((s) => s.id === record.skin)) {
+            record.skin = 'crown';
+          }
+        } else if (record.ownedItems.includes(val)) {
+          record.equipped[slot] = val;
+          if (slot === 'hat') {
+            record.skin = val;
+          }
         }
       }
     }
@@ -536,36 +550,44 @@ function purchaseStoreItem(username, { itemId, currency = 'point' }) {
   return { ok: true, user: sanitizeUser(record), item };
 }
 
-function equipStoreItem(username, { itemId, type }) {
+function equipStoreItem(username, { itemId, type, basicFallbackSkin }) {
   const cleanUser = normalizeUsername(username);
   const record = usersDb[cleanUser];
   if (!record) return { ok: false, error: 'Kullanıcı bulunamadı.' };
 
   ensureUserEconomy(record);
+  const foundItem = itemId && itemId !== 'none' ? STORE_ITEMS.find((it) => it.id === itemId) : null;
+  const resolvedType = type || (foundItem ? foundItem.type : null);
   const validSlots = ['hat', 'skin', 'belt', 'kill_effect', 'title'];
-  if (!validSlots.includes(type)) {
+  if (!validSlots.includes(resolvedType)) {
     return { ok: false, error: 'Geçersiz ekipman kategorisi.' };
   }
 
-  if (!itemId || itemId === 'none') {
-    record.equipped[type] = null;
-    if (type === 'hat' && !BASIC_10_SKINS.some((s) => s.id === record.skin)) {
-      record.skin = 'crown';
+  const isAlreadyEquipped = Boolean(itemId && record.equipped[resolvedType] === itemId);
+
+  if (!itemId || itemId === 'none' || isAlreadyEquipped) {
+    record.equipped[resolvedType] = null;
+    if (resolvedType === 'hat') {
+      if (basicFallbackSkin && BASIC_10_SKINS.some((s) => s.id === basicFallbackSkin)) {
+        record.skin = basicFallbackSkin;
+      } else if (!BASIC_10_SKINS.some((s) => s.id === record.skin)) {
+        record.skin = 'crown';
+      }
     }
     saveUsers();
-    return { ok: true, user: sanitizeUser(record) };
+    return { ok: true, unequipped: true, type: resolvedType, user: sanitizeUser(record) };
   }
 
   if (!record.ownedItems.includes(itemId)) {
     return { ok: false, error: 'Bu eşyaya henüz sahip değilsiniz!' };
   }
 
-  record.equipped[type] = itemId;
-  if (type === 'hat') {
+  record.equipped[resolvedType] = itemId;
+  if (resolvedType === 'hat') {
     record.skin = itemId;
   }
   saveUsers();
-  return { ok: true, user: sanitizeUser(record) };
+  return { ok: true, unequipped: false, type: resolvedType, user: sanitizeUser(record) };
 }
 
 function claimCoinPack(username, { coins = 250, points = 500 }) {

@@ -545,8 +545,18 @@
       shopEquippedBadgesEl.innerHTML = slots.map((s) => {
         const eqId = eq[s.key];
         const found = eqId ? storeItems.find((it) => it.id === eqId) : null;
-        const text = found ? `${found.icon || '✨'} ${escapeHtml(found.name)}` : s.fallback;
-        return `<span style="font-size:10.5px; font-weight:800; padding:3px 8px; border-radius:999px; background:${found ? 'rgba(0,245,155,0.16)' : 'rgba(255,255,255,0.06)'}; border:1px solid ${found ? '#00F59B' : 'rgba(255,255,255,0.12)'}; color:${found ? '#00F59B' : '#94A3B8'};">${s.label}: ${text}</span>`;
+        if (found) {
+          return `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:10.5px; font-weight:800; padding:3px 8px; border-radius:999px; background:rgba(0,245,155,0.16); border:1px solid #00F59B; color:#00F59B;">
+            <span>${s.label}: ${found.icon || '✨'} ${escapeHtml(found.name)}</span>
+            <button type="button" onclick="window.unequipShopSlot('${s.key}')" title="Kuşanmayı Çıkar" style="background:rgba(255,42,133,0.28); color:#FF70A6; border:1px solid #FF2A85; border-radius:999px; padding:1px 6px; font-size:9.5px; font-weight:900; cursor:pointer;">✕ Çıkar</button>
+          </div>`;
+        }
+        let fbText = s.fallback;
+        if (s.key === 'hat') {
+          const basicObj = availableSkins.find((bs) => bs.id === selectedSkin);
+          if (basicObj) fbText = `${basicObj.icon} ${escapeHtml(basicObj.name)}`;
+        }
+        return `<span style="font-size:10.5px; font-weight:800; padding:3px 8px; border-radius:999px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94A3B8;">${s.label}: ${fbText}</span>`;
       }).join('');
     }
 
@@ -731,7 +741,6 @@
           previewShopItem(itemId);
           handleBuyShopItem(itemId, 'coin');
         } else if (action === 'equip') {
-          previewShopItem(itemId);
           handleEquipShopItem(itemId);
         }
       });
@@ -747,6 +756,8 @@
     shopFeedbackMsg.textContent = msg;
   }
 
+  let lastBasicSkin = 'crown';
+
   function handleBuyShopItem(itemId, currency) {
     window.soundManager.init();
     const item = storeItems.find((it) => it.id === itemId);
@@ -757,9 +768,16 @@
         if (res && res.ok && res.user) {
           currentUser = res.user;
           if (currentUser.skin) selectedSkin = currentUser.skin;
+          shopPreviewLoadout[item.type] = item.id;
+          const me = renderPlayers.get(selfId);
+          if (me) {
+            me.skin = (currentUser.equipped && currentUser.equipped.hat) || currentUser.skin || selectedSkin;
+            me.equipped = currentUser.equipped;
+          }
           saveUserSessionToStorage(currentUser);
           window.soundManager.playPowerupPickup();
           showShopFeedback(`🎉 "${item.name}" satın alındı ve kuşanıldı!`, false);
+          renderColorAndSkinSelectors();
           updateCareerAndShopUI();
         } else {
           window.soundManager.playUiPop();
@@ -799,13 +817,20 @@
 
     guestEconomy.ownedItems.push(itemId);
     guestEconomy.equipped[item.type] = item.id;
+    shopPreviewLoadout[item.type] = item.id;
     if (item.type === 'hat') {
       selectedSkin = item.id;
+    }
+    const me = renderPlayers.get(selfId);
+    if (me) {
+      me.equipped = { ...guestEconomy.equipped };
+      if (item.type === 'hat') me.skin = item.id;
     }
     saveGuestEconomyToStorage();
     syncGuestLoadoutToServer();
     window.soundManager.playPowerupPickup();
     showShopFeedback(`🎉 "${item.name}" satın alındı ve kuşanıldı!`, false);
+    renderColorAndSkinSelectors();
     updateCareerAndShopUI();
   }
 
@@ -815,14 +840,35 @@
     if (!item) return;
 
     if (currentUser) {
-      socket.emit('shopEquipItem', { itemId }, (res) => {
+      socket.emit('shopEquipItem', {
+        itemId: item.id,
+        type: item.type,
+        basicFallbackSkin: lastBasicSkin || 'crown'
+      }, (res) => {
         if (res && res.ok && res.user) {
           currentUser = res.user;
-          if (currentUser.skin) selectedSkin = currentUser.skin;
+          const isNowEq = Boolean(currentUser.equipped && currentUser.equipped[item.type] === item.id);
+          if (isNowEq) {
+            shopPreviewLoadout[item.type] = item.id;
+            if (item.type === 'hat') selectedSkin = item.id;
+          } else {
+            shopPreviewLoadout[item.type] = null;
+            if (shopPreviewActiveItemId === item.id) shopPreviewActiveItemId = null;
+            if (item.type === 'hat') {
+              selectedSkin = (currentUser.skin && availableSkins.some((s) => s.id === currentUser.skin))
+                ? currentUser.skin
+                : (lastBasicSkin || 'crown');
+            }
+          }
+          const me = renderPlayers.get(selfId);
+          if (me) {
+            me.equipped = currentUser.equipped;
+            me.skin = (currentUser.equipped && currentUser.equipped.hat) || selectedSkin || 'crown';
+          }
           saveUserSessionToStorage(currentUser);
           window.soundManager.playUiPop();
-          const isNowEq = currentUser.equipped && currentUser.equipped[item.type] === item.id;
-          showShopFeedback(isNowEq ? `✨ "${item.name}" kuşanıldı!` : `↺ "${item.name}" çıkarıldı.`, false);
+          showShopFeedback(isNowEq ? `✨ "${item.name}" kuşanıldı!` : `↺ "${item.name}" kuşanması çıkarıldı.`, false);
+          renderColorAndSkinSelectors();
           updateCareerAndShopUI();
         } else {
           showShopFeedback((res && res.error) || 'İşlem başarısız.', true);
@@ -834,18 +880,39 @@
     if (!guestEconomy.ownedItems.includes(itemId)) return;
     if (guestEconomy.equipped[item.type] === itemId) {
       guestEconomy.equipped[item.type] = null;
-      if (item.type === 'hat') selectedSkin = 'crown';
-      showShopFeedback(`↺ "${item.name}" çıkarıldı.`, false);
+      shopPreviewLoadout[item.type] = null;
+      if (shopPreviewActiveItemId === itemId) shopPreviewActiveItemId = null;
+      if (item.type === 'hat') {
+        selectedSkin = lastBasicSkin || 'crown';
+      }
+      showShopFeedback(`↺ "${item.name}" kuşanması çıkarıldı.`, false);
     } else {
       guestEconomy.equipped[item.type] = itemId;
-      if (item.type === 'hat') selectedSkin = itemId;
+      shopPreviewLoadout[item.type] = itemId;
+      if (item.type === 'hat') {
+        selectedSkin = itemId;
+      }
       showShopFeedback(`✨ "${item.name}" kuşanıldı!`, false);
+    }
+    const me = renderPlayers.get(selfId);
+    if (me) {
+      me.equipped = { ...guestEconomy.equipped };
+      me.skin = guestEconomy.equipped.hat || selectedSkin || 'crown';
     }
     window.soundManager.playUiPop();
     saveGuestEconomyToStorage();
     syncGuestLoadoutToServer();
+    renderColorAndSkinSelectors();
     updateCareerAndShopUI();
   }
+
+  window.unequipShopSlot = (slotType) => {
+    const eco = getActiveEconomy();
+    const eqId = eco && eco.equipped && eco.equipped[slotType];
+    if (eqId) {
+      handleEquipShopItem(eqId);
+    }
+  };
 
   function setActiveShopCategoryTab(tabName) {
     currentShopTab = tabName || 'hat';
@@ -1045,8 +1112,11 @@
       });
     });
 
+    const eco = getActiveEconomy();
+    const activeShopHat = eco && eco.equipped && eco.equipped.hat;
+
     skinsGridContainer.innerHTML = availableSkins.map((s) => {
-      const isSel = s.id === selectedSkin ? 'skin-item selected' : 'skin-item';
+      const isSel = (!activeShopHat && s.id === selectedSkin) ? 'skin-item selected' : 'skin-item';
       return `<div class="${isSel}" data-skin="${s.id}">
         <span style="font-size:18px;">${s.icon}</span>
         <span>${s.name}</span>
@@ -1055,24 +1125,50 @@
 
     skinsGridContainer.querySelectorAll('.skin-item').forEach((el) => {
       el.addEventListener('click', () => {
-        if (!currentUser) {
-          switchAuthTab('register');
-          authFeedback.style.color = '#FFB800';
-          authFeedback.textContent = '👑 Basic 10 üye kostümünü seçmek için hızlı üye ol veya 🛒 Mağaza\'dan puanla yeni şapkalar al!';
-          return;
-        }
+        window.soundManager.init();
+        window.soundManager.playUiPop();
         selectedSkin = el.dataset.skin;
-        currentUser.skin = selectedSkin;
-        if (currentUser.equipped) currentUser.equipped.hat = null;
-        saveUserSessionToStorage(currentUser);
-        renderColorAndSkinSelectors();
-        socket.emit('updateCustomization', { color: selectedColor, skin: selectedSkin }, (res) => {
-          if (res && res.ok && res.user) {
-            currentUser = res.user;
-            saveUserSessionToStorage(currentUser);
-            updateCareerAndShopUI();
+        lastBasicSkin = selectedSkin;
+        shopPreviewLoadout.hat = null;
+
+        if (currentUser) {
+          currentUser.skin = selectedSkin;
+          if (!currentUser.equipped) {
+            currentUser.equipped = { hat: null, skin: null, belt: null, kill_effect: null, title: null };
           }
-        });
+          currentUser.equipped.hat = null;
+          const me = renderPlayers.get(selfId);
+          if (me) {
+            me.skin = selectedSkin;
+            if (me.equipped) me.equipped.hat = null;
+          }
+          saveUserSessionToStorage(currentUser);
+          renderColorAndSkinSelectors();
+          updateCareerAndShopUI();
+          socket.emit('updateCustomization', {
+            color: selectedColor,
+            skin: selectedSkin,
+            equipped: { hat: null }
+          }, (res) => {
+            if (res && res.ok && res.user) {
+              currentUser = res.user;
+              saveUserSessionToStorage(currentUser);
+              renderColorAndSkinSelectors();
+              updateCareerAndShopUI();
+            }
+          });
+        } else {
+          guestEconomy.equipped.hat = null;
+          const me = renderPlayers.get(selfId);
+          if (me) {
+            me.skin = selectedSkin;
+            if (me.equipped) me.equipped.hat = null;
+          }
+          saveGuestEconomyToStorage();
+          syncGuestLoadoutToServer();
+          renderColorAndSkinSelectors();
+          updateCareerAndShopUI();
+        }
       });
     });
   }
