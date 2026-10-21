@@ -1,0 +1,56 @@
+{
+  "taptap": {
+    "username": "taptap",
+    "displayName": "TAPTAP",
+    "fullName": "TAPTAP",
+    "salt": "c90aab30e285bc1f5acd1425",
+    "passwordHash": "c2a6f4245c3613667d66ffed0c0165ac0087f3793cb9db6be0f31410e0d6ab6d",
+    "color": "#FF6B00",
+    "skin": "viking",
+    "friends": [],
+    "stats": {
+      "totalScore": 5782,
+      "totalCuts": 86,
+      "totalKills": 8,
+      "matchesPlayed": 4,
+      "wins": 1
+    },
+    "createdAt": 1792240521755
+  },
+  "seal_guy123": {
+    "username": "seal_guy123",
+    "displayName": "Seal_Guy123",
+    "fullName": "Aras",
+    "salt": "884748fda6a6cf8953748010",
+    "passwordHash": "31f9573a261f0964b4ae4cc6e71fdfe38d66901e57f19fab4a2ae97948938ade",
+    "color": "#00F5D4",
+    "skin": "cyber",
+    "friends": [],
+    "stats": {
+      "totalScore": 395,
+      "totalCuts": 11,
+      "totalKills": 1,
+      "matchesPlayed": 1,
+      "wins": 0
+    },
+    "createdAt": 1792244175653
+  },
+  "realpanda77": {
+    "username": "realpanda77",
+    "displayName": "RealPanda77",
+    "fullName": "Ata",
+    "salt": "940b5dcb0b49cfaef955e965",
+    "passwordHash": "18e33cd0a8ae02616b2191cacfd135557990a20a7be65c7c0519fe9f1e60f3e2",
+    "color": "#00BBF9",
+    "skin": "angel",
+    "friends": [],
+    "stats": {
+      "totalScore": 0,
+      "totalCuts": 0,
+      "totalKills": 0,
+      "matchesPlayed": 0,
+      "wins": 0
+    },
+    "createdAt": 1792262608174
+  }
+}

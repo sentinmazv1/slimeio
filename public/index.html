@@ -888,7 +888,80 @@
       font-size: 11px;
       color: #94A3B8;
       line-height: 1.35;
-      min-height: 28px;
+      min-height: 26px;
+    }
+    .shop-item-perk-badge {
+      font-size: 10.5px;
+      font-weight: 900;
+      color: #00F5D4;
+      background: linear-gradient(90deg, rgba(0, 245, 212, 0.14), rgba(155, 93, 229, 0.16));
+      border: 1px solid rgba(0, 245, 212, 0.42);
+      border-radius: 8px;
+      padding: 4px 7px;
+      line-height: 1.25;
+      text-shadow: 0 0 8px rgba(0, 245, 212, 0.25);
+    }
+    .char-stats-card {
+      background: linear-gradient(155deg, rgba(8, 11, 18, 0.95) 0%, rgba(19, 14, 36, 0.92) 100%);
+      border: 1.5px solid rgba(0, 245, 212, 0.35);
+      border-radius: 13px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      box-shadow: inset 0 0 18px rgba(0, 245, 212, 0.06);
+    }
+    .char-stat-row {
+      display: grid;
+      grid-template-columns: 98px 1fr 48px;
+      align-items: center;
+      gap: 6px;
+      font-size: 10.5px;
+      font-weight: 800;
+    }
+    .char-stat-track {
+      position: relative;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .char-stat-locked-zone {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 55%;
+      right: 0;
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(255, 184, 0, 0.08),
+        rgba(255, 184, 0, 0.08) 4px,
+        rgba(0, 0, 0, 0.35) 4px,
+        rgba(0, 0, 0, 0.35) 8px
+      );
+      border-left: 1.5px dashed rgba(255, 224, 102, 0.85);
+      pointer-events: none;
+      z-index: 3;
+    }
+    .char-stat-fill-base {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      border-radius: 999px;
+      transition: width 0.25s ease;
+      z-index: 1;
+    }
+    .char-stat-fill-gear {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      border-radius: 0 999px 999px 0;
+      background: linear-gradient(90deg, #FFE066, #00F59B);
+      box-shadow: 0 0 8px rgba(255, 224, 102, 0.8);
+      transition: left 0.25s ease, width 0.25s ease;
+      z-index: 2;
     }
     .shop-price-row {
       display: flex;
@@ -1419,26 +1492,64 @@
           </div>
         </div>
 
-        <!-- ORTA KOLON: SLIME RENGİ, KARAKTER ÖNİZLEME & MAĞAZA -->
+        <!-- ORTA KOLON: SLIME RENGİ, KARAKTER ÖNİZLEME, GÜÇ İSTATİSTİKLERİ & MAĞAZA -->
         <div class="lobby-panel">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h2>🎨 2. Karakterim &amp; Kostüm</h2>
-            <span id="skin-lock-badge" style="font-size:10.5px; color:#FFB800; font-weight:800;">🔒 Üyelere Özel</span>
+            <h2>🎨 2. Karakterim &amp; Güç Geliştirme</h2>
+            <span id="skin-lock-badge" style="font-size:10.5px; color:#FFB800; font-weight:800;">⚡ 10 Savaşçı Sınıfı</span>
           </div>
 
-          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; background:#080B12; border-radius:14px; padding:8px; border:1px solid rgba(255,255,255,0.08); position:relative;">
-            <canvas id="skinPreviewCanvas" width="190" height="115"></canvas>
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; background:#080B12; border-radius:14px; padding:6px 8px; border:1px solid rgba(255,255,255,0.08); position:relative;">
+            <canvas id="skinPreviewCanvas" width="190" height="105"></canvas>
             <div id="lobby-preview-loadout-tags" style="font-size:10.5px; color:#00F5D4; font-weight:800; text-align:center;"></div>
           </div>
 
-          <button id="open-shop-btn" type="button" style="width:100%; background:linear-gradient(135deg, #FF2A85 0%, #9B5DE5 50%, #00BBF9 100%); color:#FFFFFF; border:1.5px solid #FFE066; border-radius:12px; padding:10px; font-size:13px; font-weight:900; cursor:pointer; box-shadow:0 0 22px rgba(255,42,133,0.45);">
-            🛒 SLIME MAĞAZASI &amp; GELİŞTİRME AÇ (50 EŞYA)
+          <!-- KARAKTER ÖZELLİKLERİ, 5 İSTATİSTİK ÇUBUĞU VE SEVİYE GELİŞTİRME (ÜCRETSİZ SINIR: 5.5) -->
+          <div id="lobby-char-stats-card" class="char-stats-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+              <div id="lobby-char-name-role" style="font-size:12px; font-weight:900; color:#FFFFFF;">👑 Kral Tacı • <span style="color:#00F5D4;">Dengeli Lider</span></div>
+              <span id="lobby-char-level-badge" style="background:linear-gradient(135deg,#00F5D4,#00BBF9); color:#080B12; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:900; white-space:nowrap;">
+                ⚡ Sv. 1.0 / 5.5
+              </span>
+            </div>
+
+            <div id="lobby-char-trait-badge" style="font-size:10px; font-weight:800; color:#FFE066; background:rgba(255,184,0,0.12); border:1px solid rgba(255,184,0,0.35); border-radius:7px; padding:3px 7px;">
+              👑 Dengeli Güç &amp; +%5 Kemer Puanı
+            </div>
+
+            <!-- Seviye Barı (1.0 - 5.5 Açık | 5.5 - 10.0 Ücretli/VIP Kilitli) -->
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <div style="display:flex; justify-content:space-between; font-size:9.5px; font-weight:800; color:#94A3B8;">
+                <span>Gelişim: <strong id="lobby-char-lv-text" style="color:#00F59B;">Sv. 1.0</strong></span>
+                <span style="color:#FFE066;">🔒 5.5 Ücretsiz Sınır</span>
+                <span style="color:#FF70A6;">🔒 10.0 VIP/Elit</span>
+              </div>
+              <div class="char-stat-track" style="height:9px;">
+                <div id="lobby-char-lv-bar" class="char-stat-fill-base" style="width:10%; background:linear-gradient(90deg,#00F59B,#00F5D4);"></div>
+                <div class="char-stat-locked-zone" title="Seviye 5.5 üzeri ücretsiz eşyalarla açılamaz! Yakında özel karakter ve ekipmanlarla devreye alınacak."></div>
+              </div>
+            </div>
+
+            <!-- 5 Rekabetçi İstatistik Çubuğu (Hız, Atış, Manevra, Kemer, Dayanıklılık) -->
+            <div id="lobby-char-stat-bars" style="display:flex; flex-direction:column; gap:4px; margin-top:2px;"></div>
+
+            <!-- Karakter Seviye Yükseltme Butonu -->
+            <button id="upgrade-char-level-btn" type="button" style="width:100%; margin-top:3px; background:linear-gradient(135deg,#00F59B,#00BBF9); color:#080B12; border:1.5px solid #FFFFFF; border-radius:10px; padding:7px 10px; font-size:11.5px; font-weight:900; cursor:pointer; box-shadow:0 0 16px rgba(0,245,155,0.38); transition:all 0.15s ease;">
+              ⬆️ KARAKTERİ GELİŞTİR (Sv. 1.0 ➔ 1.5 • 💎 150 Puan)
+            </button>
+            <div id="upgrade-char-lock-hint" style="font-size:9.5px; color:#94A3B8; font-weight:700; text-align:center; line-height:1.25;">
+              🔒 <strong style="color:#FFE066;">5.5 Üzeri Seviyeler:</strong> Ücretsiz eşyalarla en fazla <b>Sv. 5.5</b>'e çıkılabilir; 5.5+ Elit kademeler sonraki güncellemede!
+            </div>
+          </div>
+
+          <button id="open-shop-btn" type="button" style="width:100%; background:linear-gradient(135deg, #FF2A85 0%, #9B5DE5 50%, #00BBF9 100%); color:#FFFFFF; border:1.5px solid #FFE066; border-radius:12px; padding:9px; font-size:12.5px; font-weight:900; cursor:pointer; box-shadow:0 0 22px rgba(255,42,133,0.45);">
+            🛒 SLIME MAĞAZASI &amp; EKİPMAN GÜÇLERİ (50 EŞYA)
           </button>
 
           <div style="font-size:11px; color:#94A3B8; font-weight:700;">Slime Rengi Seç:</div>
           <div id="color-palette-container" class="color-palette"></div>
 
-          <div style="font-size:11px; color:#94A3B8; font-weight:700;">Hızlı Başlangıç Şapkaları:</div>
+          <div style="font-size:11px; color:#94A3B8; font-weight:700;">10 Temel Karakter Sınıfı (Seç &amp; Geliştir):</div>
           <div id="skins-grid-container" class="skins-grid" style="touch-action:pan-y; -webkit-overflow-scrolling:touch;"></div>
         </div>
 
@@ -1476,7 +1587,7 @@
             🛒 SLIME NEON MAĞAZASI &amp; CEPHANELİK
           </h2>
           <p style="font-size:12px; color:#94A3B8; font-weight:700;">
-            Bir eşyaya tıklayarak <b>satın almadan önce</b> sol tarafta canlı 3D önizlemesini inceleyebilirsin!
+            Bir eşyaya tıklayarak <b>satın almadan önce</b> sol tarafta canlı 3D önizlemesini ve <b>karaktere ek güç katkısını</b> inceleyebilirsin!
           </p>
         </div>
 
@@ -1518,9 +1629,12 @@
               ↺ Sıfırla
             </button>
           </div>
-          <canvas id="shopPreviewCanvas" width="210" height="195" style="background:#060911; border-radius:14px; border:1.5px solid rgba(0,245,212,0.3); box-shadow:inset 0 0 22px rgba(0,245,212,0.08);"></canvas>
+          <canvas id="shopPreviewCanvas" width="210" height="185" style="background:#060911; border-radius:14px; border:1.5px solid rgba(0,245,212,0.3); box-shadow:inset 0 0 22px rgba(0,245,212,0.08);"></canvas>
           <div id="shop-preview-status" style="width:100%; background:rgba(0,245,212,0.1); border:1px solid rgba(0,245,212,0.3); border-radius:8px; padding:5px 8px; font-size:10.5px; font-weight:800; color:#00F5D4; text-align:center;">
             👁️ Herhangi bir eşyaya tıklayarak 3D önizle!
+          </div>
+          <div id="shop-preview-perk-box" style="width:100%; background:rgba(255,184,0,0.12); border:1px solid rgba(255,184,0,0.4); border-radius:8px; padding:5px 8px; font-size:10.5px; font-weight:900; color:#FFE066; text-align:center;">
+            ⚡ Ekipman Gücü: Eşya seçildiğinde burada görünür
           </div>
           <div style="width:100%; text-align:left; font-size:11px; color:#CBD5E1; display:flex; flex-direction:column; gap:5px; margin-top:2px;">
             <div style="font-weight:900; color:#FFE066; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:3px;">🎒 Aktif Kuşanılanlar:</div>
@@ -1669,9 +1783,9 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/vendor/matter.min.js"></script>
-  <script src="/shared/constants.js?v=3.5"></script>
-  <script src="/shared/geometry.js?v=3.5"></script>
-  <script src="/js/audio.js?v=3.5"></script>
-  <script src="/js/client.js?v=3.5"></script>
+  <script src="/shared/constants.js?v=4.0"></script>
+  <script src="/shared/geometry.js?v=4.0"></script>
+  <script src="/js/audio.js?v=4.0"></script>
+  <script src="/js/client.js?v=4.0"></script>
 </body>
 </html>

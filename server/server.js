@@ -8,6 +8,8 @@ const {
   GAME_CONFIG,
   POWERUP_TYPES,
   SLIME_COLORS,
+  STAT_DEFINITIONS,
+  CHARACTER_UPGRADE_CONFIG,
   BASIC_10_SKINS,
   GAME_MODES,
   TEAMS
@@ -469,13 +471,56 @@ function clearPlayerPhysics(room, player) {
   }
 }
 
+function refreshPlayerCombatMods(player, socketUser = null, socket = null) {
+  if (!player) return;
+  if (player.isBot) {
+    player.baseCharacter = BASIC_10_SKINS.some((s) => s.id === player.skin) ? player.skin : 'crown';
+    player.combatMods = userStore.computePlayerCombatMods({
+      skin: player.skin,
+      baseCharacter: player.baseCharacter,
+      equipped: null,
+      characterLevels: {}
+    });
+    player.charLevel = 1.0;
+  } else if (socketUser) {
+    player.baseCharacter = socketUser.baseCharacter || (BASIC_10_SKINS.some((s) => s.id === player.skin) ? player.skin : 'crown');
+    player.combatMods = userStore.computePlayerCombatMods({
+      skin: player.skin,
+      baseCharacter: player.baseCharacter,
+      equipped: player.equipped,
+      characterLevels: socketUser.characterLevels
+    });
+    player.charLevel = player.combatMods.charLevel || 1.0;
+  } else {
+    const gBase = (socket && socket.guestBaseCharacter) || (BASIC_10_SKINS.some((s) => s.id === player.skin) ? player.skin : 'crown');
+    const gLevels = (socket && socket.guestCharacterLevels) || {};
+    player.baseCharacter = gBase;
+    player.combatMods = userStore.computePlayerCombatMods({
+      skin: player.skin,
+      baseCharacter: gBase,
+      equipped: player.equipped,
+      characterLevels: gLevels
+    });
+    player.charLevel = player.combatMods.charLevel || 1.0;
+  }
+  if (player.body && player.combatMods) {
+    Body.setMass(player.body, GAME_CONFIG.PLAYER_MASS * (player.combatMods.massMult || 1));
+  }
+}
+
 function spawnPlayerAtWallPoint(room, player, rawX, rawY) {
   if (!room || !player || room.status !== 'playing') return;
   clearPlayerPhysics(room, player);
 
+  if (!player.combatMods) {
+    const sock = connectedSockets.get(player.id);
+    refreshPlayerCombatMods(player, sock ? sock.user : null, sock);
+  }
+  const massMult = (player.combatMods && player.combatMods.massMult) || 1.0;
+
   const wallInfo = snapToNearestWallOrObstacle(rawX, rawY);
   const body = Bodies.circle(wallInfo.spawnX, wallInfo.spawnY, GAME_CONFIG.PLAYER_RADIUS, {
-    mass: GAME_CONFIG.PLAYER_MASS,
+    mass: GAME_CONFIG.PLAYER_MASS * massMult,
     frictionAir: GAME_CONFIG.PLAYER_FRICTION_AIR,
     restitution: GAME_CONFIG.PLAYER_RESTITUTION,
     label: `PLAYER_${player.id}`
@@ -538,9 +583,12 @@ function addScore(room, player, amount, reason, worldX, worldY) {
 function grantLiveCombatReward(player, type) {
   if (!player || player.isBot) return;
   const isKill = type === 'kill';
-  const earnedPoints = isKill
+  const mods = player.combatMods || {};
+  const bonusMult = isKill ? (1 + (mods.killPointBonus || 0)) : (1 + (mods.cutPointBonus || 0));
+  const basePoints = isKill
     ? (GAME_CONFIG.REWARD_POINT_PER_KILL || 75)
     : (GAME_CONFIG.REWARD_POINT_PER_CUT || 25);
+  const earnedPoints = Math.round(basePoints * bonusMult);
   const earnedCoins = isKill && player.kills > 0 && player.kills % 3 === 0
     ? (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 5)
     : 0;
@@ -574,7 +622,9 @@ function killPlayer(room, victim, killerId = null) {
   if (!victim.alive) return;
   victim.alive = false;
   victim.waitingForWall = false;
-  victim.respawnAt = Date.now() + GAME_CONFIG.RESPAWN_DELAY_MS;
+  const respawnReduction = (victim.combatMods && victim.combatMods.respawnReductionMs) || 0;
+  const victimRespawnDelay = Math.max(2500, GAME_CONFIG.RESPAWN_DELAY_MS - respawnReduction);
+  victim.respawnAt = Date.now() + victimRespawnDelay;
 
   const deathPos = victim.body
     ? { x: victim.body.position.x, y: victim.body.position.y }
@@ -583,6 +633,9 @@ function killPlayer(room, victim, killerId = null) {
   const killer = killerId ? room.players.get(killerId) : null;
   if (killer && killer.id !== victim.id) {
     killer.kills += 1;
+    if (killer.combatMods && killer.combatMods.killSpeedBoost > 1) {
+      killer.killSpeedBoostUntil = Date.now() + 3000;
+    }
     addScore(room, killer, GAME_CONFIG.SCORE_PER_KILL, 'ELEME! (+75 💎)', deathPos.x, deathPos.y);
     grantLiveCombatReward(killer, 'kill');
   }
@@ -604,7 +657,7 @@ function killPlayer(room, victim, killerId = null) {
     killEffect: activeKillEffect,
     x: Math.round(deathPos.x),
     y: Math.round(deathPos.y),
-    respawnDelay: GAME_CONFIG.RESPAWN_DELAY_MS
+    respawnDelay: victimRespawnDelay
   });
 }
 
@@ -640,7 +693,8 @@ function handleWallOrObstacleCollision(room, player, otherBody, pair) {
   if (player.bands.length >= GAME_CONFIG.MAX_BANDS) return;
 
   const now = Date.now();
-  if (now - player.lastBandTime < GAME_CONFIG.BAND_COOLDOWN_MS) return;
+  const beltCd = Math.round(GAME_CONFIG.BAND_COOLDOWN_MS * ((player.combatMods && player.combatMods.beltCooldownMult) || 1.0));
+  if (now - player.lastBandTime < beltCd) return;
 
   for (const b of player.bands) {
     const bdx = b.anchorX - contactX;
@@ -677,7 +731,9 @@ function shootSlimeArrow(room, player, targetWorldX, targetWorldY) {
   }
 
   const now = Date.now();
-  if (now - (player.lastArrowTime || 0) < GAME_CONFIG.ARROW_COOLDOWN_MS) return;
+  const mods = player.combatMods || {};
+  const arrowCd = Math.round(GAME_CONFIG.ARROW_COOLDOWN_MS * (mods.arrowCooldownMult || 1.0));
+  if (now - (player.lastArrowTime || 0) < arrowCd) return;
   player.lastArrowTime = now;
 
   const consumedBand = player.bands.shift();
@@ -695,6 +751,9 @@ function shootSlimeArrow(room, player, targetWorldX, targetWorldY) {
     ? [baseAngle - spread, baseAngle + spread]
     : [baseAngle];
 
+  const effArrowSpeed = GAME_CONFIG.ARROW_SPEED * (mods.arrowSpeedMult || 1.0);
+  const effArrowRadius = Math.round(GAME_CONFIG.ARROW_RADIUS * (mods.arrowSizeMult || 1.0) * 10) / 10;
+
   let firstArrow = null;
   for (const ang of angles) {
     const dirX = Math.cos(ang);
@@ -707,12 +766,13 @@ function shootSlimeArrow(room, player, targetWorldX, targetWorldY) {
       ownerId: player.id,
       team: player.team || null,
       color: hasDoubleShot ? '#FF2A85' : player.color,
+      radius: effArrowRadius,
       x: spawnX,
       y: spawnY,
       prevX: px,
       prevY: py,
-      vx: dirX * GAME_CONFIG.ARROW_SPEED,
-      vy: dirY * GAME_CONFIG.ARROW_SPEED,
+      vx: dirX * effArrowSpeed,
+      vy: dirY * effArrowSpeed,
       createdAt: now
     };
 
@@ -1148,12 +1208,13 @@ function updateRoomArrows(room, now) {
       continue;
     }
 
+    const arrowRad = arrow.radius || GAME_CONFIG.ARROW_RADIUS;
     const obsHit = checkArrowHitsAnyObstacle(
       arrow.prevX,
       arrow.prevY,
       arrow.x,
       arrow.y,
-      GAME_CONFIG.ARROW_RADIUS
+      arrowRad
     );
     if (obsHit) {
       io.to(room.id).emit('arrowSplat', {
@@ -1167,7 +1228,7 @@ function updateRoomArrows(room, now) {
 
     const shooter = room.players.get(arrow.ownerId);
     let consumedArrow = false;
-    const arrowPad = GAME_CONFIG.ARROW_RADIUS + 6;
+    const arrowPad = arrowRad + 6;
     const aMinX = Math.min(arrow.prevX, arrow.x) - arrowPad;
     const aMaxX = Math.max(arrow.prevX, arrow.x) + arrowPad;
     const aMinY = Math.min(arrow.prevY, arrow.y) - arrowPad;
@@ -1203,7 +1264,7 @@ function updateRoomArrows(room, now) {
           arrow.prevY,
           arrow.x,
           arrow.y,
-          GAME_CONFIG.ARROW_RADIUS + 4
+          arrowRad + 4
         );
 
         if (hit) {
@@ -1237,7 +1298,7 @@ function updateRoomArrows(room, now) {
           arrow.y,
           owner.body.position.x,
           owner.body.position.y,
-          GAME_CONFIG.PLAYER_RADIUS + GAME_CONFIG.ARROW_RADIUS
+          GAME_CONFIG.PLAYER_RADIUS + arrowRad
         );
 
         if (bodyHit) {
@@ -1513,7 +1574,9 @@ function triggerMatchEnd(room) {
         username: p.username || null,
         color: p.color,
         skin: p.skin,
+        charLevel: p.charLevel || 1.0,
         equipped: p.equipped || null,
+        combatMods: p.combatMods || null,
         team: p.team || null,
         bandsCount: p.bands.length,
         cuts: p.cuts || 0,
@@ -1531,10 +1594,12 @@ function triggerMatchEnd(room) {
 
   const standings = rawStandings.map((row) => {
     const won = room.isTeam ? row.team === winningTeam : winner.id === row.id;
-    const cutsPoints = (row.cuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 25);
-    const killsPoints = (row.kills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 75);
-    const scorePoints = Math.round((row.score || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.15));
-    const bonusPoints = (GAME_CONFIG.REWARD_POINT_MATCH_COMPLETE || 50) + (won ? (GAME_CONFIG.REWARD_POINT_MATCH_WIN || 150) : 0);
+    const mods = row.combatMods || {};
+    const matchMult = 1 + (mods.matchPointBonus || 0);
+    const cutsPoints = Math.round((row.cuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 25) * (1 + (mods.cutPointBonus || 0)));
+    const killsPoints = Math.round((row.kills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 75) * (1 + (mods.killPointBonus || 0)));
+    const scorePoints = Math.round((row.score || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.15) * matchMult);
+    const bonusPoints = Math.round(((GAME_CONFIG.REWARD_POINT_MATCH_COMPLETE || 50) + (won ? (GAME_CONFIG.REWARD_POINT_MATCH_WIN || 150) : 0)) * matchMult);
     const totalMatchPoints = cutsPoints + killsPoints + scorePoints + bonusPoints;
     const killCoins = Math.floor((row.kills || 0) / 3) * (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 5);
     const winCoins = won ? (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 15) : 0;
@@ -1630,7 +1695,8 @@ setInterval(() => {
     if (room.status !== 'playing') continue;
     for (const p of room.players.values()) {
       if (p.alive && p.bands.length > 0) {
-        p.score += p.bands.length * GAME_CONFIG.SCORE_HOLD_PER_BELT_SEC;
+        const holdMult = 1 + ((p.combatMods && p.combatMods.beltHoldBonus) || 0);
+        p.score += Math.round(p.bands.length * GAME_CONFIG.SCORE_HOLD_PER_BELT_SEC * holdMult);
       }
     }
   }
@@ -1690,7 +1756,10 @@ setInterval(() => {
           const dirY = dy / dist;
           const hasHighSpeed = p.activePowerup === 'high_speed' && now < (p.powerupUntil || 0);
           const botHandicap = p.isBot ? 0.75 : 1.0;
-          const speedMult = (hasHighSpeed ? (GAME_CONFIG.POWERUP_SPEED_MULTIPLIER || 1.72) : 1.0) * botHandicap;
+          const mods = p.combatMods || {};
+          const killAdrenaline = (!p.isBot && now < (p.killSpeedBoostUntil || 0)) ? (mods.killSpeedBoost || 1.12) : 1.0;
+          const gearSpeedMult = (mods.speedMult || 1.0) * killAdrenaline;
+          const speedMult = (hasHighSpeed ? (GAME_CONFIG.POWERUP_SPEED_MULTIPLIER || 1.72) : 1.0) * botHandicap * gearSpeedMult;
 
           const fx = dirX * GAME_CONFIG.BASE_MOVE_FORCE * speedMult * throttle;
           const fy = dirY * GAME_CONFIG.BASE_MOVE_FORCE * speedMult * throttle;
@@ -1760,6 +1829,8 @@ setInterval(() => {
         username: p.username || null,
         color: p.color,
         skin: p.skin || 'crown',
+        charLevel: p.charLevel || 1.0,
+        fovMult: (p.combatMods && p.combatMods.fovMult) || 1.0,
         equipped: p.equipped || null,
         team: p.team || null,
         isBot: Boolean(p.isBot),
@@ -1789,6 +1860,7 @@ setInterval(() => {
       id: a.id,
       ownerId: a.ownerId,
       color: a.color,
+      r: a.radius || GAME_CONFIG.ARROW_RADIUS,
       x: Math.round(a.x),
       y: Math.round(a.y),
       vx: Math.round(a.vx * 10) / 10,
@@ -2010,6 +2082,8 @@ io.on('connection', (socket) => {
     selfId: socket.id,
     config: GAME_CONFIG,
     colors: SLIME_COLORS,
+    statDefinitions: STAT_DEFINITIONS,
+    upgradeConfig: CHARACTER_UPGRADE_CONFIG,
     skins: BASIC_10_SKINS,
     storeItems: userStore.getStoreItems(),
     modes: GAME_MODES,
@@ -2060,6 +2134,9 @@ io.on('connection', (socket) => {
       if (data.equipped && typeof data.equipped === 'object') {
         socket.guestEquipped = data.equipped;
       }
+      if (data.skin && BASIC_10_SKINS.some((s) => s.id === data.skin)) {
+        socket.guestBaseCharacter = data.skin;
+      }
       if (data.guestName) {
         const cleanGuest = userStore.sanitizeText(data.guestName, 14);
         if (cleanGuest.length >= 2) {
@@ -2074,6 +2151,7 @@ io.on('connection', (socket) => {
           if (data.skin) p.skin = data.skin;
           if (socket.guestEquipped) p.equipped = socket.guestEquipped;
           if (socket.guestName) p.name = socket.guestName;
+          refreshPlayerCombatMods(p, null, socket);
         }
       }
       if (typeof ack === 'function') ack({ ok: true, isGuest: true });
@@ -2092,6 +2170,7 @@ io.on('connection', (socket) => {
           if (!room.isTeam) p.color = res.user.color;
           p.skin = res.user.skin;
           p.equipped = res.user.equipped || p.equipped;
+          refreshPlayerCombatMods(p, socket.user, socket);
         }
       }
     }
@@ -2140,7 +2219,28 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 2b) Slime Mağazası (Shop) Satın Alma, Kuşanma ve Coin Paketi İşlemleri
+  // 2b) Slime Mağazası (Shop) Satın Alma, Kuşanma, Karakter Seviye Geliştirme ve Coin Paketi İşlemleri
+  socket.on('upgradeCharacter', (payload, ack) => {
+    if (!socket.user) {
+      if (typeof ack === 'function') {
+        ack({ ok: false, isGuest: true });
+      }
+      return;
+    }
+    const res = userStore.upgradeCharacterLevel(socket.user.username, payload || {});
+    if (res.ok) {
+      socket.user = res.user;
+      if (socket.currentRoomId) {
+        const room = rooms.get(socket.currentRoomId);
+        const p = room ? room.players.get(socket.id) : null;
+        if (p) {
+          refreshPlayerCombatMods(p, socket.user, socket);
+        }
+      }
+    }
+    if (typeof ack === 'function') ack(res);
+  });
+
   socket.on('shopBuyItem', (payload, ack) => {
     if (!socket.user) {
       if (typeof ack === 'function') {
@@ -2157,6 +2257,7 @@ io.on('connection', (socket) => {
         if (p) {
           p.skin = res.user.skin;
           p.equipped = res.user.equipped;
+          refreshPlayerCombatMods(p, socket.user, socket);
         }
       }
     }
@@ -2179,6 +2280,7 @@ io.on('connection', (socket) => {
         if (p) {
           p.skin = res.user.skin;
           p.equipped = res.user.equipped;
+          refreshPlayerCombatMods(p, socket.user, socket);
         }
       }
     }
@@ -2209,6 +2311,15 @@ io.on('connection', (socket) => {
     }
     if (typeof payload.skin === 'string') {
       socket.guestSkin = payload.skin;
+      if (BASIC_10_SKINS.some((s) => s.id === payload.skin)) {
+        socket.guestBaseCharacter = payload.skin;
+      }
+    }
+    if (typeof payload.baseCharacter === 'string' && BASIC_10_SKINS.some((s) => s.id === payload.baseCharacter)) {
+      socket.guestBaseCharacter = payload.baseCharacter;
+    }
+    if (payload.characterLevels && typeof payload.characterLevels === 'object') {
+      socket.guestCharacterLevels = payload.characterLevels;
     }
     if (payload.guestName) {
       const cleanG = userStore.sanitizeText(payload.guestName, 14);
@@ -2230,13 +2341,22 @@ io.on('connection', (socket) => {
         if (socket.guestName) {
           p.name = socket.guestName;
         }
+        refreshPlayerCombatMods(p, null, socket);
       }
     }
   });
 
   // 3) Odaya Katılma veya Maçı Canlı İzleme (Misafir veya Üye)
   socket.on('joinRoom', (payload, ack) => {
-    const { roomId = 'ffa', guestName = '', preferredTeam = null, watchOnly = false, guestEquipped = null } = payload || {};
+    const {
+      roomId = 'ffa',
+      guestName = '',
+      preferredTeam = null,
+      watchOnly = false,
+      guestEquipped = null,
+      guestBaseCharacter = null,
+      guestCharacterLevels = null
+    } = payload || {};
     if (guestEquipped && typeof guestEquipped === 'object') {
       socket.guestEquipped = {
         hat: typeof guestEquipped.hat === 'string' ? guestEquipped.hat : null,
@@ -2245,6 +2365,12 @@ io.on('connection', (socket) => {
         kill_effect: typeof guestEquipped.kill_effect === 'string' ? guestEquipped.kill_effect : null,
         title: typeof guestEquipped.title === 'string' ? guestEquipped.title : null
       };
+    }
+    if (guestBaseCharacter && BASIC_10_SKINS.some((s) => s.id === guestBaseCharacter)) {
+      socket.guestBaseCharacter = guestBaseCharacter;
+    }
+    if (guestCharacterLevels && typeof guestCharacterLevels === 'object') {
+      socket.guestCharacterLevels = guestCharacterLevels;
     }
     const room = rooms.get(roomId);
     if (!room) {
@@ -2331,6 +2457,7 @@ io.on('connection', (socket) => {
         kills: 0,
         input: { targetX: 0, targetY: 0 }
       };
+      refreshPlayerCombatMods(watcher, socket.user, socket);
 
       room.players.set(socket.id, watcher);
       socket.join(room.id);
@@ -2384,14 +2511,14 @@ io.on('connection', (socket) => {
       ? TEAMS[assignedTeam].color
       : socket.user
         ? socket.user.color
-        : SLIME_COLORS[room.players.size % SLIME_COLORS.length].id;
+        : (socket.guestColor || SLIME_COLORS[room.players.size % SLIME_COLORS.length].id);
 
     const activeEquipped = socket.user ? socket.user.equipped : (socket.guestEquipped || null);
     const playerSkin = (activeEquipped && activeEquipped.hat)
       ? activeEquipped.hat
       : socket.user
         ? socket.user.skin
-        : 'crown';
+        : (socket.guestSkin || 'crown');
 
     // "🚀 Maça Katıl" seçen oyuncu bekletilmeden doğrudan duvar seçimine (waitingForWall = true) alınır!
     let isSpectating = false;
@@ -2455,6 +2582,7 @@ io.on('connection', (socket) => {
       kills: 0,
       input: { targetX: 0, targetY: 0 }
     };
+    refreshPlayerCombatMods(player, socket.user, socket);
 
     room.players.set(socket.id, player);
     socket.join(room.id);

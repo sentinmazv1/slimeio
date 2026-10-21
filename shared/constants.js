@@ -107,18 +107,137 @@
     { id: '#A8FF00', name: 'Asit Limonu' }
   ];
 
-  // Üyelerin seçebileceği Basic 10 Kostüm (Canvas üzerinde özel çizilir)
+  // Karakter İstatistik Tanımları (1.0 - 10.0 Ölçeği, Ücretsiz Sınır: 5.5)
+  exports.STAT_DEFINITIONS = [
+    { key: 'speed', label: 'Hız', icon: '⚡', color: '#00F5D4' },
+    { key: 'firepower', label: 'Atış & İsabet', icon: '🎯', color: '#FF2A85' },
+    { key: 'agility', label: 'Manevra & Görüş', icon: '🌀', color: '#00BBF9' },
+    { key: 'beltPower', label: 'Kemer Gücü', icon: '🔗', color: '#FFB800' },
+    { key: 'durability', label: 'Dayanıklılık', icon: '🛡️', color: '#38E54D' }
+  ];
+
+  // Karakter Seviye Geliştirme Kurgusu (Ücretsiz eşya/puan ile maksimum 5.5 Seviye!)
+  exports.CHARACTER_UPGRADE_CONFIG = {
+    START_LEVEL: 1.0,
+    LEVEL_STEP: 0.5,
+    MAX_FREE_LEVEL: 5.5,
+    MAX_TOTAL_LEVEL: 10.0,
+    STAT_GAIN_PER_STEP: 0.14, // Her +0.5 seviyede 5 temel istatistiğe +0.14 eklenir (9 adımda +1.26)
+    STEP_COSTS: {
+      '1.0': 150,
+      '1.5': 250,
+      '2.0': 400,
+      '2.5': 600,
+      '3.0': 850,
+      '3.5': 1150,
+      '4.0': 1500,
+      '4.5': 1950,
+      '5.0': 2500
+    }
+  };
+
+  // Üyelerin seçebileceği Basic 10 Karakter & Kostüm (Her biri kendine özgü 5 istatistik ve pasif özelliğe sahiptir)
   exports.BASIC_10_SKINS = [
-    { id: 'crown', name: 'Kral Tacı', icon: '👑', desc: 'Altın imparatorluk tacı' },
-    { id: 'ninja', name: 'Gölge Ninja', icon: '🥷', desc: 'Kırmızı ninja alın bandı' },
-    { id: 'cyber', name: 'Siber Vizör', icon: '🕶️', desc: 'Neon lazer vizör gözlük' },
-    { id: 'pirate', name: 'Korsan Kaptan', icon: '🏴‍☠️', desc: 'Korsan şapkası ve göz bandı' },
-    { id: 'devil', name: 'Ateş Boynuzu', icon: '😈', desc: 'Kızıl parlayan şeytan boynuzları' },
-    { id: 'angel', name: 'Kutsal Hale', icon: '😇', desc: 'Baş üstünde parlayan altın hale' },
-    { id: 'viking', name: 'Viking Miğferi', icon: '⚔️', desc: 'Çift boynuzlu kuzey miğferi' },
-    { id: 'wizard', name: 'Büyücü Şapkası', icon: '🧙', desc: 'Yıldızlı mistik büyücü şapkası' },
-    { id: 'headset', name: 'Pro Oyuncu', icon: '🎧', desc: 'RGB neon yayıncı kulaklığı' },
-    { id: 'fez', name: 'Tosun Paşa Fesi', icon: '🎩', desc: 'Seferoğulları & Tellioğulları özel' }
+    {
+      id: 'crown',
+      name: 'Kral Tacı',
+      icon: '👑',
+      role: 'Dengeli Lider',
+      desc: 'Altın imparatorluk tacı',
+      trait: '👑 Dengeli Güç & +%5 Kemer Puanı',
+      baseStats: { speed: 3.2, firepower: 3.2, agility: 3.1, beltPower: 3.4, durability: 3.2 },
+      mods: { speedMult: 1.02, arrowSpeedMult: 1.02, beltHoldBonus: 0.05, massMult: 1.02 }
+    },
+    {
+      id: 'ninja',
+      name: 'Gölge Ninja',
+      icon: '🥷',
+      role: 'Çevik Suikastçı',
+      desc: 'Kırmızı ninja alın bandı',
+      trait: '⚡ +%7 Hareket Hızı & -%7 Atış Süresi',
+      baseStats: { speed: 3.9, firepower: 3.4, agility: 3.8, beltPower: 2.6, durability: 2.4 },
+      mods: { speedMult: 1.07, arrowCooldownMult: 0.93, arrowSpeedMult: 1.04, massMult: 0.94 }
+    },
+    {
+      id: 'cyber',
+      name: 'Siber Vizör',
+      icon: '🕶️',
+      role: 'Keskin Nişancı',
+      desc: 'Neon lazer vizör gözlük',
+      trait: '🔭 +%6 Geniş Kamera Açısı & +%10 Ok Hızı',
+      baseStats: { speed: 3.0, firepower: 3.9, agility: 3.7, beltPower: 2.8, durability: 2.7 },
+      mods: { arrowSpeedMult: 1.10, fovMult: 0.94, arrowCooldownMult: 0.95 }
+    },
+    {
+      id: 'pirate',
+      name: 'Korsan Kaptan',
+      icon: '🏴‍☠️',
+      role: 'Ağır Topçu',
+      desc: 'Korsan şapkası ve göz bandı',
+      trait: '💣 Yavaş ama +%16 İri & Ağır Ok Atışı',
+      baseStats: { speed: 2.8, firepower: 3.8, agility: 2.7, beltPower: 3.4, durability: 3.4 },
+      mods: { arrowSizeMult: 1.16, arrowSpeedMult: 0.92, arrowCooldownMult: 1.05, massMult: 1.06 }
+    },
+    {
+      id: 'devil',
+      name: 'Ateş Boynuzu',
+      icon: '😈',
+      role: 'Agresif Avcı',
+      desc: 'Kızıl parlayan şeytan boynuzları',
+      trait: '🔥 -%8 Seri Atış Süresi & +%4 Hız',
+      baseStats: { speed: 3.6, firepower: 3.8, agility: 3.2, beltPower: 2.9, durability: 2.6 },
+      mods: { speedMult: 1.04, arrowCooldownMult: 0.92, arrowSpeedMult: 1.05 }
+    },
+    {
+      id: 'angel',
+      name: 'Kutsal Hale',
+      icon: '😇',
+      role: 'Koruyucu Destek',
+      desc: 'Baş üstünde parlayan altın hale',
+      trait: '🛡️ -0.5 sn Hızlı Diriliş & +%3 Manevra',
+      baseStats: { speed: 3.4, firepower: 2.8, agility: 3.6, beltPower: 3.3, durability: 3.6 },
+      mods: { speedMult: 1.03, respawnReductionMs: 500, fovMult: 0.97, beltCooldownMult: 0.95 }
+    },
+    {
+      id: 'viking',
+      name: 'Viking Miğferi',
+      icon: '⚔️',
+      role: 'Zırhlı Tank',
+      desc: 'Çift boynuzlu kuzey miğferi',
+      trait: '🛡️ +%15 Gövde Kütlesi & Çarpışma Direnci',
+      baseStats: { speed: 2.6, firepower: 3.1, agility: 2.5, beltPower: 3.6, durability: 4.0 },
+      mods: { massMult: 1.15, respawnReductionMs: 400, speedMult: 0.97, arrowSizeMult: 1.08 }
+    },
+    {
+      id: 'wizard',
+      name: 'Büyücü Şapkası',
+      icon: '🧙',
+      role: 'Alan Kontrol Ustası',
+      desc: 'Yıldızlı mistik büyücü şapkası',
+      trait: '🔗 -%10 Kemer Süresi & +%5 Kamera Açısı',
+      baseStats: { speed: 3.0, firepower: 3.3, agility: 3.6, beltPower: 3.9, durability: 2.7 },
+      mods: { beltCooldownMult: 0.90, fovMult: 0.95, arrowSizeMult: 1.06 }
+    },
+    {
+      id: 'headset',
+      name: 'Pro Oyuncu',
+      icon: '🎧',
+      role: 'E-Spor Taktikçisi',
+      desc: 'RGB neon yayıncı kulaklığı',
+      trait: '🌀 +%5 Hız, +%5 Görüş Açısı & Hızlı Refleks',
+      baseStats: { speed: 3.6, firepower: 3.5, agility: 3.9, beltPower: 3.0, durability: 2.8 },
+      mods: { speedMult: 1.05, fovMult: 0.95, arrowSpeedMult: 1.05, arrowCooldownMult: 0.96 }
+    },
+    {
+      id: 'fez',
+      name: 'Tosun Paşa Fesi',
+      icon: '🎩',
+      role: 'Kemer & Meydan Ustası',
+      desc: 'Seferoğulları & Tellioğulları özel',
+      trait: '🔗 -%12 Kemer Bağlama Süresi & +%8 Kütle',
+      baseStats: { speed: 3.1, firepower: 3.1, agility: 3.0, beltPower: 4.0, durability: 3.7 },
+      mods: { beltCooldownMult: 0.88, massMult: 1.08, respawnReductionMs: 300 }
+    }
   ];
 
   // 4 Ana Oyun Modu / Odası

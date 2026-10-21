@@ -170,6 +170,7 @@
   const shopClaimPackBtn = document.getElementById('shop-claim-pack-btn');
   const shopEquippedBadgesEl = document.getElementById('shop-equipped-badges');
   const shopPreviewStatusEl = document.getElementById('shop-preview-status');
+  const shopPreviewPerkBoxEl = document.getElementById('shop-preview-perk-box');
   const shopResetPreviewBtn = document.getElementById('shop-reset-preview-btn');
   const shopTabBtns = document.querySelectorAll('.shop-tab-btn');
 
@@ -179,6 +180,16 @@
   const lobbyStatKillsEl = document.getElementById('lobby-stat-kills');
   const lobbyStatScoreEl = document.getElementById('lobby-stat-score');
   const lobbyEquippedTitleBadgeEl = document.getElementById('lobby-equipped-title-badge');
+
+  // Lobi Karakter Nitelik & Yatırım (Seviye 1.0 -> 5.5) Kartı Elementleri
+  const lobbyCharNameRoleEl = document.getElementById('lobby-char-name-role');
+  const lobbyCharLevelBadgeEl = document.getElementById('lobby-char-level-badge');
+  const lobbyCharTraitBadgeEl = document.getElementById('lobby-char-trait-badge');
+  const lobbyCharLvTextEl = document.getElementById('lobby-char-lv-text');
+  const lobbyCharLvBarEl = document.getElementById('lobby-char-lv-bar');
+  const lobbyCharStatBarsEl = document.getElementById('lobby-char-stat-bars');
+  const upgradeCharLevelBtn = document.getElementById('upgrade-char-level-btn');
+  const upgradeCharLockHintEl = document.getElementById('upgrade-char-lock-hint');
 
   const openShopBtn = document.getElementById('open-shop-btn');
   const openShopTopBtn = document.getElementById('open-shop-top-btn');
@@ -190,6 +201,25 @@
   let availableColors = window.SharedConstants.SLIME_COLORS || [];
   let availableSkins = window.SharedConstants.BASIC_10_SKINS || [];
   let availableModes = window.SharedConstants.GAME_MODES || [];
+  let statDefinitions = window.SharedConstants.STAT_DEFINITIONS || [];
+  let charUpgradeConfig = window.SharedConstants.CHARACTER_UPGRADE_CONFIG || {
+    START_LEVEL: 1.0,
+    LEVEL_STEP: 0.5,
+    MAX_FREE_LEVEL: 5.5,
+    MAX_TOTAL_LEVEL: 10.0,
+    STAT_GAIN_PER_STEP: 0.14,
+    STEP_COSTS: {
+      '1.0': 140,
+      '1.5': 210,
+      '2.0': 300,
+      '2.5': 420,
+      '3.0': 560,
+      '3.5': 740,
+      '4.0': 960,
+      '4.5': 1250,
+      '5.0': 1600
+    }
+  };
   let mapObstacles = [];
   let roomsSummary = [];
   let storeItems = [];
@@ -205,10 +235,13 @@
     slimeCoins: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_COINS) || 100,
     ownedItems: [],
     equipped: { hat: null, skin: null, belt: null, kill_effect: null, title: null },
+    baseCharacter: 'crown',
+    characterLevels: {},
     stats: { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
   };
   let selectedColor = availableColors[0] ? availableColors[0].id : '#00F5D4';
   let selectedSkin = availableSkins[0] ? availableSkins[0].id : 'crown';
+  let selectedBaseCharacter = availableSkins[0] ? availableSkins[0].id : 'crown';
   let selectedModeId = 'ffa';
   let currentRoomId = null;
   let pendingInviteData = null;
@@ -364,6 +397,8 @@
         password: passwordToKeep,
         color: userObj.color || selectedColor,
         skin: userObj.skin || selectedSkin,
+        baseCharacter: userObj.baseCharacter || selectedBaseCharacter || 'crown',
+        characterLevels: userObj.characterLevels || {},
         friendCount: userObj.friendCount || 0,
         friends: userObj.friends || [],
         slimePoints: Number.isFinite(Number(userObj.slimePoints)) ? Number(userObj.slimePoints) : 500,
@@ -386,6 +421,8 @@
       localStorage.setItem('slimeio_guest_economy', JSON.stringify({
         color: selectedColor,
         skin: selectedSkin,
+        baseCharacter: guestEconomy.baseCharacter || selectedBaseCharacter || 'crown',
+        characterLevels: guestEconomy.characterLevels || {},
         slimePoints: guestEconomy.slimePoints,
         slimeCoins: guestEconomy.slimeCoins,
         ownedItems: guestEconomy.ownedItems,
@@ -401,6 +438,8 @@
     socket.emit('syncGuestLoadout', {
       color: selectedColor,
       skin: selectedSkin,
+      baseCharacter: guestEconomy.baseCharacter || selectedBaseCharacter || 'crown',
+      characterLevels: guestEconomy.characterLevels || {},
       equipped: guestEconomy.equipped,
       guestName: gName
     });
@@ -436,6 +475,13 @@
               title: parsedEco.equipped.title || null
             };
           }
+          if (parsedEco.characterLevels && typeof parsedEco.characterLevels === 'object') {
+            guestEconomy.characterLevels = parsedEco.characterLevels;
+          }
+          if (parsedEco.baseCharacter) {
+            guestEconomy.baseCharacter = parsedEco.baseCharacter;
+            selectedBaseCharacter = parsedEco.baseCharacter;
+          }
           if (parsedEco.stats && typeof parsedEco.stats === 'object') {
             guestEconomy.stats = {
               totalScore: Number(parsedEco.stats.totalScore) || 0,
@@ -446,7 +492,13 @@
             };
           }
           if (parsedEco.color) selectedColor = parsedEco.color;
-          if (parsedEco.skin) selectedSkin = parsedEco.skin;
+          if (parsedEco.skin) {
+            selectedSkin = parsedEco.skin;
+            if (availableSkins.some((s) => s.id === parsedEco.skin)) {
+              selectedBaseCharacter = parsedEco.skin;
+              guestEconomy.baseCharacter = parsedEco.skin;
+            }
+          }
         }
       }
 
@@ -460,6 +512,8 @@
             fullName: creds.fullName || creds.username,
             color: creds.color || selectedColor,
             skin: creds.skin || selectedSkin,
+            baseCharacter: creds.baseCharacter || selectedBaseCharacter || 'crown',
+            characterLevels: creds.characterLevels || {},
             friendCount: creds.friendCount || 0,
             friends: creds.friends || [],
             slimePoints: Number.isFinite(Number(creds.slimePoints)) ? Number(creds.slimePoints) : 500,
@@ -470,6 +524,11 @@
           };
           selectedColor = currentUser.color;
           selectedSkin = currentUser.skin;
+          if (availableSkins.some((s) => s.id === currentUser.skin)) {
+            selectedBaseCharacter = currentUser.skin;
+          } else if (currentUser.baseCharacter) {
+            selectedBaseCharacter = currentUser.baseCharacter;
+          }
         }
       }
     } catch (_e) {}
@@ -483,12 +542,232 @@
       if (!currentUser.equipped || typeof currentUser.equipped !== 'object') {
         currentUser.equipped = { hat: null, skin: null, belt: null, kill_effect: null, title: null };
       }
+      if (!currentUser.characterLevels || typeof currentUser.characterLevels !== 'object') {
+        currentUser.characterLevels = {};
+      }
       if (!currentUser.stats) {
         currentUser.stats = { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 };
       }
       return currentUser;
     }
+    if (!guestEconomy.characterLevels || typeof guestEconomy.characterLevels !== 'object') {
+      guestEconomy.characterLevels = {};
+    }
     return guestEconomy;
+  }
+
+  function getActiveCharacterId() {
+    const eco = getActiveEconomy();
+    if (availableSkins.some((s) => s.id === selectedSkin)) {
+      return selectedSkin;
+    }
+    if (eco && eco.baseCharacter && availableSkins.some((s) => s.id === eco.baseCharacter)) {
+      return eco.baseCharacter;
+    }
+    if (selectedBaseCharacter && availableSkins.some((s) => s.id === selectedBaseCharacter)) {
+      return selectedBaseCharacter;
+    }
+    return 'crown';
+  }
+
+  function getCharacterLevel(charId) {
+    const eco = getActiveEconomy();
+    const lvMap = (eco && eco.characterLevels) || {};
+    const raw = Number(lvMap[charId]);
+    const maxFree = charUpgradeConfig.MAX_FREE_LEVEL || 5.5;
+    const startLv = charUpgradeConfig.START_LEVEL || 1.0;
+    if (!Number.isFinite(raw)) return startLv;
+    return Math.min(maxFree, Math.max(startLv, Math.round(raw * 2) / 2));
+  }
+
+  function renderLobbyCharacterStatsCard() {
+    if (!lobbyCharStatBarsEl) return;
+    const eco = getActiveEconomy();
+    const charId = getActiveCharacterId();
+    const charObj = availableSkins.find((s) => s.id === charId) || availableSkins[0];
+    if (!charObj) return;
+
+    const maxFree = charUpgradeConfig.MAX_FREE_LEVEL || 5.5;
+    const maxTotal = charUpgradeConfig.MAX_TOTAL_LEVEL || 10.0;
+    const stepSize = charUpgradeConfig.LEVEL_STEP || 0.5;
+    const statGainPerStep = charUpgradeConfig.STAT_GAIN_PER_STEP || 0.14;
+
+    const currentLv = getCharacterLevel(charObj.id);
+    const upgradeSteps = Math.max(0, Math.round((currentLv - 1.0) / stepSize));
+    const levelStatBonus = upgradeSteps * statGainPerStep;
+
+    if (lobbyCharNameRoleEl) {
+      lobbyCharNameRoleEl.innerHTML = `${charObj.icon} ${escapeHtml(charObj.name)} <span style="color:#00BBF9; font-weight:800;">(${escapeHtml(charObj.role || 'Savaşçı')})</span>`;
+    }
+    if (lobbyCharLevelBadgeEl) {
+      lobbyCharLevelBadgeEl.textContent = `⚡ Sv. ${currentLv.toFixed(1)} / ${maxFree.toFixed(1)}`;
+    }
+    if (lobbyCharTraitBadgeEl) {
+      lobbyCharTraitBadgeEl.textContent = `🎯 Pasif Yetenek: ${charObj.trait || 'Dengeli Savaşçı'}`;
+    }
+    if (lobbyCharLvTextEl) {
+      lobbyCharLvTextEl.textContent = `${currentLv.toFixed(1)} / ${maxFree.toFixed(1)}`;
+    }
+    if (lobbyCharLvBarEl) {
+      const pct = Math.min(55, Math.max(8, (currentLv / maxTotal) * 100));
+      lobbyCharLvBarEl.style.width = `${pct}%`;
+    }
+
+    // Kuşanılmış mağaza eşyalarından gelen ek nitelik bonuslarını topla
+    const eq = (eco && eco.equipped) || {};
+    const gearBonuses = { speed: 0, firepower: 0, agility: 0, beltPower: 0, durability: 0 };
+    ['hat', 'skin', 'belt', 'kill_effect', 'title'].forEach((slotKey) => {
+      const itemId = eq[slotKey];
+      if (!itemId) return;
+      const item = storeItems.find((it) => it.id === itemId);
+      if (item && item.statBonus) {
+        Object.keys(gearBonuses).forEach((k) => {
+          gearBonuses[k] += Number(item.statBonus[k]) || 0;
+        });
+      }
+    });
+
+    const defs = statDefinitions.length > 0 ? statDefinitions : [
+      { key: 'speed', label: 'Hız', icon: '⚡', color: '#00F5D4' },
+      { key: 'firepower', label: 'Atış & İsabet', icon: '🏹', color: '#FF2A85' },
+      { key: 'agility', label: 'Manevra', icon: '🌀', color: '#00BBF9' },
+      { key: 'beltPower', label: 'Kemer Gücü', icon: '🔗', color: '#FFE066' },
+      { key: 'durability', label: 'Dayanıklılık', icon: '🛡️', color: '#9B5DE5' }
+    ];
+
+    const baseStats = charObj.baseStats || { speed: 3.0, firepower: 3.0, agility: 3.0, beltPower: 3.0, durability: 3.0 };
+
+    lobbyCharStatBarsEl.innerHTML = defs.map((d) => {
+      const rawBase = Number(baseStats[d.key]) || 3.0;
+      const basePlusLv = Math.min(maxFree, rawBase + levelStatBonus);
+      const totalVal = Math.min(maxFree, basePlusLv + (gearBonuses[d.key] || 0));
+      const bonusVal = Math.max(0, totalVal - rawBase);
+
+      const basePct = Math.min(55, Math.max(4, (rawBase / maxTotal) * 100));
+      const bonusPct = Math.min(55 - basePct, Math.max(0, (bonusVal / maxTotal) * 100));
+
+      const bonusTag = bonusVal >= 0.05 ? `<span style="color:#00F59B;">(+${bonusVal.toFixed(1)})</span>` : '';
+
+      return `
+        <div class="char-stat-row">
+          <div class="char-stat-label">${d.icon} ${escapeHtml(d.label)}</div>
+          <div class="char-stat-track" title="Ücretsiz Maksimum Sınır: 5.5 / 10.0 (5.5 Üzeri VIP/Elit Kilitli)">
+            <div class="char-stat-fill-base" style="width:${basePct}%; background:${d.color};"></div>
+            ${bonusPct > 0 ? `<div class="char-stat-fill-gear" style="left:${basePct}%; width:${bonusPct}%;"></div>` : ''}
+            <div class="char-stat-locked-zone"></div>
+          </div>
+          <div class="char-stat-val">${totalVal.toFixed(1)} ${bonusTag}</div>
+        </div>
+      `;
+    }).join('');
+
+    if (upgradeCharLevelBtn) {
+      if (currentLv >= maxFree) {
+        upgradeCharLevelBtn.disabled = true;
+        upgradeCharLevelBtn.style.background = 'linear-gradient(135deg, #334155, #1E293B)';
+        upgradeCharLevelBtn.style.color = '#FFE066';
+        upgradeCharLevelBtn.style.border = '1px solid rgba(255, 224, 102, 0.45)';
+        upgradeCharLevelBtn.textContent = `🔒 Sv. ${maxFree.toFixed(1)} MAKS (5.5+ VIP/Elit Yakında!)`;
+        if (upgradeCharLockHintEl) {
+          upgradeCharLockHintEl.style.color = '#FFE066';
+          upgradeCharLockHintEl.textContent = '🔒 5.5 ücretsiz sınırına ulaştın! 5.5 üzeri seviyeler yakında özel karakter ve kostümlerle açılacak.';
+        }
+      } else {
+        const nextLv = Math.min(maxFree, Math.round((currentLv + stepSize) * 10) / 10);
+        const stepKey = currentLv.toFixed(1);
+        const cost = (charUpgradeConfig.STEP_COSTS && charUpgradeConfig.STEP_COSTS[stepKey]) || 450;
+        const canAfford = (Number(eco.slimePoints) || 0) >= cost;
+
+        upgradeCharLevelBtn.disabled = false;
+        upgradeCharLevelBtn.style.border = 'none';
+        if (canAfford) {
+          upgradeCharLevelBtn.style.background = 'linear-gradient(135deg, #00F59B, #00BBF9)';
+          upgradeCharLevelBtn.style.color = '#080B12';
+        } else {
+          upgradeCharLevelBtn.style.background = 'linear-gradient(135deg, rgba(0,245,155,0.28), rgba(0,187,249,0.28))';
+          upgradeCharLevelBtn.style.color = '#E2E8F0';
+        }
+        upgradeCharLevelBtn.textContent = `⬆️ Geliştir (Sv.${currentLv.toFixed(1)} ➔ Sv.${nextLv.toFixed(1)}) — 💎 ${cost.toLocaleString('tr-TR')} Puan`;
+        if (upgradeCharLockHintEl) {
+          upgradeCharLockHintEl.style.color = '#94A3B8';
+          upgradeCharLockHintEl.textContent = '💡 Karakterine yatırım yaparak hız, atış ve kemer gücünü 5.5 sınırına kadar yükselt!';
+        }
+      }
+    }
+  }
+
+  function handleUpgradeCharacterLevel() {
+    window.soundManager.init();
+    const charId = getActiveCharacterId();
+    const charObj = availableSkins.find((s) => s.id === charId) || availableSkins[0];
+    if (!charObj) return;
+
+    const maxFree = charUpgradeConfig.MAX_FREE_LEVEL || 5.5;
+    const stepSize = charUpgradeConfig.LEVEL_STEP || 0.5;
+    const currentLv = getCharacterLevel(charObj.id);
+
+    if (currentLv >= maxFree) {
+      window.soundManager.playUiPop();
+      if (upgradeCharLockHintEl) {
+        upgradeCharLockHintEl.style.color = '#FF2A85';
+        upgradeCharLockHintEl.textContent = '🔒 5.5 üzeri seviyelere ücretsiz itemlerle çıkılamaz! Yakında özel güncellemeyle açılacak.';
+      }
+      return;
+    }
+
+    if (currentUser) {
+      socket.emit('upgradeCharacter', { skinId: charObj.id }, (res) => {
+        if (res && res.ok && res.user) {
+          currentUser = res.user;
+          saveUserSessionToStorage(currentUser);
+          window.soundManager.playPowerupPickup();
+          renderColorAndSkinSelectors();
+          updateCareerAndShopUI();
+          if (upgradeCharLockHintEl) {
+            upgradeCharLockHintEl.style.color = '#00F59B';
+            upgradeCharLockHintEl.textContent = `🎉 ${charObj.name} Sv.${Number(res.newLevel || currentLv + stepSize).toFixed(1)} seviyesine yükseltildi! Tüm nitelikleri güçlendi!`;
+          }
+        } else {
+          window.soundManager.playUiPop();
+          if (upgradeCharLockHintEl) {
+            upgradeCharLockHintEl.style.color = '#FF2A85';
+            upgradeCharLockHintEl.textContent = (res && res.error) || 'Geliştirme için yeterli Slime Puanın yok!';
+          }
+        }
+      });
+      return;
+    }
+
+    const stepKey = currentLv.toFixed(1);
+    const cost = (charUpgradeConfig.STEP_COSTS && charUpgradeConfig.STEP_COSTS[stepKey]) || 450;
+    if (guestEconomy.slimePoints < cost) {
+      window.soundManager.playUiPop();
+      if (upgradeCharLockHintEl) {
+        upgradeCharLockHintEl.style.color = '#FF2A85';
+        upgradeCharLockHintEl.textContent = `⚠️ Yetersiz Slime Puan! (${cost - guestEconomy.slimePoints} 💎 daha kazanmalısın — Maçta kemer kes ve rakip ele!)`;
+      }
+      return;
+    }
+
+    guestEconomy.slimePoints -= cost;
+    const nextLv = Math.min(maxFree, Math.round((currentLv + stepSize) * 10) / 10);
+    if (!guestEconomy.characterLevels) guestEconomy.characterLevels = {};
+    guestEconomy.characterLevels[charObj.id] = nextLv;
+    guestEconomy.baseCharacter = charObj.id;
+
+    saveGuestEconomyToStorage();
+    syncGuestLoadoutToServer();
+    window.soundManager.playPowerupPickup();
+    renderColorAndSkinSelectors();
+    updateCareerAndShopUI();
+    if (upgradeCharLockHintEl) {
+      upgradeCharLockHintEl.style.color = '#00F59B';
+      upgradeCharLockHintEl.textContent = `🎉 ${charObj.name} Sv.${nextLv.toFixed(1)} seviyesine yükseltildi!`;
+    }
+  }
+
+  if (upgradeCharLevelBtn) {
+    upgradeCharLevelBtn.addEventListener('click', handleUpgradeCharacterLevel);
   }
 
   function syncStoreItemsOwnership() {
@@ -553,12 +832,14 @@
         }
         let fbText = s.fallback;
         if (s.key === 'hat') {
-          const basicObj = availableSkins.find((bs) => bs.id === selectedSkin);
+          const basicObj = availableSkins.find((bs) => bs.id === getActiveCharacterId());
           if (basicObj) fbText = `${basicObj.icon} ${escapeHtml(basicObj.name)}`;
         }
         return `<span style="font-size:10.5px; font-weight:800; padding:3px 8px; border-radius:999px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#94A3B8;">${s.label}: ${fbText}</span>`;
       }).join('');
     }
+
+    renderLobbyCharacterStatsCard();
 
     if (shopModal && shopModal.style.display !== 'none') {
       renderShopModal();
@@ -583,6 +864,14 @@
       shopPreviewStatusEl.style.background = 'rgba(255,224,102,0.14)';
       shopPreviewStatusEl.innerHTML = `👁️ Önizleniyor: <b>${escapeHtml(item.icon || '✨')} ${escapeHtml(item.name)}</b>`;
     }
+    if (shopPreviewPerkBoxEl) {
+      if (item.perkLabel) {
+        shopPreviewPerkBoxEl.style.display = 'block';
+        shopPreviewPerkBoxEl.textContent = `⚡ Savaş Katkısı: ${item.perkLabel}`;
+      } else {
+        shopPreviewPerkBoxEl.style.display = 'none';
+      }
+    }
     if (shopResetPreviewBtn) {
       shopResetPreviewBtn.style.display = 'inline-block';
     }
@@ -597,6 +886,9 @@
       shopPreviewStatusEl.style.borderColor = 'rgba(0,245,212,0.3)';
       shopPreviewStatusEl.style.background = 'rgba(0,245,212,0.1)';
       shopPreviewStatusEl.textContent = '👁️ Herhangi bir eşyaya tıklayarak 3D önizle!';
+    }
+    if (shopPreviewPerkBoxEl) {
+      shopPreviewPerkBoxEl.style.display = 'none';
     }
     if (shopResetPreviewBtn) {
       shopResetPreviewBtn.style.display = 'none';
@@ -658,6 +950,10 @@
               ? `<span class="shop-badge vip">👑 VIP ÖZEL</span>`
               : `<span class="shop-badge category">${escapeHtml(item.category || item.type)}</span>`;
 
+      const perkBadgeHtml = item.perkLabel
+        ? `<div class="shop-item-perk-badge">⚡ ${escapeHtml(item.perkLabel)}</div>`
+        : '';
+
       const priceRowHtml = `
         <div class="shop-price-row">
           ${item.pricePoint > 0
@@ -711,6 +1007,7 @@
           </div>
           <div class="shop-item-name">${escapeHtml(item.name)}</div>
           <div class="shop-item-desc">${escapeHtml(item.description || '')}</div>
+          ${perkBadgeHtml}
           ${priceRowHtml}
           ${actionsHtml}
         </div>
@@ -1114,12 +1411,17 @@
 
     const eco = getActiveEconomy();
     const activeShopHat = eco && eco.equipped && eco.equipped.hat;
+    const activeCharId = getActiveCharacterId();
 
     skinsGridContainer.innerHTML = availableSkins.map((s) => {
-      const isSel = (!activeShopHat && s.id === selectedSkin) ? 'skin-item selected' : 'skin-item';
-      return `<div class="${isSel}" data-skin="${s.id}">
-        <span style="font-size:18px;">${s.icon}</span>
-        <span>${s.name}</span>
+      const isSel = (!activeShopHat && s.id === selectedSkin) || (activeShopHat && s.id === activeCharId)
+        ? 'skin-item selected'
+        : 'skin-item';
+      const lv = getCharacterLevel(s.id);
+      return `<div class="${isSel}" data-skin="${s.id}" title="${escapeHtml(s.name)} — ${escapeHtml(s.role || '')} (${escapeHtml(s.trait || '')})">
+        <span style="font-size:17px;">${s.icon}</span>
+        <span style="line-height:1.1;">${escapeHtml(s.name)}</span>
+        <span style="font-size:9.5px; color:#00F5D4; font-weight:900;">Sv.${lv.toFixed(1)} • ${escapeHtml(s.role || '')}</span>
       </div>`;
     }).join('');
 
@@ -1128,11 +1430,13 @@
         window.soundManager.init();
         window.soundManager.playUiPop();
         selectedSkin = el.dataset.skin;
+        selectedBaseCharacter = selectedSkin;
         lastBasicSkin = selectedSkin;
         shopPreviewLoadout.hat = null;
 
         if (currentUser) {
           currentUser.skin = selectedSkin;
+          currentUser.baseCharacter = selectedSkin;
           if (!currentUser.equipped) {
             currentUser.equipped = { hat: null, skin: null, belt: null, kill_effect: null, title: null };
           }
@@ -1148,6 +1452,7 @@
           socket.emit('updateCustomization', {
             color: selectedColor,
             skin: selectedSkin,
+            baseCharacter: selectedSkin,
             equipped: { hat: null }
           }, (res) => {
             if (res && res.ok && res.user) {
@@ -1158,6 +1463,7 @@
             }
           });
         } else {
+          guestEconomy.baseCharacter = selectedSkin;
           guestEconomy.equipped.hat = null;
           const me = renderPlayers.get(selfId);
           if (me) {
@@ -3003,6 +3309,8 @@
         existing.respawnRemaining = p.respawnRemaining;
         existing.activePowerup = p.activePowerup;
         existing.powerupRemaining = p.powerupRemaining;
+        existing.charLevel = p.charLevel || existing.charLevel || 1.0;
+        existing.fovMult = p.fovMult || existing.fovMult || 1.0;
         existing.x = p.x;
         existing.y = p.y;
         existing.vx = p.vx;
@@ -5218,12 +5526,15 @@
   }
 
   function drawSlimeArrows() {
+    const baseArrowR = (config && config.ARROW_RADIUS) || 9;
     for (const a of renderArrows) {
-      if (!isPointInView(a.x, a.y, 40)) continue;
+      if (!isPointInView(a.x, a.y, 45)) continue;
       const angle = Math.atan2(a.vy, a.vx);
+      const scale = Math.max(0.85, Math.min(1.45, (Number(a.r) || baseArrowR) / baseArrowR));
       ctx.save();
       ctx.translate(a.x, a.y);
       ctx.rotate(angle);
+      if (scale !== 1) ctx.scale(scale, scale);
 
       // Dış neon hale (shadowBlur kullanmadan akıcı parlama)
       ctx.beginPath();
@@ -5530,8 +5841,11 @@
       : player.team === 'telliogullari'
         ? '[TELLİ] '
         : '';
+    const lvPrefix = !player.isBot && player.charLevel
+      ? `[Sv.${Number(player.charLevel).toFixed(1)}] `
+      : '';
 
-    const nameText = `${familyPrefix}${player.name} [🔗${player.bands.length} | 🏹${ammo}]`;
+    const nameText = `${familyPrefix}${lvPrefix}${player.name} [🔗${player.bands.length} | 🏹${ammo}]`;
 
     // VIP Altın veya Unvan Çerçevesi (İsim yazısı ile çakışmaması için baseR + 30 konumunda)
     if (activeTitleMeta) {
@@ -5814,10 +6128,12 @@
       }
     } else if (me) {
       if (me.alive && !me.spectating && !me.waitingForWall) {
-        // Geniş Kamera (wide_cam) aktifse sadece kutuyu alan oyuncunun FOV'u (kamera açısı) genişler (zoom-out)
-        const desiredZoom = me.activePowerup === 'wide_cam'
-          ? camera.targetGameplayZoom * (config.POWERUP_WIDE_CAM_MULTIPLIER || 0.65)
-          : camera.targetGameplayZoom;
+        // Geniş Kamera (wide_cam) ve Karakter/Eşya FOV (kamera açısı) çarpanını uygula
+        const powerupCamMult = me.activePowerup === 'wide_cam'
+          ? (config.POWERUP_WIDE_CAM_MULTIPLIER || 0.65)
+          : 1.0;
+        const gearFovMult = Math.max(0.75, Math.min(1.05, Number(me.fovMult) || 1.0));
+        const desiredZoom = camera.targetGameplayZoom * powerupCamMult * gearFovMult;
         camera.zoom += (desiredZoom - camera.zoom) * 0.08;
         camera.x += (me.renderX - camera.x) * 0.16;
         camera.y += (me.renderY - camera.y) * 0.16;

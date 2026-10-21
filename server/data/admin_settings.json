@@ -1,0 +1,10 @@
+{
+  "initialized": true,
+  "updatedAt": 1792247114331,
+  "roomBots": {
+    "ffa": [],
+    "team_2v2": [],
+    "team_4v4": [],
+    "team_8v8": []
+  }
+}

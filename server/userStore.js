@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { GAME_CONFIG, SLIME_COLORS, BASIC_10_SKINS } = require('../shared/constants');
+const { GAME_CONFIG, SLIME_COLORS, BASIC_10_SKINS, CHARACTER_UPGRADE_CONFIG } = require('../shared/constants');
 const STORE_ITEMS = require('../public/storeItems.json');
 
 const DATA_DIR = path.join(__dirname, 'data');
@@ -285,6 +285,21 @@ function ensureUserEconomy(u) {
       title: null
     };
   }
+  if (!u.baseCharacter || !BASIC_10_SKINS.some((s) => s.id === u.baseCharacter)) {
+    u.baseCharacter = BASIC_10_SKINS.some((s) => s.id === u.skin) ? u.skin : 'crown';
+  }
+  if (!u.characterLevels || typeof u.characterLevels !== 'object') {
+    u.characterLevels = {};
+  }
+  const maxFree = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_FREE_LEVEL) || 5.5;
+  for (const s of BASIC_10_SKINS) {
+    const rawLv = Number(u.characterLevels[s.id]);
+    if (!Number.isFinite(rawLv) || rawLv < 1.0) {
+      u.characterLevels[s.id] = 1.0;
+    } else {
+      u.characterLevels[s.id] = Math.min(maxFree, Math.round(rawLv * 2) / 2);
+    }
+  }
 }
 
 function registerUser({ fullName, username, password, color, skin }) {
@@ -309,6 +324,7 @@ function registerUser({ fullName, username, password, color, skin }) {
   const { salt, hash } = hashPassword(rawPass);
   const chosenColor = isValidColor(color) ? color : SLIME_COLORS[0].id;
   const chosenSkin = isValidSkin(skin) ? skin : BASIC_10_SKINS[0].id;
+  const chosenBaseChar = BASIC_10_SKINS.some((s) => s.id === chosenSkin) ? chosenSkin : 'crown';
   const prevFriends = usersDb[cleanUser] && Array.isArray(usersDb[cleanUser].friends) ? usersDb[cleanUser].friends : [];
 
   const newUser = {
@@ -319,6 +335,8 @@ function registerUser({ fullName, username, password, color, skin }) {
     passwordHash: hash,
     color: chosenColor,
     skin: chosenSkin,
+    baseCharacter: chosenBaseChar,
+    characterLevels: {},
     friends: prevFriends,
     slimePoints: GAME_CONFIG.STARTER_SLIME_POINTS || 500,
     slimeCoins: GAME_CONFIG.STARTER_SLIME_COINS || 100,
@@ -340,6 +358,7 @@ function registerUser({ fullName, username, password, color, skin }) {
     createdAt: Date.now()
   };
 
+  ensureUserEconomy(newUser);
   usersDb[cleanUser] = newUser;
   saveUsers();
 
@@ -362,7 +381,7 @@ function loginUser({ username, password }) {
   return { ok: true, user: sanitizeUser(record) };
 }
 
-function restoreOrLoginUser({ username, password, fullName, displayName, color, skin, friends, stats, slimePoints, slimeCoins, ownedItems, equipped }) {
+function restoreOrLoginUser({ username, password, fullName, displayName, color, skin, baseCharacter, characterLevels, friends, stats, slimePoints, slimeCoins, ownedItems, equipped }) {
   const cleanUser = normalizeUsername(username);
   const rawPass = String(password || '').trim();
   if (!cleanUser || cleanUser.length < 3 || rawPass.length < 4) {
@@ -383,6 +402,9 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
     }
     if (skin && isValidSkin(skin) && existing.skin !== skin) {
       existing.skin = skin;
+      if (BASIC_10_SKINS.some((s) => s.id === skin)) {
+        existing.baseCharacter = skin;
+      }
       changed = true;
     }
     if (changed) saveUsers();
@@ -391,6 +413,7 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
 
   // Sunucu yeniden başlatılmışsa (Render redeploy vb.) kullanıcının tarayıcı yedeklerinden hesabını otomatik geri yükle
   const { salt, hash } = hashPassword(rawPass);
+  const validSkin = isValidSkin(skin) ? skin : BASIC_10_SKINS[0].id;
   const restored = {
     username: cleanUser,
     displayName: sanitizeText(displayName || username, 16) || cleanUser,
@@ -398,7 +421,11 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
     salt,
     passwordHash: hash,
     color: isValidColor(color) ? color : SLIME_COLORS[0].id,
-    skin: isValidSkin(skin) ? skin : BASIC_10_SKINS[0].id,
+    skin: validSkin,
+    baseCharacter: BASIC_10_SKINS.some((s) => s.id === baseCharacter)
+      ? baseCharacter
+      : (BASIC_10_SKINS.some((s) => s.id === validSkin) ? validSkin : 'crown'),
+    characterLevels: characterLevels && typeof characterLevels === 'object' ? { ...characterLevels } : {},
     friends: Array.isArray(friends) ? friends.map((f) => normalizeUsername(f)).filter(Boolean) : [],
     slimePoints: typeof slimePoints === 'number' ? slimePoints : (GAME_CONFIG.STARTER_SLIME_POINTS || 500),
     slimeCoins: typeof slimeCoins === 'number' ? slimeCoins : (GAME_CONFIG.STARTER_SLIME_COINS || 100),
@@ -439,8 +466,9 @@ function updateUserCustomization(username, { color, skin, equipped, displayName,
   if (color && isValidColor(color)) record.color = color;
   if (skin && isValidSkin(skin)) {
     record.skin = skin;
-    // Lobiden ücretsiz/temel 10 şapkadan biri seçildiyse mağaza şapkası kuşanmasını kaldır
+    // Lobiden ücretsiz/temel 10 karakterden biri seçildiyse temel karakteri güncelle ve mağaza şapkası kuşanmasını kaldır
     if (BASIC_10_SKINS.some((s) => s.id === skin)) {
+      record.baseCharacter = skin;
       record.equipped.hat = null;
     }
   }
@@ -463,7 +491,7 @@ function updateUserCustomization(username, { color, skin, equipped, displayName,
         if (!val || val === 'none') {
           record.equipped[slot] = null;
           if (slot === 'hat' && !BASIC_10_SKINS.some((s) => s.id === record.skin)) {
-            record.skin = 'crown';
+            record.skin = record.baseCharacter || 'crown';
           }
         } else if (record.ownedItems.includes(val)) {
           record.equipped[slot] = val;
@@ -570,8 +598,9 @@ function equipStoreItem(username, { itemId, type, basicFallbackSkin }) {
     if (resolvedType === 'hat') {
       if (basicFallbackSkin && BASIC_10_SKINS.some((s) => s.id === basicFallbackSkin)) {
         record.skin = basicFallbackSkin;
+        record.baseCharacter = basicFallbackSkin;
       } else if (!BASIC_10_SKINS.some((s) => s.id === record.skin)) {
-        record.skin = 'crown';
+        record.skin = record.baseCharacter || 'crown';
       }
     }
     saveUsers();
@@ -588,6 +617,135 @@ function equipStoreItem(username, { itemId, type, basicFallbackSkin }) {
   }
   saveUsers();
   return { ok: true, unequipped: false, type: resolvedType, user: sanitizeUser(record) };
+}
+
+function upgradeCharacterLevel(username, { skinId }) {
+  const cleanUser = normalizeUsername(username);
+  const record = usersDb[cleanUser];
+  if (!record) return { ok: false, error: 'Geliştirme işlemi için üye girişi yapmalısınız.' };
+
+  ensureUserEconomy(record);
+  const targetSkin = BASIC_10_SKINS.some((s) => s.id === skinId)
+    ? skinId
+    : (record.baseCharacter || 'crown');
+
+  const maxFree = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_FREE_LEVEL) || 5.5;
+  const step = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.LEVEL_STEP) || 0.5;
+  const currentLevel = Math.round(Number(record.characterLevels[targetSkin] || 1.0) * 10) / 10;
+
+  if (currentLevel >= maxFree) {
+    return {
+      ok: false,
+      maxFreeReached: true,
+      error: '🔒 Seviye 5.5 Ücretsiz Gelişim Sınırına ulaştınız! 5.5 üzeri Elit/VIP seviyeler yakında özel karakter ve ücretli ekipmanlarla açılacak.'
+    };
+  }
+
+  const costKey = currentLevel.toFixed(1);
+  const stepCosts = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.STEP_COSTS) || {};
+  const cost = Number(stepCosts[costKey] || 1000);
+
+  if (record.slimePoints < cost) {
+    return {
+      ok: false,
+      error: `Yetersiz Slime Puan! Seviye ${(currentLevel + step).toFixed(1)} geliştirmesi için ${cost} 💎 gerekli (Mevcut: ${record.slimePoints} 💎).`
+    };
+  }
+
+  record.slimePoints -= cost;
+  const nextLevel = Math.min(maxFree, Math.round((currentLevel + step) * 10) / 10);
+  record.characterLevels[targetSkin] = nextLevel;
+  record.baseCharacter = targetSkin;
+  saveUsers();
+
+  const charObj = BASIC_10_SKINS.find((s) => s.id === targetSkin);
+  return {
+    ok: true,
+    skinId: targetSkin,
+    charName: charObj ? charObj.name : targetSkin,
+    newLevel: nextLevel,
+    cost,
+    user: sanitizeUser(record)
+  };
+}
+
+function computePlayerCombatMods({ skin, baseCharacter, equipped, characterLevels }) {
+  const resolvedBaseId = BASIC_10_SKINS.some((s) => s.id === baseCharacter)
+    ? baseCharacter
+    : (BASIC_10_SKINS.some((s) => s.id === skin) ? skin : 'crown');
+  const charDef = BASIC_10_SKINS.find((s) => s.id === resolvedBaseId) || BASIC_10_SKINS[0];
+
+  const maxFree = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_FREE_LEVEL) || 5.5;
+  const rawLv = characterLevels && typeof characterLevels === 'object' ? Number(characterLevels[charDef.id]) : 1.0;
+  const charLevel = Math.min(maxFree, Math.max(1.0, Number.isFinite(rawLv) ? Math.round(rawLv * 2) / 2 : 1.0));
+  const upgradeSteps = Math.max(0, Math.round((charLevel - 1.0) / 0.5)); // 0 .. 9 adım
+
+  // Her +0.5 seviye geliştirmesi karaktere hissedilir ama dengeli bir rekabet gücü katar
+  let speedMult = 1 + upgradeSteps * 0.008;
+  let arrowSpeedMult = 1 + upgradeSteps * 0.009;
+  let arrowSizeMult = 1 + upgradeSteps * 0.007;
+  let arrowCooldownMult = 1 - upgradeSteps * 0.007;
+  let fovMult = 1 - upgradeSteps * 0.004;
+  let beltCooldownMult = 1 - upgradeSteps * 0.008;
+  let beltHoldBonus = upgradeSteps * 0.01;
+  let respawnReductionMs = upgradeSteps * 40;
+  let massMult = 1 + upgradeSteps * 0.01;
+  let killPointBonus = 0;
+  let cutPointBonus = 0;
+  let matchPointBonus = 0;
+  let killSpeedBoost = 1;
+
+  const applyModObj = (m) => {
+    if (!m || typeof m !== 'object') return;
+    if (typeof m.speedMult === 'number') speedMult *= m.speedMult;
+    if (typeof m.arrowSpeedMult === 'number') arrowSpeedMult *= m.arrowSpeedMult;
+    if (typeof m.arrowSizeMult === 'number') arrowSizeMult *= m.arrowSizeMult;
+    if (typeof m.arrowCooldownMult === 'number') arrowCooldownMult *= m.arrowCooldownMult;
+    if (typeof m.fovMult === 'number') fovMult *= m.fovMult;
+    if (typeof m.beltCooldownMult === 'number') beltCooldownMult *= m.beltCooldownMult;
+    if (typeof m.beltHoldBonus === 'number') beltHoldBonus += m.beltHoldBonus;
+    if (typeof m.respawnReductionMs === 'number') respawnReductionMs += m.respawnReductionMs;
+    if (typeof m.massMult === 'number') massMult *= m.massMult;
+    if (typeof m.killPointBonus === 'number') killPointBonus += m.killPointBonus;
+    if (typeof m.cutPointBonus === 'number') cutPointBonus += m.cutPointBonus;
+    if (typeof m.matchPointBonus === 'number') matchPointBonus += m.matchPointBonus;
+    if (typeof m.killSpeedBoost === 'number' && m.killSpeedBoost > killSpeedBoost) {
+      killSpeedBoost = m.killSpeedBoost;
+    }
+  };
+
+  // 1) Karakterin temel arketip gücü
+  applyModObj(charDef.mods);
+
+  // 2) Kuşanılan mağaza ekipmanlarının katkısı
+  if (equipped && typeof equipped === 'object') {
+    for (const slot of ['hat', 'skin', 'belt', 'kill_effect', 'title']) {
+      const itemId = equipped[slot];
+      if (!itemId) continue;
+      const item = STORE_ITEMS.find((it) => it.id === itemId);
+      if (item && item.mods) {
+        applyModObj(item.mods);
+      }
+    }
+  }
+
+  return {
+    charId: charDef.id,
+    charLevel,
+    speedMult: Math.min(1.24, Math.max(0.88, Number(speedMult.toFixed(3)))),
+    arrowSpeedMult: Math.min(1.28, Math.max(0.85, Number(arrowSpeedMult.toFixed(3)))),
+    arrowSizeMult: Math.min(1.38, Math.max(0.90, Number(arrowSizeMult.toFixed(3)))),
+    arrowCooldownMult: Math.min(1.15, Math.max(0.76, Number(arrowCooldownMult.toFixed(3)))),
+    fovMult: Math.min(1.02, Math.max(0.82, Number(fovMult.toFixed(3)))),
+    beltCooldownMult: Math.min(1.10, Math.max(0.72, Number(beltCooldownMult.toFixed(3)))),
+    beltHoldBonus: Math.min(0.45, Math.max(0, Number(beltHoldBonus.toFixed(3)))),
+    respawnReductionMs: Math.min(1800, Math.max(0, Math.round(respawnReductionMs))),
+    massMult: Math.min(1.35, Math.max(0.85, Number(massMult.toFixed(3)))),
+    killPointBonus: Math.min(0.50, Math.max(0, Number(killPointBonus.toFixed(3)))),
+    cutPointBonus: Math.min(0.50, Math.max(0, Number(cutPointBonus.toFixed(3)))),
+    matchPointBonus: Math.min(0.50, Math.max(0, Number(matchPointBonus.toFixed(3)))),
+    killSpeedBoost: Math.min(1.25, Math.max(1.0, Number(killSpeedBoost.toFixed(3))))
+  };
 }
 
 function claimCoinPack(username, { coins = 250, points = 500 }) {
@@ -662,6 +820,8 @@ function ensureProfileRecord(targetUsernameOrName, fallbackProfile) {
     isBot: Boolean(fallbackProfile.isBot),
     color: isValidColor(fallbackProfile.color) ? fallbackProfile.color : (fallbackProfile.color || SLIME_COLORS[0].id),
     skin: isValidSkin(fallbackProfile.skin) ? fallbackProfile.skin : 'crown',
+    baseCharacter: BASIC_10_SKINS.some((s) => s.id === fallbackProfile.skin) ? fallbackProfile.skin : 'crown',
+    characterLevels: {},
     friends: [],
     slimePoints: 500,
     slimeCoins: 100,
@@ -677,6 +837,7 @@ function ensureProfileRecord(targetUsernameOrName, fallbackProfile) {
     createdAt: Date.now()
   };
 
+  ensureUserEconomy(virtualRecord);
   usersDb[cleanKey] = virtualRecord;
   pruneExcessVirtualProfiles();
   return virtualRecord;
@@ -763,12 +924,16 @@ function recordMatchStats(username, { score = 0, cuts = 0, kills = 0, won = fals
 function sanitizeUser(u) {
   if (!u) return null;
   ensureUserEconomy(u);
+  const baseChar = u.baseCharacter || (BASIC_10_SKINS.some((s) => s.id === u.skin) ? u.skin : 'crown');
   return {
     username: u.username,
     displayName: u.displayName || u.username,
     fullName: u.fullName,
     color: u.color || SLIME_COLORS[0].id,
     skin: u.skin || BASIC_10_SKINS[0].id,
+    baseCharacter: baseChar,
+    characterLevels: u.characterLevels || {},
+    charLevel: Number((u.characterLevels && u.characterLevels[baseChar]) || 1.0),
     slimePoints: u.slimePoints,
     slimeCoins: u.slimeCoins,
     ownedItems: Array.isArray(u.ownedItems) ? u.ownedItems : [],
@@ -805,6 +970,8 @@ module.exports = {
   renameVirtualBotProfile,
   purchaseStoreItem,
   equipStoreItem,
+  upgradeCharacterLevel,
+  computePlayerCombatMods,
   claimCoinPack,
   addLiveCombatRewards,
   getStoreItems,
@@ -821,4 +988,5 @@ module.exports = {
   isCloudConnected,
   getLastCloudSyncAt
 };
+
 
