@@ -107,7 +107,7 @@
     { id: '#A8FF00', name: 'Asit Limonu' }
   ];
 
-  // Karakter İstatistik Tanımları (1.0 - 10.0 Ölçeği, Ücretsiz Sınır: 5.5)
+  // Karakter İstatistik Tanımları (1.0 - 10.0 Ölçeği)
   exports.STAT_DEFINITIONS = [
     { key: 'speed', label: 'Hız', icon: '⚡', color: '#00F5D4' },
     { key: 'firepower', label: 'Atış & İsabet', icon: '🎯', color: '#FF2A85' },
@@ -116,24 +116,13 @@
     { key: 'durability', label: 'Dayanıklılık', icon: '🛡️', color: '#38E54D' }
   ];
 
-  // Karakter Seviye Geliştirme Kurgusu (Ücretsiz eşya/puan ile maksimum 5.5 Seviye!)
+  // Karakter Mücadele & Galibiyet Serisi Seviye Kurgusu (Her üst üste galibiyette +0.5 Seviye, seri bozulursa 1.0'dan başlar)
   exports.CHARACTER_UPGRADE_CONFIG = {
     START_LEVEL: 1.0,
     LEVEL_STEP: 0.5,
-    MAX_FREE_LEVEL: 5.5,
+    INTERNAL_BASE_GEAR_CAP: 5.5, // İç denge kuralı (kullanıcıya gösterilmez): ücretsiz temel karakter + eşya toplamı 5.5'i geçmez
     MAX_TOTAL_LEVEL: 10.0,
-    STAT_GAIN_PER_STEP: 0.14, // Her +0.5 seviyede 5 temel istatistiğe +0.14 eklenir (9 adımda +1.26)
-    STEP_COSTS: {
-      '1.0': 150,
-      '1.5': 250,
-      '2.0': 400,
-      '2.5': 600,
-      '3.0': 850,
-      '3.5': 1150,
-      '4.0': 1500,
-      '4.5': 1950,
-      '5.0': 2500
-    }
+    STAT_GAIN_PER_STREAK_STEP: 0.25 // Her üst üste galibiyet (+0.5 Sv) tüm niteliklere +0.25 mücadele gücü ekler (10.0'a kadar)
   };
 
   // Üyelerin seçebileceği Basic 10 Karakter & Kostüm (Her biri kendine özgü 5 istatistik ve pasif özelliğe sahiptir)

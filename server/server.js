@@ -1615,12 +1615,16 @@ function triggerMatchEnd(room) {
     };
   });
 
-  // Kayıtlı üyelerin ve oyuncuların maç sonu hakedişlerini kaydet & bildir
+  // Kayıtlı üyelerin ve oyuncuların maç sonu hakedişlerini ve Galibiyet Serisi (+0.5 Sv) ilerlemesini kaydet & bildir
   for (const row of standings) {
     const p = room.players.get(row.id);
     if (!p || p.isBot || p.watchOnly) continue;
 
+    const sock = connectedSockets.get(p.id);
     let updatedUser = null;
+    let winStreak = 0;
+    let newCharLevel = 1.0;
+
     if (p.username) {
       updatedUser = userStore.recordMatchStats(p.username, {
         score: row.score || 0,
@@ -1631,17 +1635,40 @@ function triggerMatchEnd(room) {
         earnedCoins: row.endOfMatchBonusCoins,
         alreadyCountedCombat: true
       });
-      const sock = connectedSockets.get(p.id);
       if (sock && updatedUser) {
         sock.user = updatedUser;
       }
+      refreshPlayerCombatMods(p, updatedUser, sock);
+      winStreak = Number(updatedUser && updatedUser.winStreak) || 0;
+      newCharLevel = Number(p.charLevel || (updatedUser && updatedUser.charLevel) || 1.0);
+    } else if (sock) {
+      const gChar = sock.guestBaseCharacter || (BASIC_10_SKINS.some((s) => s.id === p.skin) ? p.skin : 'crown');
+      if (!sock.guestCharacterLevels || typeof sock.guestCharacterLevels !== 'object') {
+        sock.guestCharacterLevels = {};
+      }
+      if (row.won) {
+        sock.guestWinStreak = (Number(sock.guestWinStreak) || 0) + 1;
+        const currLv = Number(sock.guestCharacterLevels[gChar] || p.charLevel || 1.0);
+        sock.guestCharacterLevels[gChar] = Math.min(10.0, Math.round((currLv + 0.5) * 2) / 2);
+      } else {
+        sock.guestWinStreak = 0;
+        sock.guestCharacterLevels[gChar] = 1.0;
+      }
+      refreshPlayerCombatMods(p, null, sock);
+      winStreak = sock.guestWinStreak || 0;
+      newCharLevel = Number(p.charLevel || 1.0);
     }
 
     io.to(p.id).emit('matchRewardsEarned', {
       won: row.won,
+      winStreak,
+      newCharLevel,
+      streakReset: !row.won,
       score: row.score,
       cuts: row.cuts,
       kills: row.kills,
+      earnedPoints: row.endOfMatchBonusPoints,
+      earnedCoins: row.endOfMatchBonusCoins,
       totalMatchPoints: row.earnedPoints,
       totalMatchCoins: row.earnedCoins,
       endOfMatchBonusPoints: row.endOfMatchBonusPoints,

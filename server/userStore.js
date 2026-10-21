@@ -260,8 +260,10 @@ function isValidSkin(skin) {
 function ensureUserEconomy(u) {
   if (!u) return;
   if (!u.stats || typeof u.stats !== 'object') {
-    u.stats = { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 };
+    u.stats = { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0, winStreak: 0, bestWinStreak: 0 };
   }
+  if (!Number.isFinite(Number(u.stats.winStreak))) u.stats.winStreak = 0;
+  if (!Number.isFinite(Number(u.stats.bestWinStreak))) u.stats.bestWinStreak = 0;
   if (typeof u.slimePoints !== 'number' || !Number.isFinite(u.slimePoints)) {
     const legacyBonus =
       (u.stats.totalCuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 25) +
@@ -291,13 +293,13 @@ function ensureUserEconomy(u) {
   if (!u.characterLevels || typeof u.characterLevels !== 'object') {
     u.characterLevels = {};
   }
-  const maxFree = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_FREE_LEVEL) || 5.5;
+  const maxTotal = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_TOTAL_LEVEL) || 10.0;
   for (const s of BASIC_10_SKINS) {
     const rawLv = Number(u.characterLevels[s.id]);
     if (!Number.isFinite(rawLv) || rawLv < 1.0) {
       u.characterLevels[s.id] = 1.0;
     } else {
-      u.characterLevels[s.id] = Math.min(maxFree, Math.round(rawLv * 2) / 2);
+      u.characterLevels[s.id] = Math.min(maxTotal, Math.round(rawLv * 2) / 2);
     }
   }
 }
@@ -622,50 +624,14 @@ function equipStoreItem(username, { itemId, type, basicFallbackSkin }) {
 function upgradeCharacterLevel(username, { skinId }) {
   const cleanUser = normalizeUsername(username);
   const record = usersDb[cleanUser];
-  if (!record) return { ok: false, error: 'Geliştirme işlemi için üye girişi yapmalısınız.' };
-
+  if (!record) return { ok: false, error: 'Kullanıcı bulunamadı.' };
   ensureUserEconomy(record);
   const targetSkin = BASIC_10_SKINS.some((s) => s.id === skinId)
     ? skinId
     : (record.baseCharacter || 'crown');
-
-  const maxFree = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_FREE_LEVEL) || 5.5;
-  const step = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.LEVEL_STEP) || 0.5;
-  const currentLevel = Math.round(Number(record.characterLevels[targetSkin] || 1.0) * 10) / 10;
-
-  if (currentLevel >= maxFree) {
-    return {
-      ok: false,
-      maxFreeReached: true,
-      error: '🔒 Seviye 5.5 Ücretsiz Gelişim Sınırına ulaştınız! 5.5 üzeri Elit/VIP seviyeler yakında özel karakter ve ücretli ekipmanlarla açılacak.'
-    };
-  }
-
-  const costKey = currentLevel.toFixed(1);
-  const stepCosts = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.STEP_COSTS) || {};
-  const cost = Number(stepCosts[costKey] || 1000);
-
-  if (record.slimePoints < cost) {
-    return {
-      ok: false,
-      error: `Yetersiz Slime Puan! Seviye ${(currentLevel + step).toFixed(1)} geliştirmesi için ${cost} 💎 gerekli (Mevcut: ${record.slimePoints} 💎).`
-    };
-  }
-
-  record.slimePoints -= cost;
-  const nextLevel = Math.min(maxFree, Math.round((currentLevel + step) * 10) / 10);
-  record.characterLevels[targetSkin] = nextLevel;
-  record.baseCharacter = targetSkin;
-  saveUsers();
-
-  const charObj = BASIC_10_SKINS.find((s) => s.id === targetSkin);
   return {
-    ok: true,
-    skinId: targetSkin,
-    charName: charObj ? charObj.name : targetSkin,
-    newLevel: nextLevel,
-    cost,
-    user: sanitizeUser(record)
+    ok: false,
+    error: 'Seviye ilerlemesi arenada üst üste kazanılan galibiyet serileri (+0.5 Sv) ile gerçekleşir!'
   };
 }
 
@@ -675,21 +641,21 @@ function computePlayerCombatMods({ skin, baseCharacter, equipped, characterLevel
     : (BASIC_10_SKINS.some((s) => s.id === skin) ? skin : 'crown');
   const charDef = BASIC_10_SKINS.find((s) => s.id === resolvedBaseId) || BASIC_10_SKINS[0];
 
-  const maxFree = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_FREE_LEVEL) || 5.5;
+  const maxTotal = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_TOTAL_LEVEL) || 10.0;
   const rawLv = characterLevels && typeof characterLevels === 'object' ? Number(characterLevels[charDef.id]) : 1.0;
-  const charLevel = Math.min(maxFree, Math.max(1.0, Number.isFinite(rawLv) ? Math.round(rawLv * 2) / 2 : 1.0));
-  const upgradeSteps = Math.max(0, Math.round((charLevel - 1.0) / 0.5)); // 0 .. 9 adım
+  const charLevel = Math.min(maxTotal, Math.max(1.0, Number.isFinite(rawLv) ? Math.round(rawLv * 2) / 2 : 1.0));
+  const upgradeSteps = Math.max(0, Math.round((charLevel - 1.0) / 0.5)); // 0 .. 18 adım (Galibiyet serisi ile +0.5 ilerler)
 
-  // Her +0.5 seviye geliştirmesi karaktere hissedilir ama dengeli bir rekabet gücü katar
-  let speedMult = 1 + upgradeSteps * 0.008;
-  let arrowSpeedMult = 1 + upgradeSteps * 0.009;
-  let arrowSizeMult = 1 + upgradeSteps * 0.007;
-  let arrowCooldownMult = 1 - upgradeSteps * 0.007;
+  // Her +0.5 galibiyet serisi seviyesi karaktere rekabetçi mücadele gücü katar
+  let speedMult = 1 + upgradeSteps * 0.007;
+  let arrowSpeedMult = 1 + upgradeSteps * 0.008;
+  let arrowSizeMult = 1 + upgradeSteps * 0.006;
+  let arrowCooldownMult = 1 - upgradeSteps * 0.006;
   let fovMult = 1 - upgradeSteps * 0.004;
-  let beltCooldownMult = 1 - upgradeSteps * 0.008;
+  let beltCooldownMult = 1 - upgradeSteps * 0.007;
   let beltHoldBonus = upgradeSteps * 0.01;
-  let respawnReductionMs = upgradeSteps * 40;
-  let massMult = 1 + upgradeSteps * 0.01;
+  let respawnReductionMs = upgradeSteps * 35;
+  let massMult = 1 + upgradeSteps * 0.009;
   let killPointBonus = 0;
   let cutPointBonus = 0;
   let matchPointBonus = 0;
@@ -732,15 +698,15 @@ function computePlayerCombatMods({ skin, baseCharacter, equipped, characterLevel
   return {
     charId: charDef.id,
     charLevel,
-    speedMult: Math.min(1.24, Math.max(0.88, Number(speedMult.toFixed(3)))),
-    arrowSpeedMult: Math.min(1.28, Math.max(0.85, Number(arrowSpeedMult.toFixed(3)))),
-    arrowSizeMult: Math.min(1.38, Math.max(0.90, Number(arrowSizeMult.toFixed(3)))),
-    arrowCooldownMult: Math.min(1.15, Math.max(0.76, Number(arrowCooldownMult.toFixed(3)))),
-    fovMult: Math.min(1.02, Math.max(0.82, Number(fovMult.toFixed(3)))),
-    beltCooldownMult: Math.min(1.10, Math.max(0.72, Number(beltCooldownMult.toFixed(3)))),
+    speedMult: Math.min(1.26, Math.max(0.88, Number(speedMult.toFixed(3)))),
+    arrowSpeedMult: Math.min(1.30, Math.max(0.85, Number(arrowSpeedMult.toFixed(3)))),
+    arrowSizeMult: Math.min(1.40, Math.max(0.90, Number(arrowSizeMult.toFixed(3)))),
+    arrowCooldownMult: Math.min(1.15, Math.max(0.74, Number(arrowCooldownMult.toFixed(3)))),
+    fovMult: Math.min(1.02, Math.max(0.80, Number(fovMult.toFixed(3)))),
+    beltCooldownMult: Math.min(1.10, Math.max(0.70, Number(beltCooldownMult.toFixed(3)))),
     beltHoldBonus: Math.min(0.45, Math.max(0, Number(beltHoldBonus.toFixed(3)))),
     respawnReductionMs: Math.min(1800, Math.max(0, Math.round(respawnReductionMs))),
-    massMult: Math.min(1.35, Math.max(0.85, Number(massMult.toFixed(3)))),
+    massMult: Math.min(1.38, Math.max(0.85, Number(massMult.toFixed(3)))),
     killPointBonus: Math.min(0.50, Math.max(0, Number(killPointBonus.toFixed(3)))),
     cutPointBonus: Math.min(0.50, Math.max(0, Number(cutPointBonus.toFixed(3)))),
     matchPointBonus: Math.min(0.50, Math.max(0, Number(matchPointBonus.toFixed(3)))),
@@ -912,7 +878,22 @@ function recordMatchStats(username, { score = 0, cuts = 0, kills = 0, won = fals
     u.stats.totalScore += score;
   }
   u.stats.matchesPlayed += 1;
-  if (won) u.stats.wins += 1;
+
+  const baseChar = u.baseCharacter || (BASIC_10_SKINS.some((s) => s.id === u.skin) ? u.skin : 'crown');
+  const maxTotal = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_TOTAL_LEVEL) || 10.0;
+  const step = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.LEVEL_STEP) || 0.5;
+
+  if (won) {
+    u.stats.wins += 1;
+    u.stats.winStreak = (Number(u.stats.winStreak) || 0) + 1;
+    u.stats.bestWinStreak = Math.max(Number(u.stats.bestWinStreak) || 0, u.stats.winStreak);
+    const currLv = Number(u.characterLevels[baseChar] || 1.0);
+    u.characterLevels[baseChar] = Math.min(maxTotal, Math.round((currLv + step) * 2) / 2);
+  } else {
+    // Seri bozulursa galibiyet serisi ve seviye ilerlemesi baştan (1.0) başlar
+    u.stats.winStreak = 0;
+    u.characterLevels[baseChar] = 1.0;
+  }
 
   u.slimePoints += earnedPoints;
   u.slimeCoins += earnedCoins;
@@ -934,6 +915,7 @@ function sanitizeUser(u) {
     baseCharacter: baseChar,
     characterLevels: u.characterLevels || {},
     charLevel: Number((u.characterLevels && u.characterLevels[baseChar]) || 1.0),
+    winStreak: Number(u.stats && u.stats.winStreak) || 0,
     slimePoints: u.slimePoints,
     slimeCoins: u.slimeCoins,
     ownedItems: Array.isArray(u.ownedItems) ? u.ownedItems : [],
@@ -942,7 +924,7 @@ function sanitizeUser(u) {
     isVirtualProfile: Boolean(u.isVirtualProfile),
     friendCount: Array.isArray(u.friends) ? u.friends.length : 0,
     friends: Array.isArray(u.friends) ? u.friends : [],
-    stats: u.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
+    stats: u.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0, winStreak: 0, bestWinStreak: 0 }
   };
 }
 

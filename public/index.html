@@ -927,23 +927,6 @@
       overflow: hidden;
       border: 1px solid rgba(255, 255, 255, 0.12);
     }
-    .char-stat-locked-zone {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      left: 55%;
-      right: 0;
-      background: repeating-linear-gradient(
-        -45deg,
-        rgba(255, 184, 0, 0.08),
-        rgba(255, 184, 0, 0.08) 4px,
-        rgba(0, 0, 0, 0.35) 4px,
-        rgba(0, 0, 0, 0.35) 8px
-      );
-      border-left: 1.5px dashed rgba(255, 224, 102, 0.85);
-      pointer-events: none;
-      z-index: 3;
-    }
     .char-stat-fill-base {
       position: absolute;
       top: 0;
@@ -1492,10 +1475,10 @@
           </div>
         </div>
 
-        <!-- ORTA KOLON: SLIME RENGİ, KARAKTER ÖNİZLEME, GÜÇ İSTATİSTİKLERİ & MAĞAZA -->
+        <!-- ORTA KOLON: SLIME RENGİ, KARAKTER ÖNİZLEME, MÜCADELE GÜCÜ & MAĞAZA -->
         <div class="lobby-panel">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h2>🎨 2. Karakterim &amp; Güç Geliştirme</h2>
+            <h2>⚔️ 2. Karakterim &amp; Mücadele Ruhu</h2>
             <span id="skin-lock-badge" style="font-size:10.5px; color:#FFB800; font-weight:800;">⚡ 10 Savaşçı Sınıfı</span>
           </div>
 
@@ -1504,12 +1487,12 @@
             <div id="lobby-preview-loadout-tags" style="font-size:10.5px; color:#00F5D4; font-weight:800; text-align:center;"></div>
           </div>
 
-          <!-- KARAKTER ÖZELLİKLERİ, 5 İSTATİSTİK ÇUBUĞU VE SEVİYE GELİŞTİRME (ÜCRETSİZ SINIR: 5.5) -->
+          <!-- KARAKTER ÖZELLİKLERİ, 5 İSTATİSTİK ÇUBUĞU VE GALİBİYET SERİSİ (1.0 ➔ 10.0) -->
           <div id="lobby-char-stats-card" class="char-stats-card">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
               <div id="lobby-char-name-role" style="font-size:12px; font-weight:900; color:#FFFFFF;">👑 Kral Tacı • <span style="color:#00F5D4;">Dengeli Lider</span></div>
               <span id="lobby-char-level-badge" style="background:linear-gradient(135deg,#00F5D4,#00BBF9); color:#080B12; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:900; white-space:nowrap;">
-                ⚡ Sv. 1.0 / 5.5
+                🔥 Sv. 1.0 / 10.0
               </span>
             </div>
 
@@ -1517,28 +1500,23 @@
               👑 Dengeli Güç &amp; +%5 Kemer Puanı
             </div>
 
-            <!-- Seviye Barı (1.0 - 5.5 Açık | 5.5 - 10.0 Ücretli/VIP Kilitli) -->
+            <!-- Galibiyet Serisi & Seviye Barı (1.0 ➔ 10.0) -->
             <div style="display:flex; flex-direction:column; gap:2px;">
               <div style="display:flex; justify-content:space-between; font-size:9.5px; font-weight:800; color:#94A3B8;">
-                <span>Gelişim: <strong id="lobby-char-lv-text" style="color:#00F59B;">Sv. 1.0</strong></span>
-                <span style="color:#FFE066;">🔒 5.5 Ücretsiz Sınır</span>
-                <span style="color:#FF70A6;">🔒 10.0 VIP/Elit</span>
+                <span>Mücadele Seviyesi: <strong id="lobby-char-lv-text" style="color:#00F59B;">Sv. 1.0 / 10.0</strong></span>
+                <span id="lobby-char-streak-badge" style="color:#FFE066;">🔥 Galibiyet Serisi: 0 Maç (+0.0 Sv)</span>
               </div>
               <div class="char-stat-track" style="height:9px;">
-                <div id="lobby-char-lv-bar" class="char-stat-fill-base" style="width:10%; background:linear-gradient(90deg,#00F59B,#00F5D4);"></div>
-                <div class="char-stat-locked-zone" title="Seviye 5.5 üzeri ücretsiz eşyalarla açılamaz! Yakında özel karakter ve ekipmanlarla devreye alınacak."></div>
+                <div id="lobby-char-lv-bar" class="char-stat-fill-base" style="width:10%; background:linear-gradient(90deg,#00F59B,#00F5D4,#FFE066);"></div>
               </div>
             </div>
 
             <!-- 5 Rekabetçi İstatistik Çubuğu (Hız, Atış, Manevra, Kemer, Dayanıklılık) -->
             <div id="lobby-char-stat-bars" style="display:flex; flex-direction:column; gap:4px; margin-top:2px;"></div>
 
-            <!-- Karakter Seviye Yükseltme Butonu -->
-            <button id="upgrade-char-level-btn" type="button" style="width:100%; margin-top:3px; background:linear-gradient(135deg,#00F59B,#00BBF9); color:#080B12; border:1.5px solid #FFFFFF; border-radius:10px; padding:7px 10px; font-size:11.5px; font-weight:900; cursor:pointer; box-shadow:0 0 16px rgba(0,245,155,0.38); transition:all 0.15s ease;">
-              ⬆️ KARAKTERİ GELİŞTİR (Sv. 1.0 ➔ 1.5 • 💎 150 Puan)
-            </button>
-            <div id="upgrade-char-lock-hint" style="font-size:9.5px; color:#94A3B8; font-weight:700; text-align:center; line-height:1.25;">
-              🔒 <strong style="color:#FFE066;">5.5 Üzeri Seviyeler:</strong> Ücretsiz eşyalarla en fazla <b>Sv. 5.5</b>'e çıkılabilir; 5.5+ Elit kademeler sonraki güncellemede!
+            <!-- Mücadele Ruhu & Galibiyet Serisi Bilgi Kutusu -->
+            <div id="upgrade-char-lock-hint" style="font-size:10px; color:#E2E8F0; background:rgba(0,245,212,0.08); border:1px solid rgba(0,245,212,0.28); border-radius:8px; padding:5px 8px; font-weight:800; text-align:center; line-height:1.3;">
+              ⚔️ <strong style="color:#00F59B;">Mücadele Ruhu:</strong> Arka arkaya kazandığın her maç karakterini <b style="color:#FFE066;">+0.5 Seviye</b> yükseltir (Hedef: <b>Sv. 10.0</b>)! Seri bozulursa Sv. 1.0'dan yeniden başlar.
             </div>
           </div>
 
@@ -1549,7 +1527,7 @@
           <div style="font-size:11px; color:#94A3B8; font-weight:700;">Slime Rengi Seç:</div>
           <div id="color-palette-container" class="color-palette"></div>
 
-          <div style="font-size:11px; color:#94A3B8; font-weight:700;">10 Temel Karakter Sınıfı (Seç &amp; Geliştir):</div>
+          <div style="font-size:11px; color:#94A3B8; font-weight:700;">10 Temel Savaşçı Karakter:</div>
           <div id="skins-grid-container" class="skins-grid" style="touch-action:pan-y; -webkit-overflow-scrolling:touch;"></div>
         </div>
 
@@ -1783,9 +1761,9 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/vendor/matter.min.js"></script>
-  <script src="/shared/constants.js?v=4.0"></script>
-  <script src="/shared/geometry.js?v=4.0"></script>
-  <script src="/js/audio.js?v=4.0"></script>
-  <script src="/js/client.js?v=4.0"></script>
+  <script src="/shared/constants.js?v=5.0"></script>
+  <script src="/shared/geometry.js?v=5.0"></script>
+  <script src="/js/audio.js?v=5.0"></script>
+  <script src="/js/client.js?v=5.0"></script>
 </body>
 </html>

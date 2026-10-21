@@ -181,14 +181,14 @@
   const lobbyStatScoreEl = document.getElementById('lobby-stat-score');
   const lobbyEquippedTitleBadgeEl = document.getElementById('lobby-equipped-title-badge');
 
-  // Lobi Karakter Nitelik & Yatırım (Seviye 1.0 -> 5.5) Kartı Elementleri
+  // Lobi Karakter Nitelik & Mücadele Serisi (Seviye 1.0 -> 10.0) Kartı Elementleri
   const lobbyCharNameRoleEl = document.getElementById('lobby-char-name-role');
   const lobbyCharLevelBadgeEl = document.getElementById('lobby-char-level-badge');
   const lobbyCharTraitBadgeEl = document.getElementById('lobby-char-trait-badge');
   const lobbyCharLvTextEl = document.getElementById('lobby-char-lv-text');
+  const lobbyCharStreakBadgeEl = document.getElementById('lobby-char-streak-badge');
   const lobbyCharLvBarEl = document.getElementById('lobby-char-lv-bar');
   const lobbyCharStatBarsEl = document.getElementById('lobby-char-stat-bars');
-  const upgradeCharLevelBtn = document.getElementById('upgrade-char-level-btn');
   const upgradeCharLockHintEl = document.getElementById('upgrade-char-lock-hint');
 
   const openShopBtn = document.getElementById('open-shop-btn');
@@ -205,20 +205,9 @@
   let charUpgradeConfig = window.SharedConstants.CHARACTER_UPGRADE_CONFIG || {
     START_LEVEL: 1.0,
     LEVEL_STEP: 0.5,
-    MAX_FREE_LEVEL: 5.5,
+    INTERNAL_BASE_GEAR_CAP: 5.5,
     MAX_TOTAL_LEVEL: 10.0,
-    STAT_GAIN_PER_STEP: 0.14,
-    STEP_COSTS: {
-      '1.0': 140,
-      '1.5': 210,
-      '2.0': 300,
-      '2.5': 420,
-      '3.0': 560,
-      '3.5': 740,
-      '4.0': 960,
-      '4.5': 1250,
-      '5.0': 1600
-    }
+    STAT_GAIN_PER_STREAK_STEP: 0.25
   };
   let mapObstacles = [];
   let roomsSummary = [];
@@ -237,7 +226,7 @@
     equipped: { hat: null, skin: null, belt: null, kill_effect: null, title: null },
     baseCharacter: 'crown',
     characterLevels: {},
-    stats: { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
+    stats: { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0, winStreak: 0, bestWinStreak: 0 }
   };
   let selectedColor = availableColors[0] ? availableColors[0].id : '#00F5D4';
   let selectedSkin = availableSkins[0] ? availableSkins[0].id : 'crown';
@@ -574,10 +563,10 @@
     const eco = getActiveEconomy();
     const lvMap = (eco && eco.characterLevels) || {};
     const raw = Number(lvMap[charId]);
-    const maxFree = charUpgradeConfig.MAX_FREE_LEVEL || 5.5;
+    const maxTotal = charUpgradeConfig.MAX_TOTAL_LEVEL || 10.0;
     const startLv = charUpgradeConfig.START_LEVEL || 1.0;
     if (!Number.isFinite(raw)) return startLv;
-    return Math.min(maxFree, Math.max(startLv, Math.round(raw * 2) / 2));
+    return Math.min(maxTotal, Math.max(startLv, Math.round(raw * 2) / 2));
   }
 
   function renderLobbyCharacterStatsCard() {
@@ -587,29 +576,34 @@
     const charObj = availableSkins.find((s) => s.id === charId) || availableSkins[0];
     if (!charObj) return;
 
-    const maxFree = charUpgradeConfig.MAX_FREE_LEVEL || 5.5;
+    const internalGearCap = charUpgradeConfig.INTERNAL_BASE_GEAR_CAP || 5.5;
     const maxTotal = charUpgradeConfig.MAX_TOTAL_LEVEL || 10.0;
     const stepSize = charUpgradeConfig.LEVEL_STEP || 0.5;
-    const statGainPerStep = charUpgradeConfig.STAT_GAIN_PER_STEP || 0.14;
+    const statGainPerStreakStep = charUpgradeConfig.STAT_GAIN_PER_STREAK_STEP || 0.25;
 
     const currentLv = getCharacterLevel(charObj.id);
-    const upgradeSteps = Math.max(0, Math.round((currentLv - 1.0) / stepSize));
-    const levelStatBonus = upgradeSteps * statGainPerStep;
+    const streakSteps = Math.max(0, Math.round((currentLv - 1.0) / stepSize));
+    const streakStatBonus = streakSteps * statGainPerStreakStep;
 
     if (lobbyCharNameRoleEl) {
       lobbyCharNameRoleEl.innerHTML = `${charObj.icon} ${escapeHtml(charObj.name)} <span style="color:#00BBF9; font-weight:800;">(${escapeHtml(charObj.role || 'Savaşçı')})</span>`;
     }
     if (lobbyCharLevelBadgeEl) {
-      lobbyCharLevelBadgeEl.textContent = `⚡ Sv. ${currentLv.toFixed(1)} / ${maxFree.toFixed(1)}`;
+      lobbyCharLevelBadgeEl.textContent = `🔥 Sv. ${currentLv.toFixed(1)} / ${maxTotal.toFixed(1)}`;
     }
     if (lobbyCharTraitBadgeEl) {
-      lobbyCharTraitBadgeEl.textContent = `🎯 Pasif Yetenek: ${charObj.trait || 'Dengeli Savaşçı'}`;
+      lobbyCharTraitBadgeEl.textContent = `🎯 Yetenek: ${charObj.trait || 'Dengeli Savaşçı'}`;
     }
     if (lobbyCharLvTextEl) {
-      lobbyCharLvTextEl.textContent = `${currentLv.toFixed(1)} / ${maxFree.toFixed(1)}`;
+      lobbyCharLvTextEl.textContent = `Sv. ${currentLv.toFixed(1)} / ${maxTotal.toFixed(1)}`;
+    }
+    if (lobbyCharStreakBadgeEl) {
+      lobbyCharStreakBadgeEl.textContent = streakSteps > 0
+        ? `🔥 Galibiyet Serisi: ${streakSteps} Maç (+${(streakSteps * 0.5).toFixed(1)} Sv)`
+        : `🔥 Galibiyet Serisi: 0 Maç (Her Galibiyet +0.5 Sv)`;
     }
     if (lobbyCharLvBarEl) {
-      const pct = Math.min(55, Math.max(8, (currentLv / maxTotal) * 100));
+      const pct = Math.min(100, Math.max(10, (currentLv / maxTotal) * 100));
       lobbyCharLvBarEl.style.width = `${pct}%`;
     }
 
@@ -639,135 +633,38 @@
 
     lobbyCharStatBarsEl.innerHTML = defs.map((d) => {
       const rawBase = Number(baseStats[d.key]) || 3.0;
-      const basePlusLv = Math.min(maxFree, rawBase + levelStatBonus);
-      const totalVal = Math.min(maxFree, basePlusLv + (gearBonuses[d.key] || 0));
+      // İç denge: ücretsiz temel karakter + eşya toplamı 5.5'i geçmez, üzerine galibiyet serisi (+0.25/maç) eklenerek 10.0'a çıkar
+      const baseWithGear = Math.min(internalGearCap, rawBase + (gearBonuses[d.key] || 0));
+      const totalVal = Math.min(maxTotal, baseWithGear + streakStatBonus);
       const bonusVal = Math.max(0, totalVal - rawBase);
 
-      const basePct = Math.min(55, Math.max(4, (rawBase / maxTotal) * 100));
-      const bonusPct = Math.min(55 - basePct, Math.max(0, (bonusVal / maxTotal) * 100));
+      const basePct = Math.min(100, Math.max(4, (rawBase / maxTotal) * 100));
+      const bonusPct = Math.min(100 - basePct, Math.max(0, (bonusVal / maxTotal) * 100));
 
       const bonusTag = bonusVal >= 0.05 ? `<span style="color:#00F59B;">(+${bonusVal.toFixed(1)})</span>` : '';
 
       return `
         <div class="char-stat-row">
           <div class="char-stat-label">${d.icon} ${escapeHtml(d.label)}</div>
-          <div class="char-stat-track" title="Ücretsiz Maksimum Sınır: 5.5 / 10.0 (5.5 Üzeri VIP/Elit Kilitli)">
+          <div class="char-stat-track">
             <div class="char-stat-fill-base" style="width:${basePct}%; background:${d.color};"></div>
             ${bonusPct > 0 ? `<div class="char-stat-fill-gear" style="left:${basePct}%; width:${bonusPct}%;"></div>` : ''}
-            <div class="char-stat-locked-zone"></div>
           </div>
           <div class="char-stat-val">${totalVal.toFixed(1)} ${bonusTag}</div>
         </div>
       `;
     }).join('');
 
-    if (upgradeCharLevelBtn) {
-      if (currentLv >= maxFree) {
-        upgradeCharLevelBtn.disabled = true;
-        upgradeCharLevelBtn.style.background = 'linear-gradient(135deg, #334155, #1E293B)';
-        upgradeCharLevelBtn.style.color = '#FFE066';
-        upgradeCharLevelBtn.style.border = '1px solid rgba(255, 224, 102, 0.45)';
-        upgradeCharLevelBtn.textContent = `🔒 Sv. ${maxFree.toFixed(1)} MAKS (5.5+ VIP/Elit Yakında!)`;
-        if (upgradeCharLockHintEl) {
-          upgradeCharLockHintEl.style.color = '#FFE066';
-          upgradeCharLockHintEl.textContent = '🔒 5.5 ücretsiz sınırına ulaştın! 5.5 üzeri seviyeler yakında özel karakter ve kostümlerle açılacak.';
-        }
-      } else {
-        const nextLv = Math.min(maxFree, Math.round((currentLv + stepSize) * 10) / 10);
-        const stepKey = currentLv.toFixed(1);
-        const cost = (charUpgradeConfig.STEP_COSTS && charUpgradeConfig.STEP_COSTS[stepKey]) || 450;
-        const canAfford = (Number(eco.slimePoints) || 0) >= cost;
-
-        upgradeCharLevelBtn.disabled = false;
-        upgradeCharLevelBtn.style.border = 'none';
-        if (canAfford) {
-          upgradeCharLevelBtn.style.background = 'linear-gradient(135deg, #00F59B, #00BBF9)';
-          upgradeCharLevelBtn.style.color = '#080B12';
-        } else {
-          upgradeCharLevelBtn.style.background = 'linear-gradient(135deg, rgba(0,245,155,0.28), rgba(0,187,249,0.28))';
-          upgradeCharLevelBtn.style.color = '#E2E8F0';
-        }
-        upgradeCharLevelBtn.textContent = `⬆️ Geliştir (Sv.${currentLv.toFixed(1)} ➔ Sv.${nextLv.toFixed(1)}) — 💎 ${cost.toLocaleString('tr-TR')} Puan`;
-        if (upgradeCharLockHintEl) {
-          upgradeCharLockHintEl.style.color = '#94A3B8';
-          upgradeCharLockHintEl.textContent = '💡 Karakterine yatırım yaparak hız, atış ve kemer gücünü 5.5 sınırına kadar yükselt!';
-        }
-      }
-    }
-  }
-
-  function handleUpgradeCharacterLevel() {
-    window.soundManager.init();
-    const charId = getActiveCharacterId();
-    const charObj = availableSkins.find((s) => s.id === charId) || availableSkins[0];
-    if (!charObj) return;
-
-    const maxFree = charUpgradeConfig.MAX_FREE_LEVEL || 5.5;
-    const stepSize = charUpgradeConfig.LEVEL_STEP || 0.5;
-    const currentLv = getCharacterLevel(charObj.id);
-
-    if (currentLv >= maxFree) {
-      window.soundManager.playUiPop();
-      if (upgradeCharLockHintEl) {
-        upgradeCharLockHintEl.style.color = '#FF2A85';
-        upgradeCharLockHintEl.textContent = '🔒 5.5 üzeri seviyelere ücretsiz itemlerle çıkılamaz! Yakında özel güncellemeyle açılacak.';
-      }
-      return;
-    }
-
-    if (currentUser) {
-      socket.emit('upgradeCharacter', { skinId: charObj.id }, (res) => {
-        if (res && res.ok && res.user) {
-          currentUser = res.user;
-          saveUserSessionToStorage(currentUser);
-          window.soundManager.playPowerupPickup();
-          renderColorAndSkinSelectors();
-          updateCareerAndShopUI();
-          if (upgradeCharLockHintEl) {
-            upgradeCharLockHintEl.style.color = '#00F59B';
-            upgradeCharLockHintEl.textContent = `🎉 ${charObj.name} Sv.${Number(res.newLevel || currentLv + stepSize).toFixed(1)} seviyesine yükseltildi! Tüm nitelikleri güçlendi!`;
-          }
-        } else {
-          window.soundManager.playUiPop();
-          if (upgradeCharLockHintEl) {
-            upgradeCharLockHintEl.style.color = '#FF2A85';
-            upgradeCharLockHintEl.textContent = (res && res.error) || 'Geliştirme için yeterli Slime Puanın yok!';
-          }
-        }
-      });
-      return;
-    }
-
-    const stepKey = currentLv.toFixed(1);
-    const cost = (charUpgradeConfig.STEP_COSTS && charUpgradeConfig.STEP_COSTS[stepKey]) || 450;
-    if (guestEconomy.slimePoints < cost) {
-      window.soundManager.playUiPop();
-      if (upgradeCharLockHintEl) {
-        upgradeCharLockHintEl.style.color = '#FF2A85';
-        upgradeCharLockHintEl.textContent = `⚠️ Yetersiz Slime Puan! (${cost - guestEconomy.slimePoints} 💎 daha kazanmalısın — Maçta kemer kes ve rakip ele!)`;
-      }
-      return;
-    }
-
-    guestEconomy.slimePoints -= cost;
-    const nextLv = Math.min(maxFree, Math.round((currentLv + stepSize) * 10) / 10);
-    if (!guestEconomy.characterLevels) guestEconomy.characterLevels = {};
-    guestEconomy.characterLevels[charObj.id] = nextLv;
-    guestEconomy.baseCharacter = charObj.id;
-
-    saveGuestEconomyToStorage();
-    syncGuestLoadoutToServer();
-    window.soundManager.playPowerupPickup();
-    renderColorAndSkinSelectors();
-    updateCareerAndShopUI();
     if (upgradeCharLockHintEl) {
-      upgradeCharLockHintEl.style.color = '#00F59B';
-      upgradeCharLockHintEl.textContent = `🎉 ${charObj.name} Sv.${nextLv.toFixed(1)} seviyesine yükseltildi!`;
+      if (currentLv >= maxTotal) {
+        upgradeCharLockHintEl.innerHTML = `👑 <strong style="color:#FFE066;">EFSANE SERİ (Sv. 10.0):</strong> Maksimum mücadele seviyesindesin! Seriyi korumak için kazanmaya devam et!`;
+      } else if (streakSteps > 0) {
+        const nextLv = Math.min(maxTotal, currentLv + 0.5);
+        upgradeCharLockHintEl.innerHTML = `🔥 <strong style="color:#00F59B;">${streakSteps} Maçlık Galibiyet Serisi!</strong> Bir sonraki galibiyette <b>Sv. ${nextLv.toFixed(1)}</b> olacaksın (Seri bozulursa Sv. 1.0'dan başlar).`;
+      } else {
+        upgradeCharLockHintEl.innerHTML = `⚔️ <strong style="color:#00F59B;">Mücadele Ruhu:</strong> Arka arkaya kazandığın her maç karakterini <b style="color:#FFE066;">+0.5 Seviye</b> yükseltir (Hedef: <b>Sv. 10.0</b>)! Seri bozulursa baştan başlar.`;
+      }
     }
-  }
-
-  if (upgradeCharLevelBtn) {
-    upgradeCharLevelBtn.addEventListener('click', handleUpgradeCharacterLevel);
   }
 
   function syncStoreItemsOwnership() {
@@ -2986,22 +2883,27 @@
 
   socket.on('matchRewardsEarned', (reward) => {
     if (!reward) return;
-    const earnedPoints = Number(reward.earnedPoints) || 0;
-    const earnedCoins = Number(reward.earnedCoins) || 0;
+    const earnedPoints = Number(reward.earnedPoints ?? reward.endOfMatchBonusPoints) || 0;
+    const earnedCoins = Number(reward.earnedCoins ?? reward.endOfMatchBonusCoins) || 0;
+    const activeCharId = getActiveCharacterId();
 
     if (currentUser) {
-      if (Number.isFinite(Number(reward.totalSlimePoints))) {
-        currentUser.slimePoints = Number(reward.totalSlimePoints);
+      if (reward.user && typeof reward.user === 'object') {
+        currentUser = { ...currentUser, ...reward.user };
       } else {
-        currentUser.slimePoints = (currentUser.slimePoints || 0) + earnedPoints;
-      }
-      if (Number.isFinite(Number(reward.totalSlimeCoins))) {
-        currentUser.slimeCoins = Number(reward.totalSlimeCoins);
-      } else {
-        currentUser.slimeCoins = (currentUser.slimeCoins || 0) + earnedCoins;
-      }
-      if (reward.stats) {
-        currentUser.stats = reward.stats;
+        if (Number.isFinite(Number(reward.totalSlimePoints))) {
+          currentUser.slimePoints = Number(reward.totalSlimePoints);
+        } else {
+          currentUser.slimePoints = (currentUser.slimePoints || 0) + earnedPoints;
+        }
+        if (Number.isFinite(Number(reward.totalSlimeCoins))) {
+          currentUser.slimeCoins = Number(reward.totalSlimeCoins);
+        } else {
+          currentUser.slimeCoins = (currentUser.slimeCoins || 0) + earnedCoins;
+        }
+        if (reward.stats) {
+          currentUser.stats = reward.stats;
+        }
       }
       saveUserSessionToStorage(currentUser);
     } else {
@@ -3009,24 +2911,43 @@
       guestEconomy.slimeCoins += earnedCoins;
       guestEconomy.stats.matchesPlayed = (guestEconomy.stats.matchesPlayed || 0) + 1;
       guestEconomy.stats.totalScore = (guestEconomy.stats.totalScore || 0) + (Number(reward.score) || 0);
-      if (reward.won) guestEconomy.stats.wins = (guestEconomy.stats.wins || 0) + 1;
+      if (!guestEconomy.characterLevels || typeof guestEconomy.characterLevels !== 'object') {
+        guestEconomy.characterLevels = {};
+      }
+      if (reward.won) {
+        guestEconomy.stats.wins = (guestEconomy.stats.wins || 0) + 1;
+        guestEconomy.stats.winStreak = (guestEconomy.stats.winStreak || 0) + 1;
+        guestEconomy.stats.bestWinStreak = Math.max(guestEconomy.stats.bestWinStreak || 0, guestEconomy.stats.winStreak);
+        const currLv = Number(guestEconomy.characterLevels[activeCharId] || 1.0);
+        guestEconomy.characterLevels[activeCharId] = Math.min(10.0, Math.round((currLv + 0.5) * 2) / 2);
+      } else {
+        guestEconomy.stats.winStreak = 0;
+        guestEconomy.characterLevels[activeCharId] = 1.0;
+      }
       saveGuestEconomyToStorage();
+      syncGuestLoadoutToServer();
     }
 
     updateAuthUI();
     updateCareerAndShopUI();
 
     const eco = getActiveEconomy();
+    const newLv = getCharacterLevel(activeCharId);
+    const streakText = reward.won
+      ? `<span style="background:rgba(0,245,155,0.18); border:1.5px solid #00F59B; color:#00F59B; padding:5px 12px; border-radius:10px; font-weight:900; font-size:13px;">🔥 Galibiyet Serisi! Seviye +0.5 ➔ Sv.${newLv.toFixed(1)} / 10.0</span>`
+      : `<span style="background:rgba(255,42,133,0.16); border:1.5px solid #FF2A85; color:#FF70A6; padding:5px 12px; border-radius:10px; font-weight:900; font-size:12.5px;">⚔️ Seri Bozuldu (Sv. 1.0) — Yeni Seri İçin Mücadeleye Devam!</span>`;
+
     if (matchRewardSummaryEl) {
       matchRewardSummaryEl.style.display = 'flex';
       matchRewardSummaryEl.innerHTML = `
         <div style="display:flex; flex-direction:column; gap:2px;">
-          <span style="font-size:11px; font-weight:900; color:#00F5D4; text-transform:uppercase;">🎁 Maç Sonu Kazancın (Kemer Kesme & Eleme Ödülü)</span>
+          <span style="font-size:11px; font-weight:900; color:#00F5D4; text-transform:uppercase;">🎁 Maç Sonu Kazancın &amp; Mücadele Serisi</span>
           <span style="font-size:12px; color:#E2E8F0;">✂️ ${reward.cuts || 0} Kesim  •  💀 ${reward.kills || 0} Eleme  •  ⭐ ${reward.score || 0} Skor ${reward.won ? ' • 🏆 ŞAMPİYONLUK BONUSLU!' : ''}</span>
         </div>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <span style="background:rgba(0,245,212,0.18); border:1.5px solid #00F5D4; color:#00F5D4; padding:5px 12px; border-radius:10px; font-weight:900; font-size:14px;">+${earnedPoints.toLocaleString('tr-TR')} 💎 Slime Puan</span>
-          ${earnedCoins > 0 ? `<span style="background:rgba(255,224,102,0.18); border:1.5px solid #FFE066; color:#FFE066; padding:5px 12px; border-radius:10px; font-weight:900; font-size:14px;">+${earnedCoins.toLocaleString('tr-TR')} 🪙 Slime Coin</span>` : ''}
+          ${streakText}
+          <span style="background:rgba(0,245,212,0.18); border:1.5px solid #00F5D4; color:#00F5D4; padding:5px 12px; border-radius:10px; font-weight:900; font-size:14px;">+${(Number(reward.totalMatchPoints) || earnedPoints).toLocaleString('tr-TR')} 💎 Slime Puan</span>
+          ${(Number(reward.totalMatchCoins) || earnedCoins) > 0 ? `<span style="background:rgba(255,224,102,0.18); border:1.5px solid #FFE066; color:#FFE066; padding:5px 12px; border-radius:10px; font-weight:900; font-size:14px;">+${(Number(reward.totalMatchCoins) || earnedCoins).toLocaleString('tr-TR')} 🪙 Slime Coin</span>` : ''}
           <span style="font-size:11.5px; color:#94A3B8; font-weight:800;">Toplam Cüzdan: <strong style="color:#00F5D4;">${(eco.slimePoints || 0).toLocaleString('tr-TR')} 💎</strong> | <strong style="color:#FFE066;">${(eco.slimeCoins || 0).toLocaleString('tr-TR')} 🪙</strong></span>
         </div>
       `;
