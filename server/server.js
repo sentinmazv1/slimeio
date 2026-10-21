@@ -479,27 +479,32 @@ function refreshPlayerCombatMods(player, socketUser = null, socket = null) {
       skin: player.skin,
       baseCharacter: player.baseCharacter,
       equipped: null,
-      characterLevels: {}
+      characterLevels: {},
+      winStreak: 0
     });
     player.charLevel = 1.0;
   } else if (socketUser) {
     player.baseCharacter = socketUser.baseCharacter || (BASIC_10_SKINS.some((s) => s.id === player.skin) ? player.skin : 'crown');
+    const uStreak = Number(socketUser.winStreak ?? (socketUser.stats && socketUser.stats.winStreak) ?? 0) || 0;
     player.combatMods = userStore.computePlayerCombatMods({
       skin: player.skin,
       baseCharacter: player.baseCharacter,
       equipped: player.equipped,
-      characterLevels: socketUser.characterLevels
+      characterLevels: socketUser.characterLevels,
+      winStreak: uStreak
     });
     player.charLevel = player.combatMods.charLevel || 1.0;
   } else {
     const gBase = (socket && socket.guestBaseCharacter) || (BASIC_10_SKINS.some((s) => s.id === player.skin) ? player.skin : 'crown');
     const gLevels = (socket && socket.guestCharacterLevels) || {};
+    const gStreak = Number(socket && socket.guestWinStreak) || 0;
     player.baseCharacter = gBase;
     player.combatMods = userStore.computePlayerCombatMods({
       skin: player.skin,
       baseCharacter: gBase,
       equipped: player.equipped,
-      characterLevels: gLevels
+      characterLevels: gLevels,
+      winStreak: gStreak
     });
     player.charLevel = player.combatMods.charLevel || 1.0;
   }
@@ -586,11 +591,11 @@ function grantLiveCombatReward(player, type) {
   const mods = player.combatMods || {};
   const bonusMult = isKill ? (1 + (mods.killPointBonus || 0)) : (1 + (mods.cutPointBonus || 0));
   const basePoints = isKill
-    ? (GAME_CONFIG.REWARD_POINT_PER_KILL || 75)
-    : (GAME_CONFIG.REWARD_POINT_PER_CUT || 25);
+    ? (GAME_CONFIG.REWARD_POINT_PER_KILL || 12)
+    : (GAME_CONFIG.REWARD_POINT_PER_CUT || 4);
   const earnedPoints = Math.round(basePoints * bonusMult);
   const earnedCoins = isKill && player.kills > 0 && player.kills % 3 === 0
-    ? (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 5)
+    ? (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 1)
     : 0;
 
   let updatedUser = null;
@@ -636,7 +641,7 @@ function killPlayer(room, victim, killerId = null) {
     if (killer.combatMods && killer.combatMods.killSpeedBoost > 1) {
       killer.killSpeedBoostUntil = Date.now() + 3000;
     }
-    addScore(room, killer, GAME_CONFIG.SCORE_PER_KILL, 'ELEME! (+75 💎)', deathPos.x, deathPos.y);
+    addScore(room, killer, GAME_CONFIG.SCORE_PER_KILL, `ELEME! (+${GAME_CONFIG.REWARD_POINT_PER_KILL || 12} 💎)`, deathPos.x, deathPos.y);
     grantLiveCombatReward(killer, 'kill');
   }
 
@@ -1271,7 +1276,7 @@ function updateRoomArrows(room, now) {
           owner.bands.splice(k, 1);
           if (shooter) {
             shooter.cuts += 1;
-            addScore(room, shooter, GAME_CONFIG.SCORE_PER_BELT_CUT, 'OKLA KESTİ! (+25 💎)', hit.x, hit.y);
+            addScore(room, shooter, GAME_CONFIG.SCORE_PER_BELT_CUT, `OKLA KESTİ! (+${GAME_CONFIG.REWARD_POINT_PER_CUT || 4} 💎)`, hit.x, hit.y);
             grantLiveCombatReward(shooter, 'cut');
           }
 
@@ -1320,7 +1325,7 @@ function updateRoomArrows(room, now) {
 
           if (shooter) {
             shooter.cuts += 1;
-            addScore(room, shooter, GAME_CONFIG.SCORE_PER_ARROW_HIT, 'TAM İSABET! (+25 💎)', bodyHit.x, bodyHit.y);
+            addScore(room, shooter, GAME_CONFIG.SCORE_PER_ARROW_HIT, `TAM İSABET! (+${GAME_CONFIG.REWARD_POINT_PER_CUT || 4} 💎)`, bodyHit.x, bodyHit.y);
             grantLiveCombatReward(shooter, 'cut');
           }
 
@@ -1401,7 +1406,7 @@ function processRoomBandIntersections(room) {
           owner.bands.splice(k, 1);
 
           cutter.cuts += 1;
-          addScore(room, cutter, GAME_CONFIG.SCORE_PER_BELT_CUT, 'KESİM! (+25 💎)', hit.x, hit.y);
+          addScore(room, cutter, GAME_CONFIG.SCORE_PER_BELT_CUT, `KESİM! (+${GAME_CONFIG.REWARD_POINT_PER_CUT || 4} 💎)`, hit.x, hit.y);
           grantLiveCombatReward(cutter, 'cut');
 
           io.to(room.id).emit('bandSnapped', {
@@ -1596,13 +1601,13 @@ function triggerMatchEnd(room) {
     const won = room.isTeam ? row.team === winningTeam : winner.id === row.id;
     const mods = row.combatMods || {};
     const matchMult = 1 + (mods.matchPointBonus || 0);
-    const cutsPoints = Math.round((row.cuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 25) * (1 + (mods.cutPointBonus || 0)));
-    const killsPoints = Math.round((row.kills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 75) * (1 + (mods.killPointBonus || 0)));
-    const scorePoints = Math.round((row.score || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.15) * matchMult);
-    const bonusPoints = Math.round(((GAME_CONFIG.REWARD_POINT_MATCH_COMPLETE || 50) + (won ? (GAME_CONFIG.REWARD_POINT_MATCH_WIN || 150) : 0)) * matchMult);
+    const cutsPoints = Math.round((row.cuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 4) * (1 + (mods.cutPointBonus || 0)));
+    const killsPoints = Math.round((row.kills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 12) * (1 + (mods.killPointBonus || 0)));
+    const scorePoints = Math.round((row.score || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.03) * matchMult);
+    const bonusPoints = Math.round(((GAME_CONFIG.REWARD_POINT_MATCH_COMPLETE || 10) + (won ? (GAME_CONFIG.REWARD_POINT_MATCH_WIN || 30) : 0)) * matchMult);
     const totalMatchPoints = cutsPoints + killsPoints + scorePoints + bonusPoints;
-    const killCoins = Math.floor((row.kills || 0) / 3) * (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 5);
-    const winCoins = won ? (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 15) : 0;
+    const killCoins = Math.floor((row.kills || 0) / 3) * (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 1);
+    const winCoins = won ? (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 3) : 0;
     const totalMatchCoins = killCoins + winCoins;
 
     return {
@@ -1642,17 +1647,13 @@ function triggerMatchEnd(room) {
       winStreak = Number(updatedUser && updatedUser.winStreak) || 0;
       newCharLevel = Number(p.charLevel || (updatedUser && updatedUser.charLevel) || 1.0);
     } else if (sock) {
-      const gChar = sock.guestBaseCharacter || (BASIC_10_SKINS.some((s) => s.id === p.skin) ? p.skin : 'crown');
       if (!sock.guestCharacterLevels || typeof sock.guestCharacterLevels !== 'object') {
         sock.guestCharacterLevels = {};
       }
       if (row.won) {
         sock.guestWinStreak = (Number(sock.guestWinStreak) || 0) + 1;
-        const currLv = Number(sock.guestCharacterLevels[gChar] || p.charLevel || 1.0);
-        sock.guestCharacterLevels[gChar] = Math.min(10.0, Math.round((currLv + 0.5) * 2) / 2);
       } else {
         sock.guestWinStreak = 0;
-        sock.guestCharacterLevels[gChar] = 1.0;
       }
       refreshPlayerCombatMods(p, null, sock);
       winStreak = sock.guestWinStreak || 0;
@@ -2348,6 +2349,9 @@ io.on('connection', (socket) => {
     if (payload.characterLevels && typeof payload.characterLevels === 'object') {
       socket.guestCharacterLevels = payload.characterLevels;
     }
+    if (typeof payload.winStreak === 'number') {
+      socket.guestWinStreak = Math.max(0, Math.round(payload.winStreak));
+    }
     if (payload.guestName) {
       const cleanG = userStore.sanitizeText(payload.guestName, 14);
       if (cleanG.length >= 2) socket.guestName = cleanG;
@@ -2382,7 +2386,8 @@ io.on('connection', (socket) => {
       watchOnly = false,
       guestEquipped = null,
       guestBaseCharacter = null,
-      guestCharacterLevels = null
+      guestCharacterLevels = null,
+      guestWinStreak = null
     } = payload || {};
     if (guestEquipped && typeof guestEquipped === 'object') {
       socket.guestEquipped = {
@@ -2398,6 +2403,9 @@ io.on('connection', (socket) => {
     }
     if (guestCharacterLevels && typeof guestCharacterLevels === 'object') {
       socket.guestCharacterLevels = guestCharacterLevels;
+    }
+    if (typeof guestWinStreak === 'number') {
+      socket.guestWinStreak = Math.max(0, Math.round(guestWinStreak));
     }
     const room = rooms.get(roomId);
     if (!room) {

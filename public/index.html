@@ -1353,7 +1353,7 @@
             🔗 Arkadaşını Çağır / Linki Paylaş
           </button>
         </div>
-        <p>İsmini gir, maçlarda kemer kesip (✂️ +25 💎) rakip eleyerek (💀 +75 💎) Slime Puan biriktir ve Mağazadan karakterini geliştir!</p>
+        <p>İsmini gir, maçlarda kemer kesip (✂️ +4 💎) rakip eleyerek (💀 +12 💎) Maç Puanı biriktir, karakterini güçlendir ve galibiyet serisiyle Sv. 10.0'a ulaş!</p>
       </div>
 
       <div class="lobby-grid">
@@ -1451,11 +1451,11 @@
             <div style="display:flex; gap:6px; margin-bottom:6px;">
               <div style="flex:1; background:rgba(0,245,212,0.15); border:1px solid #00F5D4; border-radius:9px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:10.5px; font-weight:800; color:#CBD5E1;">💎 Slime Puan:</span>
-                <span id="lobby-wallet-points" style="font-size:13px; font-weight:900; color:#00F5D4;">500</span>
+                <span id="lobby-wallet-points" style="font-size:13px; font-weight:900; color:#00F5D4;">120</span>
               </div>
               <div style="flex:1; background:rgba(255,184,0,0.15); border:1px solid #FFB800; border-radius:9px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:10.5px; font-weight:800; color:#CBD5E1;">🪙 Coin:</span>
-                <span id="lobby-wallet-coins" style="font-size:13px; font-weight:900; color:#FFE066;">100</span>
+                <span id="lobby-wallet-coins" style="font-size:13px; font-weight:900; color:#FFE066;">25</span>
               </div>
             </div>
             <div class="career-stats-grid">
@@ -1487,7 +1487,7 @@
             <div id="lobby-preview-loadout-tags" style="font-size:10.5px; color:#00F5D4; font-weight:800; text-align:center;"></div>
           </div>
 
-          <!-- KARAKTER ÖZELLİKLERİ, 5 İSTATİSTİK ÇUBUĞU VE GALİBİYET SERİSİ (1.0 ➔ 10.0) -->
+          <!-- KARAKTER ÖZELLİKLERİ, 5 İSTATİSTİK ÇUBUĞU, MAÇ PUANI GÜÇLENDİRME VE GALİBİYET SERİSİ (1.0 ➔ 10.0) -->
           <div id="lobby-char-stats-card" class="char-stats-card">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
               <div id="lobby-char-name-role" style="font-size:12px; font-weight:900; color:#FFFFFF;">👑 Kral Tacı • <span style="color:#00F5D4;">Dengeli Lider</span></div>
@@ -1514,9 +1514,15 @@
             <!-- 5 Rekabetçi İstatistik Çubuğu (Hız, Atış, Manevra, Kemer, Dayanıklılık) -->
             <div id="lobby-char-stat-bars" style="display:flex; flex-direction:column; gap:4px; margin-top:2px;"></div>
 
+            <!-- Maç Puanı ile Seviye Güçlendirme Butonu -->
+            <button id="upgrade-char-level-btn" type="button" class="upgrade-char-btn">
+              <span>⬆️ Seviye Güçlendir (+0.5 Sv)</span>
+              <span id="upgrade-char-cost-badge" style="background:rgba(8,11,18,0.85); color:#00F5D4; padding:2px 8px; border-radius:999px; font-size:10.5px;">650 💎</span>
+            </button>
+
             <!-- Mücadele Ruhu & Galibiyet Serisi Bilgi Kutusu -->
             <div id="upgrade-char-lock-hint" style="font-size:10px; color:#E2E8F0; background:rgba(0,245,212,0.08); border:1px solid rgba(0,245,212,0.28); border-radius:8px; padding:5px 8px; font-weight:800; text-align:center; line-height:1.3;">
-              ⚔️ <strong style="color:#00F59B;">Mücadele Ruhu:</strong> Arka arkaya kazandığın her maç karakterini <b style="color:#FFE066;">+0.5 Seviye</b> yükseltir (Hedef: <b>Sv. 10.0</b>)! Seri bozulursa Sv. 1.0'dan yeniden başlar.
+              ⚔️ <strong style="color:#00F59B;">Mücadele Ruhu:</strong> Maç Puanı (💎) veya arka arkaya galibiyet serisi (<b style="color:#FFE066;">+0.5 Sv</b>) ile <b>Sv. 10.0</b>'a ilerle! Seri bozulursa seri bonusu sıfırlanır.
             </div>
           </div>
 
@@ -1537,10 +1543,10 @@
           <div id="modes-list-container" style="display:flex; flex-direction:column; gap:8px;"></div>
 
           <div style="font-size:11px; color:#CBD5E1; background:rgba(0,245,212,0.08); border:1px solid rgba(0,245,212,0.3); border-radius:10px; padding:8px 10px; line-height:1.45;">
-            🎮 <strong>Nasıl Slime Puan (💎) Kazanılır?</strong><br/>
-            • <strong>Kemer Kesme (✂️):</strong> +25 Slime Puan<br/>
-            • <strong>Rakip Eleme (💀):</strong> +75 Slime Puan (+Her 3 elemede 5 🪙)<br/>
-            • <strong>Maç Sonu &amp; Zafer:</strong> +200 Slime Puan &amp; +15 Slime Coin!
+            🎮 <strong>Maç Puanı (💎) &amp; Galibiyet Serisi:</strong><br/>
+            • <strong>Kemer Kesme (✂️):</strong> +4 Maç Puanı<br/>
+            • <strong>Rakip Eleme (💀):</strong> +12 Maç Puanı (+Her 3 elemede 1 🪙)<br/>
+            • <strong>Zafer &amp; Seri:</strong> +40 Maç Puanı, +3 🪙 ve <strong>+0.5 Seviye Serisi</strong>!
           </div>
 
           <div style="display:flex; gap:8px; margin-top:auto;">
@@ -1572,11 +1578,11 @@
         <div class="shop-wallet-row">
           <div class="wallet-badge wallet-points">
             <span>💎 Slime Puan:</span>
-            <span id="shop-wallet-points">500</span>
+            <span id="shop-wallet-points">120</span>
           </div>
           <div class="wallet-badge wallet-coins">
             <span>🪙 Slime Coin:</span>
-            <span id="shop-wallet-coins">100</span>
+            <span id="shop-wallet-coins">25</span>
           </div>
           <button id="shop-claim-pack-btn" type="button" style="background:linear-gradient(135deg,#FFB800,#FF2A85); color:#080B12; border:none; border-radius:999px; padding:7px 14px; font-size:11.5px; font-weight:900; cursor:pointer; box-shadow:0 0 16px rgba(255,184,0,0.35);">
             🪙 Coin Paketi Al (Yakında)

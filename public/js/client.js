@@ -181,7 +181,7 @@
   const lobbyStatScoreEl = document.getElementById('lobby-stat-score');
   const lobbyEquippedTitleBadgeEl = document.getElementById('lobby-equipped-title-badge');
 
-  // Lobi Karakter Nitelik & Mücadele Serisi (Seviye 1.0 -> 10.0) Kartı Elementleri
+  // Lobi Karakter Nitelik, Maç Puanı Güçlendirme & Mücadele Serisi (Seviye 1.0 -> 10.0) Kartı Elementleri
   const lobbyCharNameRoleEl = document.getElementById('lobby-char-name-role');
   const lobbyCharLevelBadgeEl = document.getElementById('lobby-char-level-badge');
   const lobbyCharTraitBadgeEl = document.getElementById('lobby-char-trait-badge');
@@ -189,6 +189,8 @@
   const lobbyCharStreakBadgeEl = document.getElementById('lobby-char-streak-badge');
   const lobbyCharLvBarEl = document.getElementById('lobby-char-lv-bar');
   const lobbyCharStatBarsEl = document.getElementById('lobby-char-stat-bars');
+  const upgradeCharLevelBtn = document.getElementById('upgrade-char-level-btn');
+  const upgradeCharCostBadgeEl = document.getElementById('upgrade-char-cost-badge');
   const upgradeCharLockHintEl = document.getElementById('upgrade-char-lock-hint');
 
   const openShopBtn = document.getElementById('open-shop-btn');
@@ -207,7 +209,19 @@
     LEVEL_STEP: 0.5,
     INTERNAL_BASE_GEAR_CAP: 5.5,
     MAX_TOTAL_LEVEL: 10.0,
-    STAT_GAIN_PER_STREAK_STEP: 0.25
+    STAT_GAIN_PER_STEP: 0.14,
+    STAT_GAIN_PER_STREAK_STEP: 0.25,
+    STEP_COSTS: {
+      '1.0': 650,
+      '1.5': 1100,
+      '2.0': 1650,
+      '2.5': 2300,
+      '3.0': 3100,
+      '3.5': 4000,
+      '4.0': 5200,
+      '4.5': 6600,
+      '5.0': 8500
+    }
   };
   let mapObstacles = [];
   let roomsSummary = [];
@@ -220,8 +234,8 @@
   let currentUser = null; // Giriş yapmış üye bilgisi
   let guestFriends = []; // Misafir oturumda takip edilen oyuncular
   let guestEconomy = {
-    slimePoints: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_POINTS) || 500,
-    slimeCoins: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_COINS) || 100,
+    slimePoints: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_POINTS) || 120,
+    slimeCoins: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_COINS) || 25,
     ownedItems: [],
     equipped: { hat: null, skin: null, belt: null, kill_effect: null, title: null },
     baseCharacter: 'crown',
@@ -390,11 +404,11 @@
         characterLevels: userObj.characterLevels || {},
         friendCount: userObj.friendCount || 0,
         friends: userObj.friends || [],
-        slimePoints: Number.isFinite(Number(userObj.slimePoints)) ? Number(userObj.slimePoints) : 500,
-        slimeCoins: Number.isFinite(Number(userObj.slimeCoins)) ? Number(userObj.slimeCoins) : 100,
+        slimePoints: Number.isFinite(Number(userObj.slimePoints)) ? Number(userObj.slimePoints) : 120,
+        slimeCoins: Number.isFinite(Number(userObj.slimeCoins)) ? Number(userObj.slimeCoins) : 25,
         ownedItems: Array.isArray(userObj.ownedItems) ? userObj.ownedItems : [],
         equipped: userObj.equipped || { hat: null, skin: null, belt: null, kill_effect: null, title: null },
-        stats: userObj.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
+        stats: userObj.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0, winStreak: 0, bestWinStreak: 0 }
       }));
     } catch (_e) {}
   }
@@ -429,6 +443,7 @@
       skin: selectedSkin,
       baseCharacter: guestEconomy.baseCharacter || selectedBaseCharacter || 'crown',
       characterLevels: guestEconomy.characterLevels || {},
+      winStreak: Number(guestEconomy.stats && guestEconomy.stats.winStreak) || 0,
       equipped: guestEconomy.equipped,
       guestName: gName
     });
@@ -477,7 +492,9 @@
               totalCuts: Number(parsedEco.stats.totalCuts) || 0,
               totalKills: Number(parsedEco.stats.totalKills) || 0,
               matchesPlayed: Number(parsedEco.stats.matchesPlayed) || 0,
-              wins: Number(parsedEco.stats.wins) || 0
+              wins: Number(parsedEco.stats.wins) || 0,
+              winStreak: Number(parsedEco.stats.winStreak) || 0,
+              bestWinStreak: Number(parsedEco.stats.bestWinStreak) || 0
             };
           }
           if (parsedEco.color) selectedColor = parsedEco.color;
@@ -505,11 +522,11 @@
             characterLevels: creds.characterLevels || {},
             friendCount: creds.friendCount || 0,
             friends: creds.friends || [],
-            slimePoints: Number.isFinite(Number(creds.slimePoints)) ? Number(creds.slimePoints) : 500,
-            slimeCoins: Number.isFinite(Number(creds.slimeCoins)) ? Number(creds.slimeCoins) : 100,
+            slimePoints: Number.isFinite(Number(creds.slimePoints)) ? Number(creds.slimePoints) : 120,
+            slimeCoins: Number.isFinite(Number(creds.slimeCoins)) ? Number(creds.slimeCoins) : 25,
             ownedItems: Array.isArray(creds.ownedItems) ? creds.ownedItems : [],
             equipped: creds.equipped || { hat: null, skin: null, belt: null, kill_effect: null, title: null },
-            stats: creds.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 }
+            stats: creds.stats || { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0, winStreak: 0, bestWinStreak: 0 }
           };
           selectedColor = currentUser.color;
           selectedSkin = currentUser.skin;
@@ -525,8 +542,8 @@
 
   function getActiveEconomy() {
     if (currentUser) {
-      if (!Number.isFinite(Number(currentUser.slimePoints))) currentUser.slimePoints = 500;
-      if (!Number.isFinite(Number(currentUser.slimeCoins))) currentUser.slimeCoins = 100;
+      if (!Number.isFinite(Number(currentUser.slimePoints))) currentUser.slimePoints = 120;
+      if (!Number.isFinite(Number(currentUser.slimeCoins))) currentUser.slimeCoins = 25;
       if (!Array.isArray(currentUser.ownedItems)) currentUser.ownedItems = [];
       if (!currentUser.equipped || typeof currentUser.equipped !== 'object') {
         currentUser.equipped = { hat: null, skin: null, belt: null, kill_effect: null, title: null };
@@ -535,7 +552,7 @@
         currentUser.characterLevels = {};
       }
       if (!currentUser.stats) {
-        currentUser.stats = { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 };
+        currentUser.stats = { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0, winStreak: 0, bestWinStreak: 0 };
       }
       return currentUser;
     }
@@ -559,14 +576,26 @@
     return 'crown';
   }
 
-  function getCharacterLevel(charId) {
+  function getBaseCharacterLevel(charId) {
     const eco = getActiveEconomy();
     const lvMap = (eco && eco.characterLevels) || {};
     const raw = Number(lvMap[charId]);
-    const maxTotal = charUpgradeConfig.MAX_TOTAL_LEVEL || 10.0;
+    const internalCap = charUpgradeConfig.INTERNAL_BASE_GEAR_CAP || 5.5;
     const startLv = charUpgradeConfig.START_LEVEL || 1.0;
     if (!Number.isFinite(raw)) return startLv;
-    return Math.min(maxTotal, Math.max(startLv, Math.round(raw * 2) / 2));
+    return Math.min(internalCap, Math.max(startLv, Math.round(raw * 2) / 2));
+  }
+
+  function getActiveWinStreak() {
+    const eco = getActiveEconomy();
+    return Math.max(0, Number((eco && eco.winStreak) ?? (eco && eco.stats && eco.stats.winStreak) ?? 0) || 0);
+  }
+
+  function getCharacterLevel(charId) {
+    const baseLv = getBaseCharacterLevel(charId);
+    const winStreak = getActiveWinStreak();
+    const maxTotal = charUpgradeConfig.MAX_TOTAL_LEVEL || 10.0;
+    return Math.min(maxTotal, Math.round((baseLv + winStreak * 0.5) * 2) / 2);
   }
 
   function renderLobbyCharacterStatsCard() {
@@ -579,11 +608,16 @@
     const internalGearCap = charUpgradeConfig.INTERNAL_BASE_GEAR_CAP || 5.5;
     const maxTotal = charUpgradeConfig.MAX_TOTAL_LEVEL || 10.0;
     const stepSize = charUpgradeConfig.LEVEL_STEP || 0.5;
+    const statGainPerStep = charUpgradeConfig.STAT_GAIN_PER_STEP || 0.14;
     const statGainPerStreakStep = charUpgradeConfig.STAT_GAIN_PER_STREAK_STEP || 0.25;
 
+    const baseLv = getBaseCharacterLevel(charObj.id);
+    const winStreak = getActiveWinStreak();
     const currentLv = getCharacterLevel(charObj.id);
-    const streakSteps = Math.max(0, Math.round((currentLv - 1.0) / stepSize));
-    const streakStatBonus = streakSteps * statGainPerStreakStep;
+
+    const pointUpgradeSteps = Math.max(0, Math.round((baseLv - 1.0) / stepSize));
+    const pointStatBonus = pointUpgradeSteps * statGainPerStep;
+    const streakStatBonus = winStreak * statGainPerStreakStep;
 
     if (lobbyCharNameRoleEl) {
       lobbyCharNameRoleEl.innerHTML = `${charObj.icon} ${escapeHtml(charObj.name)} <span style="color:#00BBF9; font-weight:800;">(${escapeHtml(charObj.role || 'Savaşçı')})</span>`;
@@ -598,9 +632,9 @@
       lobbyCharLvTextEl.textContent = `Sv. ${currentLv.toFixed(1)} / ${maxTotal.toFixed(1)}`;
     }
     if (lobbyCharStreakBadgeEl) {
-      lobbyCharStreakBadgeEl.textContent = streakSteps > 0
-        ? `🔥 Galibiyet Serisi: ${streakSteps} Maç (+${(streakSteps * 0.5).toFixed(1)} Sv)`
-        : `🔥 Galibiyet Serisi: 0 Maç (Her Galibiyet +0.5 Sv)`;
+      lobbyCharStreakBadgeEl.textContent = winStreak > 0
+        ? `🔥 Galibiyet Serisi: ${winStreak} Maç (+${(winStreak * 0.5).toFixed(1)} Sv)`
+        : `🔥 Galibiyet Serisi: 0 Maç (+0.5 Sv / Zafer)`;
     }
     if (lobbyCharLvBarEl) {
       const pct = Math.min(100, Math.max(10, (currentLv / maxTotal) * 100));
@@ -633,9 +667,8 @@
 
     lobbyCharStatBarsEl.innerHTML = defs.map((d) => {
       const rawBase = Number(baseStats[d.key]) || 3.0;
-      // İç denge: ücretsiz temel karakter + eşya toplamı 5.5'i geçmez, üzerine galibiyet serisi (+0.25/maç) eklenerek 10.0'a çıkar
-      const baseWithGear = Math.min(internalGearCap, rawBase + (gearBonuses[d.key] || 0));
-      const totalVal = Math.min(maxTotal, baseWithGear + streakStatBonus);
+      const baseWithGearAndPoints = Math.min(internalGearCap, rawBase + pointStatBonus + (gearBonuses[d.key] || 0));
+      const totalVal = Math.min(maxTotal, baseWithGearAndPoints + streakStatBonus);
       const bonusVal = Math.max(0, totalVal - rawBase);
 
       const basePct = Math.min(100, Math.max(4, (rawBase / maxTotal) * 100));
@@ -655,16 +688,105 @@
       `;
     }).join('');
 
+    // Maç Puanı ile Seviye Güçlendirme Butonu & Durumu
+    if (upgradeCharLevelBtn) {
+      if (baseLv >= internalGearCap) {
+        upgradeCharLevelBtn.disabled = true;
+        upgradeCharLevelBtn.innerHTML = `
+          <span>🔥 Üst Seviye Mücadele (5.5 ➔ 10.0)</span>
+          <span style="background:rgba(8,11,18,0.85); color:#FFE066; padding:2px 8px; border-radius:999px; font-size:10px;">Galibiyet Serisi (+0.5 Sv)</span>
+        `;
+      } else {
+        const nextBaseLv = Math.min(internalGearCap, Math.round((baseLv + stepSize) * 2) / 2);
+        const costKey = baseLv.toFixed(1);
+        const cost = (charUpgradeConfig.STEP_COSTS && charUpgradeConfig.STEP_COSTS[costKey]) || 1200;
+        const canAfford = (Number(eco.slimePoints) || 0) >= cost;
+        upgradeCharLevelBtn.disabled = false;
+        upgradeCharLevelBtn.innerHTML = `
+          <span>⬆️ Seviye Güçlendir (Sv. ${baseLv.toFixed(1)} ➔ ${nextBaseLv.toFixed(1)})</span>
+          <span style="background:rgba(8,11,18,0.88); color:${canAfford ? '#00F59B' : '#FF70A6'}; padding:2px 8px; border-radius:999px; font-size:10.5px;">${cost.toLocaleString('tr-TR')} 💎</span>
+        `;
+      }
+    }
+
     if (upgradeCharLockHintEl) {
       if (currentLv >= maxTotal) {
         upgradeCharLockHintEl.innerHTML = `👑 <strong style="color:#FFE066;">EFSANE SERİ (Sv. 10.0):</strong> Maksimum mücadele seviyesindesin! Seriyi korumak için kazanmaya devam et!`;
-      } else if (streakSteps > 0) {
+      } else if (winStreak > 0) {
         const nextLv = Math.min(maxTotal, currentLv + 0.5);
-        upgradeCharLockHintEl.innerHTML = `🔥 <strong style="color:#00F59B;">${streakSteps} Maçlık Galibiyet Serisi!</strong> Bir sonraki galibiyette <b>Sv. ${nextLv.toFixed(1)}</b> olacaksın (Seri bozulursa Sv. 1.0'dan başlar).`;
+        upgradeCharLockHintEl.innerHTML = `🔥 <strong style="color:#00F59B;">${winStreak} Maçlık Galibiyet Serisi!</strong> Bir sonraki galibiyette <b>Sv. ${nextLv.toFixed(1)}</b> olacaksın (Seri bozulursa seri bonusu sıfırlanır).`;
       } else {
-        upgradeCharLockHintEl.innerHTML = `⚔️ <strong style="color:#00F59B;">Mücadele Ruhu:</strong> Arka arkaya kazandığın her maç karakterini <b style="color:#FFE066;">+0.5 Seviye</b> yükseltir (Hedef: <b>Sv. 10.0</b>)! Seri bozulursa baştan başlar.`;
+        upgradeCharLockHintEl.innerHTML = `⚔️ <strong style="color:#00F59B;">Mücadele Ruhu:</strong> Maç Puanı (💎) veya arka arkaya galibiyet serisi (<b style="color:#FFE066;">+0.5 Sv</b>) ile <b>Sv. 10.0</b>'a ilerle!`;
       }
     }
+  }
+
+  function handleUpgradeCharacterLevel() {
+    window.soundManager.init();
+    const charId = getActiveCharacterId();
+    const charObj = availableSkins.find((s) => s.id === charId) || availableSkins[0];
+    if (!charObj) return;
+
+    const internalCap = charUpgradeConfig.INTERNAL_BASE_GEAR_CAP || 5.5;
+    const stepSize = charUpgradeConfig.LEVEL_STEP || 0.5;
+    const currentBaseLv = getBaseCharacterLevel(charObj.id);
+
+    if (currentBaseLv >= internalCap) {
+      window.soundManager.playUiPop();
+      return;
+    }
+
+    const costKey = currentBaseLv.toFixed(1);
+    const cost = (charUpgradeConfig.STEP_COSTS && charUpgradeConfig.STEP_COSTS[costKey]) || 1200;
+
+    if (currentUser) {
+      socket.emit('upgradeCharacter', { skinId: charObj.id }, (res) => {
+        if (res && res.ok && res.user) {
+          currentUser = res.user;
+          saveUserSessionToStorage(currentUser);
+          window.soundManager.playPowerupPickup();
+          renderColorAndSkinSelectors();
+          updateCareerAndShopUI();
+          if (upgradeCharLockHintEl) {
+            upgradeCharLockHintEl.innerHTML = `🎉 <strong style="color:#00F59B;">${escapeHtml(charObj.name)} Seviye ${Number(res.newLevel).toFixed(1)}</strong> gücüne yükseldi!`;
+          }
+        } else {
+          window.soundManager.playUiPop();
+          if (upgradeCharLockHintEl) {
+            upgradeCharLockHintEl.innerHTML = `<span style="color:#FF70A6;">⚠️ ${(res && res.error) || 'Yetersiz Maç Puanı! Arenada mücadele ederek puan toplayabilirsin.'}</span>`;
+          }
+        }
+      });
+      return;
+    }
+
+    // Misafir (Guest) yerel ekonomi ile karakter seviye güçlendirme
+    if ((guestEconomy.slimePoints || 0) < cost) {
+      window.soundManager.playUiPop();
+      if (upgradeCharLockHintEl) {
+        upgradeCharLockHintEl.innerHTML = `<span style="color:#FF70A6;">⚠️ Yetersiz Maç Puanı! Seviye ${(currentBaseLv + stepSize).toFixed(1)} için <b>${cost.toLocaleString('tr-TR')} 💎</b> gerekli (Mevcut: ${(guestEconomy.slimePoints || 0).toLocaleString('tr-TR')} 💎).</span>`;
+      }
+      return;
+    }
+
+    guestEconomy.slimePoints -= cost;
+    const nextLv = Math.min(internalCap, Math.round((currentBaseLv + stepSize) * 2) / 2);
+    if (!guestEconomy.characterLevels || typeof guestEconomy.characterLevels !== 'object') {
+      guestEconomy.characterLevels = {};
+    }
+    guestEconomy.characterLevels[charObj.id] = nextLv;
+    saveGuestEconomyToStorage();
+    syncGuestLoadoutToServer();
+    window.soundManager.playPowerupPickup();
+    renderColorAndSkinSelectors();
+    updateCareerAndShopUI();
+    if (upgradeCharLockHintEl) {
+      upgradeCharLockHintEl.innerHTML = `🎉 <strong style="color:#00F59B;">${escapeHtml(charObj.name)} Seviye ${nextLv.toFixed(1)}</strong> gücüne yükseldi!`;
+    }
+  }
+
+  if (upgradeCharLevelBtn) {
+    upgradeCharLevelBtn.addEventListener('click', handleUpgradeCharacterLevel);
   }
 
   function syncStoreItemsOwnership() {
@@ -1498,7 +1620,11 @@
       roomId,
       guestName,
       preferredTeam,
-      watchOnly: Boolean(watchOnly)
+      watchOnly: Boolean(watchOnly),
+      guestEquipped: !currentUser ? guestEconomy.equipped : null,
+      guestBaseCharacter: !currentUser ? (guestEconomy.baseCharacter || selectedBaseCharacter || 'crown') : null,
+      guestCharacterLevels: !currentUser ? (guestEconomy.characterLevels || {}) : null,
+      guestWinStreak: !currentUser ? (Number(guestEconomy.stats && guestEconomy.stats.winStreak) || 0) : null
     }, (res) => {
       if (!res || !res.ok) {
         if (res && res.requireAuth) {
@@ -2611,6 +2737,12 @@
     availableColors = data.colors || availableColors;
     availableSkins = data.skins || availableSkins;
     availableModes = data.modes || availableModes;
+    if (Array.isArray(data.statDefinitions) && data.statDefinitions.length > 0) {
+      statDefinitions = data.statDefinitions;
+    }
+    if (data.upgradeConfig && typeof data.upgradeConfig === 'object') {
+      charUpgradeConfig = { ...charUpgradeConfig, ...data.upgradeConfig };
+    }
     mapObstacles = data.obstacles || [];
     roomsSummary = data.roomsSummary || [];
     if (Array.isArray(data.storeItems) && data.storeItems.length > 0) {
@@ -2918,11 +3050,8 @@
         guestEconomy.stats.wins = (guestEconomy.stats.wins || 0) + 1;
         guestEconomy.stats.winStreak = (guestEconomy.stats.winStreak || 0) + 1;
         guestEconomy.stats.bestWinStreak = Math.max(guestEconomy.stats.bestWinStreak || 0, guestEconomy.stats.winStreak);
-        const currLv = Number(guestEconomy.characterLevels[activeCharId] || 1.0);
-        guestEconomy.characterLevels[activeCharId] = Math.min(10.0, Math.round((currLv + 0.5) * 2) / 2);
       } else {
         guestEconomy.stats.winStreak = 0;
-        guestEconomy.characterLevels[activeCharId] = 1.0;
       }
       saveGuestEconomyToStorage();
       syncGuestLoadoutToServer();
@@ -2935,7 +3064,7 @@
     const newLv = getCharacterLevel(activeCharId);
     const streakText = reward.won
       ? `<span style="background:rgba(0,245,155,0.18); border:1.5px solid #00F59B; color:#00F59B; padding:5px 12px; border-radius:10px; font-weight:900; font-size:13px;">🔥 Galibiyet Serisi! Seviye +0.5 ➔ Sv.${newLv.toFixed(1)} / 10.0</span>`
-      : `<span style="background:rgba(255,42,133,0.16); border:1.5px solid #FF2A85; color:#FF70A6; padding:5px 12px; border-radius:10px; font-weight:900; font-size:12.5px;">⚔️ Seri Bozuldu (Sv. 1.0) — Yeni Seri İçin Mücadeleye Devam!</span>`;
+      : `<span style="background:rgba(255,42,133,0.16); border:1.5px solid #FF2A85; color:#FF70A6; padding:5px 12px; border-radius:10px; font-weight:900; font-size:12.5px;">⚔️ Galibiyet Serisi Sıfırlandı (Sv.${newLv.toFixed(1)}) — Yeni Seri İçin Mücadeleye Devam!</span>`;
 
     if (matchRewardSummaryEl) {
       matchRewardSummaryEl.style.display = 'flex';

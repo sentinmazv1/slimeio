@@ -56,16 +56,16 @@
     MAX_PLAYERS_PER_ROOM: 40,
     AFK_TIMEOUT_MS: 3 * 60 * 1000,      // 3 dakika (180 sn) hareketsiz kalan oyuncuyu askıya al
 
-    // Slime Mağazası & Kariyer Puan/Coin Kazanım Kurgusu
-    STARTER_SLIME_POINTS: 500,          // Yeni oyunculara hoş geldin Slime Puanı
-    STARTER_SLIME_COINS: 100,           // Yeni oyunculara hoş geldin Slime Coin
-    REWARD_POINT_PER_CUT: 25,           // Her kemer kesimi (✂️) başına +25 Slime Puan
-    REWARD_POINT_PER_KILL: 75,          // Her rakip eleme (💀) başına +75 Slime Puan
-    REWARD_POINT_SCORE_RATIO: 0.15,     // Maç skoru üzerinden +%15 Slime Puan
-    REWARD_POINT_MATCH_COMPLETE: 50,    // Maç tamamlama ödülü +50 Slime Puan
-    REWARD_POINT_MATCH_WIN: 150,        // Maç şampiyonluğu ödülü +150 Slime Puan
-    REWARD_COIN_MATCH_WIN: 15,          // Maç şampiyonluğu ödülü +15 Slime Coin
-    REWARD_COIN_PER_3_KILLS: 5          // Her 3 elemede +5 Slime Coin
+    // Slime Mağazası & Kariyer Puan/Coin Kazanım Kurgusu (Zorlu & Dengeli Rekabet Ekonomisi)
+    STARTER_SLIME_POINTS: 120,          // Yeni oyunculara başlangıç Slime Puanı
+    STARTER_SLIME_COINS: 25,            // Yeni oyunculara başlangıç Slime Coin
+    REWARD_POINT_PER_CUT: 4,            // Her kemer kesimi (✂️) başına +4 Slime Puan
+    REWARD_POINT_PER_KILL: 12,          // Her rakip eleme (💀) başına +12 Slime Puan
+    REWARD_POINT_SCORE_RATIO: 0.03,     // Maç skoru üzerinden +%3 Slime Puan
+    REWARD_POINT_MATCH_COMPLETE: 10,    // Maç tamamlama ödülü +10 Slime Puan
+    REWARD_POINT_MATCH_WIN: 30,         // Maç şampiyonluğu ödülü +30 Slime Puan
+    REWARD_COIN_MATCH_WIN: 3,           // Maç şampiyonluğu ödülü +3 Slime Coin
+    REWARD_COIN_PER_3_KILLS: 1          // Her 3 elemede +1 Slime Coin
   };
 
   // Rastgele Verilen 3 Geçici Güçlendirme Türü (10 Saniye Süreli)
@@ -116,13 +116,25 @@
     { key: 'durability', label: 'Dayanıklılık', icon: '🛡️', color: '#38E54D' }
   ];
 
-  // Karakter Mücadele & Galibiyet Serisi Seviye Kurgusu (Her üst üste galibiyette +0.5 Seviye, seri bozulursa 1.0'dan başlar)
+  // Karakter Mücadele & Galibiyet Serisi Seviye Kurgusu
   exports.CHARACTER_UPGRADE_CONFIG = {
     START_LEVEL: 1.0,
     LEVEL_STEP: 0.5,
-    INTERNAL_BASE_GEAR_CAP: 5.5, // İç denge kuralı (kullanıcıya gösterilmez): ücretsiz temel karakter + eşya toplamı 5.5'i geçmez
-    MAX_TOTAL_LEVEL: 10.0,
-    STAT_GAIN_PER_STREAK_STEP: 0.25 // Her üst üste galibiyet (+0.5 Sv) tüm niteliklere +0.25 mücadele gücü ekler (10.0'a kadar)
+    INTERNAL_BASE_GEAR_CAP: 5.5, // İç denge kuralı: maç puanı ve ücretsiz eşya ile en fazla 5.5'e çıkılır
+    MAX_TOTAL_LEVEL: 10.0,       // Üst üste galibiyet serisi (+0.5 Sv) ile 10.0'a ulaşılır (seri bozulursa sıfırlanır)
+    STAT_GAIN_PER_STEP: 0.14,
+    STAT_GAIN_PER_STREAK_STEP: 0.25,
+    STEP_COSTS: {
+      '1.0': 650,
+      '1.5': 1100,
+      '2.0': 1650,
+      '2.5': 2300,
+      '3.0': 3100,
+      '3.5': 4000,
+      '4.0': 5200,
+      '4.5': 6600,
+      '5.0': 8500
+    }
   };
 
   // Üyelerin seçebileceği Basic 10 Karakter & Kostüm (Her biri kendine özgü 5 istatistik ve pasif özelliğe sahiptir)

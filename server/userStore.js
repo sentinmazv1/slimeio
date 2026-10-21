@@ -266,14 +266,14 @@ function ensureUserEconomy(u) {
   if (!Number.isFinite(Number(u.stats.bestWinStreak))) u.stats.bestWinStreak = 0;
   if (typeof u.slimePoints !== 'number' || !Number.isFinite(u.slimePoints)) {
     const legacyBonus =
-      (u.stats.totalCuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 25) +
-      (u.stats.totalKills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 75) +
-      Math.round((u.stats.totalScore || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.15));
-    u.slimePoints = (GAME_CONFIG.STARTER_SLIME_POINTS || 500) + legacyBonus;
+      (u.stats.totalCuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 4) +
+      (u.stats.totalKills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 12) +
+      Math.round((u.stats.totalScore || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.03));
+    u.slimePoints = (GAME_CONFIG.STARTER_SLIME_POINTS || 120) + legacyBonus;
   }
   if (typeof u.slimeCoins !== 'number' || !Number.isFinite(u.slimeCoins)) {
-    const winCoinBonus = (u.stats.wins || 0) * (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 15);
-    u.slimeCoins = (GAME_CONFIG.STARTER_SLIME_COINS || 100) + winCoinBonus;
+    const winCoinBonus = (u.stats.wins || 0) * (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 3);
+    u.slimeCoins = (GAME_CONFIG.STARTER_SLIME_COINS || 25) + winCoinBonus;
   }
   if (!Array.isArray(u.ownedItems)) {
     u.ownedItems = [];
@@ -293,13 +293,13 @@ function ensureUserEconomy(u) {
   if (!u.characterLevels || typeof u.characterLevels !== 'object') {
     u.characterLevels = {};
   }
-  const maxTotal = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_TOTAL_LEVEL) || 10.0;
+  const maxFreeCap = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.INTERNAL_BASE_GEAR_CAP) || 5.5;
   for (const s of BASIC_10_SKINS) {
     const rawLv = Number(u.characterLevels[s.id]);
     if (!Number.isFinite(rawLv) || rawLv < 1.0) {
       u.characterLevels[s.id] = 1.0;
     } else {
-      u.characterLevels[s.id] = Math.min(maxTotal, Math.round(rawLv * 2) / 2);
+      u.characterLevels[s.id] = Math.min(maxFreeCap, Math.round(rawLv * 2) / 2);
     }
   }
 }
@@ -340,8 +340,8 @@ function registerUser({ fullName, username, password, color, skin }) {
     baseCharacter: chosenBaseChar,
     characterLevels: {},
     friends: prevFriends,
-    slimePoints: GAME_CONFIG.STARTER_SLIME_POINTS || 500,
-    slimeCoins: GAME_CONFIG.STARTER_SLIME_COINS || 100,
+    slimePoints: GAME_CONFIG.STARTER_SLIME_POINTS || 120,
+    slimeCoins: GAME_CONFIG.STARTER_SLIME_COINS || 25,
     ownedItems: [],
     equipped: {
       hat: null,
@@ -355,7 +355,9 @@ function registerUser({ fullName, username, password, color, skin }) {
       totalCuts: 0,
       totalKills: 0,
       matchesPlayed: 0,
-      wins: 0
+      wins: 0,
+      winStreak: 0,
+      bestWinStreak: 0
     },
     createdAt: Date.now()
   };
@@ -429,8 +431,8 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
       : (BASIC_10_SKINS.some((s) => s.id === validSkin) ? validSkin : 'crown'),
     characterLevels: characterLevels && typeof characterLevels === 'object' ? { ...characterLevels } : {},
     friends: Array.isArray(friends) ? friends.map((f) => normalizeUsername(f)).filter(Boolean) : [],
-    slimePoints: typeof slimePoints === 'number' ? slimePoints : (GAME_CONFIG.STARTER_SLIME_POINTS || 500),
-    slimeCoins: typeof slimeCoins === 'number' ? slimeCoins : (GAME_CONFIG.STARTER_SLIME_COINS || 100),
+    slimePoints: typeof slimePoints === 'number' ? slimePoints : (GAME_CONFIG.STARTER_SLIME_POINTS || 120),
+    slimeCoins: typeof slimeCoins === 'number' ? slimeCoins : (GAME_CONFIG.STARTER_SLIME_COINS || 25),
     ownedItems: Array.isArray(ownedItems) ? ownedItems.filter((id) => typeof id === 'string') : [],
     equipped: equipped && typeof equipped === 'object'
       ? {
@@ -447,9 +449,11 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
           totalCuts: Number(stats.totalCuts) || 0,
           totalKills: Number(stats.totalKills) || 0,
           matchesPlayed: Number(stats.matchesPlayed) || 0,
-          wins: Number(stats.wins) || 0
+          wins: Number(stats.wins) || 0,
+          winStreak: Number(stats.winStreak) || 0,
+          bestWinStreak: Number(stats.bestWinStreak) || 0
         }
-      : { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0 },
+      : { totalScore: 0, totalCuts: 0, totalKills: 0, matchesPlayed: 0, wins: 0, winStreak: 0, bestWinStreak: 0 },
     createdAt: Date.now()
   };
 
@@ -625,28 +629,62 @@ function upgradeCharacterLevel(username, { skinId }) {
   const cleanUser = normalizeUsername(username);
   const record = usersDb[cleanUser];
   if (!record) return { ok: false, error: 'Kullanıcı bulunamadı.' };
+
   ensureUserEconomy(record);
   const targetSkin = BASIC_10_SKINS.some((s) => s.id === skinId)
     ? skinId
     : (record.baseCharacter || 'crown');
+
+  const maxFreeCap = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.INTERNAL_BASE_GEAR_CAP) || 5.5;
+  const step = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.LEVEL_STEP) || 0.5;
+  const currentLv = Number(record.characterLevels[targetSkin] || 1.0);
+
+  if (currentLv >= maxFreeCap) {
+    return {
+      ok: false,
+      error: 'Maç Puanı ile seviye güçlendirmesi tamamlandı! 5.5 üzeri seviyeler (10.0\'a kadar) arenada üst üste kazanılan galibiyet serileri (+0.5 Sv) ile açılır!'
+    };
+  }
+
+  const key = currentLv.toFixed(1);
+  const cost = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.STEP_COSTS && CHARACTER_UPGRADE_CONFIG.STEP_COSTS[key]) || 1200;
+
+  if (record.slimePoints < cost) {
+    return {
+      ok: false,
+      error: `Yetersiz Maç Puanı! Bu karakteri Seviye ${(currentLv + step).toFixed(1)} yapmak için ${cost} 💎 gerekli (Mevcut: ${record.slimePoints} 💎). Arenada mücadele ederek puan toplayabilirsin!`
+    };
+  }
+
+  record.slimePoints -= cost;
+  const nextLv = Math.min(maxFreeCap, Math.round((currentLv + step) * 2) / 2);
+  record.characterLevels[targetSkin] = nextLv;
+  saveUsers();
+
   return {
-    ok: false,
-    error: 'Seviye ilerlemesi arenada üst üste kazanılan galibiyet serileri (+0.5 Sv) ile gerçekleşir!'
+    ok: true,
+    skinId: targetSkin,
+    newLevel: nextLv,
+    cost,
+    user: sanitizeUser(record)
   };
 }
 
-function computePlayerCombatMods({ skin, baseCharacter, equipped, characterLevels }) {
+function computePlayerCombatMods({ skin, baseCharacter, equipped, characterLevels, winStreak = 0 }) {
   const resolvedBaseId = BASIC_10_SKINS.some((s) => s.id === baseCharacter)
     ? baseCharacter
     : (BASIC_10_SKINS.some((s) => s.id === skin) ? skin : 'crown');
   const charDef = BASIC_10_SKINS.find((s) => s.id === resolvedBaseId) || BASIC_10_SKINS[0];
 
+  const maxFreeCap = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.INTERNAL_BASE_GEAR_CAP) || 5.5;
   const maxTotal = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_TOTAL_LEVEL) || 10.0;
-  const rawLv = characterLevels && typeof characterLevels === 'object' ? Number(characterLevels[charDef.id]) : 1.0;
-  const charLevel = Math.min(maxTotal, Math.max(1.0, Number.isFinite(rawLv) ? Math.round(rawLv * 2) / 2 : 1.0));
-  const upgradeSteps = Math.max(0, Math.round((charLevel - 1.0) / 0.5)); // 0 .. 18 adım (Galibiyet serisi ile +0.5 ilerler)
+  const rawBaseLv = characterLevels && typeof characterLevels === 'object' ? Number(characterLevels[charDef.id]) : 1.0;
+  const baseLv = Math.min(maxFreeCap, Math.max(1.0, Number.isFinite(rawBaseLv) ? Math.round(rawBaseLv * 2) / 2 : 1.0));
+  const streakBonus = Math.max(0, Number(winStreak) || 0) * 0.5;
+  const charLevel = Math.min(maxTotal, Math.round((baseLv + streakBonus) * 2) / 2);
+  const upgradeSteps = Math.max(0, Math.round((charLevel - 1.0) / 0.5)); // 0 .. 18 adım (Maç Puanı + Galibiyet Serisi)
 
-  // Her +0.5 galibiyet serisi seviyesi karaktere rekabetçi mücadele gücü katar
+  // Her +0.5 seviye karaktere rekabetçi mücadele gücü katar
   let speedMult = 1 + upgradeSteps * 0.007;
   let arrowSpeedMult = 1 + upgradeSteps * 0.008;
   let arrowSizeMult = 1 + upgradeSteps * 0.006;
@@ -698,6 +736,8 @@ function computePlayerCombatMods({ skin, baseCharacter, equipped, characterLevel
   return {
     charId: charDef.id,
     charLevel,
+    baseCharLevel: baseLv,
+    winStreak: Math.max(0, Number(winStreak) || 0),
     speedMult: Math.min(1.26, Math.max(0.88, Number(speedMult.toFixed(3)))),
     arrowSpeedMult: Math.min(1.30, Math.max(0.85, Number(arrowSpeedMult.toFixed(3)))),
     arrowSizeMult: Math.min(1.40, Math.max(0.90, Number(arrowSizeMult.toFixed(3)))),
@@ -789,8 +829,8 @@ function ensureProfileRecord(targetUsernameOrName, fallbackProfile) {
     baseCharacter: BASIC_10_SKINS.some((s) => s.id === fallbackProfile.skin) ? fallbackProfile.skin : 'crown',
     characterLevels: {},
     friends: [],
-    slimePoints: 500,
-    slimeCoins: 100,
+    slimePoints: 120,
+    slimeCoins: 25,
     ownedItems: [],
     equipped: { hat: null, skin: null, belt: null, kill_effect: null, title: null },
     stats: fallbackProfile.stats || {
@@ -798,7 +838,9 @@ function ensureProfileRecord(targetUsernameOrName, fallbackProfile) {
       totalCuts: 0,
       totalKills: 0,
       matchesPlayed: 1,
-      wins: 0
+      wins: 0,
+      winStreak: 0,
+      bestWinStreak: 0
     },
     createdAt: Date.now()
   };
@@ -879,20 +921,13 @@ function recordMatchStats(username, { score = 0, cuts = 0, kills = 0, won = fals
   }
   u.stats.matchesPlayed += 1;
 
-  const baseChar = u.baseCharacter || (BASIC_10_SKINS.some((s) => s.id === u.skin) ? u.skin : 'crown');
-  const maxTotal = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_TOTAL_LEVEL) || 10.0;
-  const step = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.LEVEL_STEP) || 0.5;
-
   if (won) {
     u.stats.wins += 1;
     u.stats.winStreak = (Number(u.stats.winStreak) || 0) + 1;
     u.stats.bestWinStreak = Math.max(Number(u.stats.bestWinStreak) || 0, u.stats.winStreak);
-    const currLv = Number(u.characterLevels[baseChar] || 1.0);
-    u.characterLevels[baseChar] = Math.min(maxTotal, Math.round((currLv + step) * 2) / 2);
   } else {
-    // Seri bozulursa galibiyet serisi ve seviye ilerlemesi baştan (1.0) başlar
+    // Seri bozulursa galibiyet serisi seviye bonusu baştan başlar
     u.stats.winStreak = 0;
-    u.characterLevels[baseChar] = 1.0;
   }
 
   u.slimePoints += earnedPoints;
@@ -906,6 +941,10 @@ function sanitizeUser(u) {
   if (!u) return null;
   ensureUserEconomy(u);
   const baseChar = u.baseCharacter || (BASIC_10_SKINS.some((s) => s.id === u.skin) ? u.skin : 'crown');
+  const maxTotal = (CHARACTER_UPGRADE_CONFIG && CHARACTER_UPGRADE_CONFIG.MAX_TOTAL_LEVEL) || 10.0;
+  const baseLv = Number((u.characterLevels && u.characterLevels[baseChar]) || 1.0);
+  const winStreak = Number(u.stats && u.stats.winStreak) || 0;
+  const effectiveCharLevel = Math.min(maxTotal, Math.round((baseLv + winStreak * 0.5) * 2) / 2);
   return {
     username: u.username,
     displayName: u.displayName || u.username,
@@ -914,8 +953,9 @@ function sanitizeUser(u) {
     skin: u.skin || BASIC_10_SKINS[0].id,
     baseCharacter: baseChar,
     characterLevels: u.characterLevels || {},
-    charLevel: Number((u.characterLevels && u.characterLevels[baseChar]) || 1.0),
-    winStreak: Number(u.stats && u.stats.winStreak) || 0,
+    baseCharLevel: baseLv,
+    charLevel: effectiveCharLevel,
+    winStreak,
     slimePoints: u.slimePoints,
     slimeCoins: u.slimeCoins,
     ownedItems: Array.isArray(u.ownedItems) ? u.ownedItems : [],
