@@ -2404,14 +2404,14 @@
       window.soundManager.init();
       if (me.waitingForWall) {
         updateMouseWorld();
-        socket.emit('spawnAtWall', { x: mouseWorld.x, y: mouseWorld.y });
+        triggerClientSpawnAtWall(mouseWorld.x, mouseWorld.y);
       } else if (me.alive) {
         const aimAngle = keyboard.mode === 'keyboard'
           ? keyboard.aimAngle
           : Math.atan2(mouseWorld.y - me.renderY, mouseWorld.x - me.renderX);
         const tx = me.renderX + Math.cos(aimAngle) * 400;
         const ty = me.renderY + Math.sin(aimAngle) * 400;
-        socket.emit('shootArrow', { x: tx, y: ty });
+        triggerClientShootArrow(tx, ty);
       }
       return;
     }
@@ -2433,10 +2433,49 @@
           : Math.atan2(mouseWorld.y - me.renderY, mouseWorld.x - me.renderX);
         const tx = me.renderX + Math.cos(aimAngle) * 400;
         const ty = me.renderY + Math.sin(aimAngle) * 400;
-        socket.emit('cutOwnBelt', { x: tx, y: ty });
+        triggerClientCutBelt(tx, ty);
       }
     }
   });
+
+  // --- SIFIR GECİKMELİ (0ms) İSTEMCİ SES ÖNGÖRÜSÜ VE ÇİFT SES ÖNLEME ---
+  let lastLocalShootSfxAt = 0;
+  let lastLocalCutSfxAt = 0;
+  let lastLocalAttachSfxAt = 0;
+
+  function triggerClientSpawnAtWall(wx, wy) {
+    const now = performance.now();
+    if (now - lastLocalAttachSfxAt >= 180) {
+      lastLocalAttachSfxAt = now;
+      window.soundManager.playWallAttachScream();
+    }
+    socket.emit('spawnAtWall', { x: wx, y: wy });
+  }
+
+  function triggerClientShootArrow(tx, ty) {
+    const me = renderPlayers.get(selfId);
+    const now = performance.now();
+    if (me && me.alive && Array.isArray(me.bands) && me.bands.length > 1) {
+      if (now - lastLocalShootSfxAt >= 320) {
+        lastLocalShootSfxAt = now;
+        window.soundManager.playArrowShoot();
+      }
+    }
+    socket.emit('shootArrow', { x: tx, y: ty });
+  }
+
+  function triggerClientCutBelt(tx, ty) {
+    const me = renderPlayers.get(selfId);
+    const now = performance.now();
+    if (me && me.alive && Array.isArray(me.bands) && me.bands.length > 1) {
+      const targetId = getTargetedOwnBeltId(me);
+      if (targetId !== null && now - lastLocalCutSfxAt >= 180) {
+        lastLocalCutSfxAt = now;
+        window.soundManager.playBandSnap();
+      }
+    }
+    socket.emit('cutOwnBelt', { x: tx, y: ty });
+  }
 
   window.addEventListener('keyup', (e) => {
     const code = e.code;
@@ -2529,15 +2568,15 @@
 
     if (e.button === 0) {
       if (me.waitingForWall) {
-        socket.emit('spawnAtWall', { x: clickWorldX, y: clickWorldY });
+        triggerClientSpawnAtWall(clickWorldX, clickWorldY);
       } else if (me.alive) {
-        socket.emit('shootArrow', { x: clickWorldX, y: clickWorldY });
+        triggerClientShootArrow(clickWorldX, clickWorldY);
       }
       return;
     }
 
     if (e.button === 2 && me.alive) {
-      socket.emit('cutOwnBelt', { x: clickWorldX, y: clickWorldY });
+      triggerClientCutBelt(clickWorldX, clickWorldY);
     }
   });
 
@@ -2569,7 +2608,7 @@
         mouseScreen.x = touch.clientX;
         mouseScreen.y = touch.clientY;
         updateMouseWorld();
-        socket.emit('spawnAtWall', { x: mouseWorld.x, y: mouseWorld.y });
+        triggerClientSpawnAtWall(mouseWorld.x, mouseWorld.y);
         return;
       }
 
@@ -2582,7 +2621,7 @@
         joystick.currY = touch.clientY;
         sendMouseTarget(true);
       } else if (me.alive) {
-        socket.emit('shootArrow', { x: tapWorldX, y: tapWorldY });
+        triggerClientShootArrow(tapWorldX, tapWorldY);
       }
     },
     { passive: false }
@@ -2624,7 +2663,7 @@
     if (!me || !me.alive) return;
     const tx = me.renderX + Math.cos(joystick.aimAngle) * 400;
     const ty = me.renderY + Math.sin(joystick.aimAngle) * 400;
-    socket.emit('shootArrow', { x: tx, y: ty });
+    triggerClientShootArrow(tx, ty);
   }
   mobShootBtn.addEventListener('touchstart', triggerMobileShoot, { passive: false });
   mobShootBtn.addEventListener('click', triggerMobileShoot);
@@ -2637,7 +2676,7 @@
     if (!me || !me.alive) return;
     const tx = me.renderX + Math.cos(joystick.aimAngle) * 400;
     const ty = me.renderY + Math.sin(joystick.aimAngle) * 400;
-    socket.emit('cutOwnBelt', { x: tx, y: ty });
+    triggerClientCutBelt(tx, ty);
   }
   mobCutBtn.addEventListener('touchstart', triggerMobileCut, { passive: false });
   mobCutBtn.addEventListener('click', triggerMobileCut);
@@ -2800,7 +2839,10 @@
   socket.on('bandAttached', ({ playerId, band }) => {
     const p = renderPlayers.get(playerId);
     if (playerId === selfId) {
-      window.soundManager.playWallAttachScream();
+      if (performance.now() - lastLocalAttachSfxAt >= 520) {
+        lastLocalAttachSfxAt = performance.now();
+        window.soundManager.playWallAttachScream();
+      }
       if (p) p.impactPulse = 1.0;
     } else if (p) {
       const ax = (band && typeof band.anchorX === 'number') ? band.anchorX : p.renderX;
@@ -2813,7 +2855,10 @@
   socket.on('arrowShot', ({ playerId }) => {
     const p = renderPlayers.get(playerId);
     if (playerId === selfId) {
-      window.soundManager.playArrowShoot();
+      if (performance.now() - lastLocalShootSfxAt >= 520) {
+        lastLocalShootSfxAt = performance.now();
+        window.soundManager.playArrowShoot();
+      }
     } else if (p) {
       window.soundManager.playArrowShoot(p.renderX, p.renderY, camera.x, camera.y);
     }
@@ -2827,7 +2872,11 @@
 
   socket.on('bandSnapped', ({ ownerId, cutterId, snapX, snapY }) => {
     if (ownerId === selfId || cutterId === selfId) {
-      window.soundManager.playBandSnap();
+      const isSelfCut = ownerId === selfId && cutterId === selfId;
+      if (!isSelfCut || performance.now() - lastLocalCutSfxAt >= 520) {
+        lastLocalCutSfxAt = performance.now();
+        window.soundManager.playBandSnap();
+      }
     } else {
       window.soundManager.playBandSnap(snapX, snapY, camera.x, camera.y);
     }
@@ -3349,6 +3398,15 @@
         });
       } else {
         const justSpawned = !existing.alive && p.alive;
+        const prevBandCount = Array.isArray(existing.bands) ? existing.bands.length : 0;
+        const nextBandCount = Array.isArray(p.bands) ? p.bands.length : 0;
+        if (p.id === selfId && p.alive && nextBandCount > prevBandCount) {
+          existing.impactPulse = 1.0;
+          if (performance.now() - lastLocalAttachSfxAt >= 480) {
+            lastLocalAttachSfxAt = performance.now();
+            window.soundManager.playWallAttachScream();
+          }
+        }
         existing.name = p.name;
         existing.username = p.username;
         existing.color = p.color;

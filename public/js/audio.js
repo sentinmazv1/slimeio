@@ -1,5 +1,6 @@
-// Slime.io v3.0 - Gerçekçi Fiziksel Modelleme (Physical Modeling) Web Audio Ses Motoru
-// Tutunma (Vakumlu Vantuz & Gergin Halat), Kemer Kırılma (Yüksek Gerilimli Kamçı/Elastik Kopuş) ve Ateş (Basınçlı Yay + Hava Yarma Whoosh) Sentezi
+// Slime.io v4.0 - Sıfır Gecikmeli (0ms Zero-Latency) WAV Ses Veritabanı & Karplus-Strong Fiziksel Modelleme Ses Motoru
+// Tüm sesler (/sfx/*.wav veritabanı + bellekte önceden pişirilmiş PCM AudioBuffer) 0.0ms attack ile anında tetiklenir.
+
 class SoundManager {
   constructor() {
     this.ctx = null;
@@ -8,12 +9,50 @@ class SoundManager {
     this.muted = false;
     this.lastMoveSquishTime = 0;
     this.lastSoundTimes = {};
-    this.pinkNoiseBuffer = null;
-    this.whiteNoiseBuffer = null;
-    this.saturationCurve = null;
+    this.bank = {
+      attach: [],
+      snap: [],
+      shoot: [],
+      hit: [],
+      kill: [],
+      powerup: [],
+      ui: [],
+      move: []
+    };
+    this.variantCursor = {
+      attach: 0,
+      snap: 0,
+      shoot: 0,
+      hit: 0,
+      kill: 0,
+      powerup: 0,
+      ui: 0,
+      move: 0
+    };
+    this.dbLoaded = false;
+    this.dbLoading = false;
+    this._rngSeed = 987654321;
+
+    // İlk kullanıcı etkileşiminde ses motorunu ve WAV veritabanını önceden ısıt (Lobby dahil)
+    this._setupEarlyUnlock();
   }
 
-  _canTrigger(key, minIntervalMs = 45) {
+  _setupEarlyUnlock() {
+    if (typeof window === 'undefined') return;
+    const unlock = () => {
+      this.init();
+    };
+    ['pointerdown', 'mousedown', 'touchstart', 'keydown'].forEach((ev) => {
+      window.addEventListener(ev, unlock, { once: true, passive: true, capture: true });
+    });
+  }
+
+  _rand() {
+    this._rngSeed = (this._rngSeed * 1664525 + 1013904223) >>> 0;
+    return (this._rngSeed / 0xffffffff) * 2 - 1;
+  }
+
+  _canTrigger(key, minIntervalMs = 24) {
     const now = performance.now();
     const prev = this.lastSoundTimes[key] || 0;
     if (now - prev < minIntervalMs) return false;
@@ -21,589 +60,514 @@ class SoundManager {
     return true;
   }
 
-  _makeSaturationCurve(amount = 24) {
-    const nSamples = 1024;
-    const curve = new Float32Array(nSamples);
-    const k = typeof amount === 'number' ? amount : 24;
-    for (let i = 0; i < nSamples; i++) {
-      const x = (i * 2) / nSamples - 1;
-      curve[i] = ((3 + k) * x * 20 * (Math.PI / 180)) / (Math.PI + k * Math.abs(x));
-    }
-    return curve;
-  }
-
   init() {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AudioCtx();
+      try {
+        this.ctx = new AudioCtx({ latencyHint: 'interactive' });
+      } catch (_e) {
+        this.ctx = new AudioCtx();
+      }
 
-      // Tok ve patlamayan stüdyo tipi dinamik kompresör
+      // Stüdyo tipi hızlı limiter/kompresör (0.5ms attack ile transient'leri ezmeden tok tutar)
       this.compressor = this.ctx.createDynamicsCompressor();
-      this.compressor.threshold.setValueAtTime(-14, this.ctx.currentTime);
-      this.compressor.knee.setValueAtTime(18, this.ctx.currentTime);
-      this.compressor.ratio.setValueAtTime(6, this.ctx.currentTime);
-      this.compressor.attack.setValueAtTime(0.002, this.ctx.currentTime);
-      this.compressor.release.setValueAtTime(0.14, this.ctx.currentTime);
+      this.compressor.threshold.setValueAtTime(-10, this.ctx.currentTime);
+      this.compressor.knee.setValueAtTime(12, this.ctx.currentTime);
+      this.compressor.ratio.setValueAtTime(5, this.ctx.currentTime);
+      this.compressor.attack.setValueAtTime(0.0005, this.ctx.currentTime);
+      this.compressor.release.setValueAtTime(0.09, this.ctx.currentTime);
 
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(0.88, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(0.94, this.ctx.currentTime);
 
       this.masterGain.connect(this.compressor);
       this.compressor.connect(this.ctx.destination);
 
-      this.saturationCurve = this._makeSaturationCurve(28);
+      // 1) Anında (0ms) çalışması için bellekte fiziksel modelleme PCM tamponlarını hemen oluştur
+      this._buildInstantMemoryBank();
 
-      const sr = this.ctx.sampleRate;
-      const bufferSize = Math.floor(sr * 0.45);
-
-      // 1) Pembe Gürültü Tamponu (Organik ıslak jel, vantuz vakumu ve su şapırtısı için)
-      this.pinkNoiseBuffer = this.ctx.createBuffer(1, bufferSize, sr);
-      const pinkData = this.pinkNoiseBuffer.getChannelData(0);
-      let b0 = 0, b1 = 0, b2 = 0;
-      for (let i = 0; i < bufferSize; i++) {
-        const white = Math.random() * 2 - 1;
-        b0 = 0.992 * b0 + white * 0.11;
-        b1 = 0.965 * b1 + white * 0.17;
-        b2 = 0.840 * b2 + white * 0.34;
-        pinkData[i] = Math.max(-1, Math.min(1, (b0 + b1 + b2) * 0.95));
-      }
-
-      // 2) Beyaz Gürültü Tamponu (Keskin kemer kırılma şaklaması ve ok hava yarma sesi için)
-      this.whiteNoiseBuffer = this.ctx.createBuffer(1, bufferSize, sr);
-      const whiteData = this.whiteNoiseBuffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        whiteData[i] = Math.random() * 2 - 1;
-      }
+      // 2) Arka planda /sfx/sfx_db.json ve /sfx/*.wav veritabanını yükleyip gerçek WAV dosyalarıyla senkronize et
+      this._loadWavDatabase();
     }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+  }
+
+  // Biquad DSP filtresi (Pre-baked PCM üretimi için)
+  _applyBiquad(samples, sr, type, freq, q = 1.0) {
+    const out = new Float32Array(samples.length);
+    const w0 = (2 * Math.PI * Math.max(20, Math.min(sr * 0.48, freq))) / sr;
+    const cosw0 = Math.cos(w0);
+    const sinw0 = Math.sin(w0);
+    const alpha = sinw0 / (2 * Math.max(0.1, q));
+
+    let b0, b1, b2, a0, a1, a2;
+    if (type === 'lowpass') {
+      b0 = (1 - cosw0) / 2;
+      b1 = 1 - cosw0;
+      b2 = (1 - cosw0) / 2;
+      a0 = 1 + alpha;
+      a1 = -2 * cosw0;
+      a2 = 1 - alpha;
+    } else if (type === 'highpass') {
+      b0 = (1 + cosw0) / 2;
+      b1 = -(1 + cosw0);
+      b2 = (1 + cosw0) / 2;
+      a0 = 1 + alpha;
+      a1 = -2 * cosw0;
+      a2 = 1 - alpha;
+    } else {
+      b0 = alpha;
+      b1 = 0;
+      b2 = -alpha;
+      a0 = 1 + alpha;
+      a1 = -2 * cosw0;
+      a2 = 1 - alpha;
+    }
+
+    b0 /= a0;
+    b1 /= a0;
+    b2 /= a0;
+    a1 /= a0;
+    a2 /= a0;
+
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const x0 = samples[i];
+      const y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1;
+      x1 = x0;
+      y2 = y1;
+      y1 = y0;
+      out[i] = y0;
+    }
+    return out;
+  }
+
+  // Karplus-Strong Fiziksel Yay Kirişi / Gergin Halat Modeli
+  _karplusStrong(sr, durationSec, baseFreq, tensionDropRatio = 1.0, damping = 0.991, brightness = 0.45) {
+    const numSamples = Math.floor(sr * durationSec);
+    const out = new Float32Array(numSamples);
+    const initPeriod = Math.max(8, Math.floor(sr / baseFreq));
+    const ring = new Float32Array(initPeriod * 4);
+
+    for (let i = 0; i < initPeriod; i++) {
+      const win = Math.sin((i / initPeriod) * Math.PI);
+      ring[i] = (this._rand() * 0.75 + Math.sin((i / initPeriod) * Math.PI * 2) * 0.25) * win;
+    }
+
+    let readIdx = 0;
+    let prevSample = 0;
+    for (let i = 0; i < numSamples; i++) {
+      const progress = i / numSamples;
+      const currentFreq = baseFreq * (1 - progress * (1 - tensionDropRatio));
+      const period = Math.max(8, Math.min(ring.length - 2, Math.floor(sr / currentFreq)));
+
+      const cur = ring[readIdx % period];
+      const next = ring[(readIdx + 1) % period];
+      const filtered = (cur * (1 - brightness) + next * brightness) * damping;
+      const shaped = filtered - prevSample * 0.02;
+      prevSample = filtered;
+
+      ring[readIdx % period] = shaped;
+      out[i] = cur;
+      readIdx++;
+    }
+    return out;
+  }
+
+  _toAudioBuffer(rawSamples, sr, targetPeak = 0.95) {
+    const buf = this.ctx.createBuffer(1, rawSamples.length, sr);
+    const chan = buf.getChannelData(0);
+    let maxAbs = 0.0001;
+    for (let i = 0; i < rawSamples.length; i++) {
+      const sat = Math.tanh(rawSamples[i] * 1.45);
+      chan[i] = sat;
+      if (Math.abs(sat) > maxAbs) maxAbs = Math.abs(sat);
+    }
+    const norm = targetPeak / maxAbs;
+    const fadeLen = Math.min(Math.floor(sr * 0.012), Math.floor(rawSamples.length * 0.15));
+    for (let i = 0; i < rawSamples.length; i++) {
+      const env = i >= rawSamples.length - fadeLen ? (rawSamples.length - 1 - i) / fadeLen : 1.0;
+      chan[i] = Math.max(-1, Math.min(1, chan[i] * norm * env));
+    }
+    return buf;
+  }
+
+  _buildInstantMemoryBank() {
+    if (!this.ctx) return;
+    const sr = this.ctx.sampleRate;
+
+    // 1. TUTUNMA (Attach): Modal Kaya Darbesi + Vakum Mühürlemesi + Karplus-Strong Halat Gerilmesi
+    for (let v = 0; v < 3; v++) {
+      const dur = 0.165;
+      const len = Math.floor(sr * dur);
+      const mix = new Float32Array(len);
+      const p = 1.0 + (v - 1) * 0.065;
+      const modalFreqs = [64 * p, 108 * p, 172 * p, 265 * p];
+      const modalDecays = [32, 48, 72, 110];
+      const modalWeights = [0.75, 0.50, 0.30, 0.18];
+
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        let modalSum = 0;
+        for (let m = 0; m < modalFreqs.length; m++) {
+          const f = modalFreqs[m] * (1 + 0.35 * Math.exp(-t * 95));
+          modalSum += Math.sin(2 * Math.PI * f * t) * Math.exp(-t * modalDecays[m]) * modalWeights[m];
+        }
+        const clickEnv = Math.exp(-t * 210);
+        const suctionSeal =
+          t >= 0.008 && t <= 0.055
+            ? Math.sin(2 * Math.PI * (240 * p + (t - 0.008) * 6200) * (t - 0.008)) *
+              Math.exp(-(t - 0.008) * 68) *
+              0.55
+            : 0;
+        mix[i] += modalSum + this._rand() * clickEnv * 0.65 + suctionSeal;
+      }
+
+      const rope = this._karplusStrong(sr, dur, 142 * p, 1.18, 0.985, 0.42);
+      const ropeFiltered = this._applyBiquad(rope, sr, 'bandpass', 480 * p, 1.8);
+      const noise = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        noise[i] = this._rand() * Math.exp(-(i / sr) * 52);
+      }
+      const wetImpact = this._applyBiquad(noise, sr, 'bandpass', 780 * p, 2.1);
+
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        const ropeEnv = Math.min(1, t / 0.006) * Math.exp(-t * 24);
+        mix[i] += ropeFiltered[i] * ropeEnv * 0.75 + wetImpact[i] * 0.65;
+      }
+      this.bank.attach.push(this._toAudioBuffer(mix, sr, 0.95));
+    }
+
+    // 2. KEMER KIRILMA (Snap): 0ms Kamçı Şaklaması + Karplus-Strong Kopan Gergin Tel + Hava Savrulması
+    for (let v = 0; v < 3; v++) {
+      const dur = 0.195;
+      const len = Math.floor(sr * dur);
+      const mix = new Float32Array(len);
+      const p = 1.0 + (v - 1) * 0.07;
+
+      const crackNoise = new Float32Array(len);
+      const whipNoise = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        const primaryCrack = Math.exp(-t * 165);
+        const secondaryFiber = t > 0.014 ? Math.exp(-(t - 0.014) * 140) * 0.55 : 0;
+        crackNoise[i] = this._rand() * (primaryCrack + secondaryFiber);
+        whipNoise[i] = this._rand() * Math.sin(Math.min(1, t / 0.09) * Math.PI) * Math.exp(-t * 20);
+      }
+      const highCrack = this._applyBiquad(crackNoise, sr, 'bandpass', 2450 * p, 1.5);
+      const midSnapBody = this._applyBiquad(crackNoise, sr, 'bandpass', 920 * p, 1.9);
+      const whipFiltered = this._applyBiquad(whipNoise, sr, 'bandpass', 1280 * p, 2.2);
+
+      const brokenString1 = this._karplusStrong(sr, dur, 330 * p, 0.34, 0.991, 0.38);
+      const brokenString2 = this._karplusStrong(sr, dur, 475 * p, 0.38, 0.989, 0.45);
+
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        const bodySnap = Math.sin(2 * Math.PI * (195 * p * Math.exp(-t * 28)) * t) * Math.exp(-t * 42) * 0.72;
+        const strEnv = Math.exp(-t * 16);
+        mix[i] =
+          highCrack[i] * 0.95 +
+          midSnapBody[i] * 0.85 +
+          bodySnap +
+          (brokenString1[i] * 0.65 + brokenString2[i] * 0.45) * strEnv +
+          whipFiltered[i] * 0.55;
+      }
+      this.bank.snap.push(this._toAudioBuffer(mix, sr, 0.96));
+    }
+
+    // 3. ATEŞ / OK FIRLATMA (Shoot): 0ms Taktiksel Arbalet/Basınçlı Yay Kirişi + Doppler Hava Yarma Whoosh
+    for (let v = 0; v < 3; v++) {
+      const dur = 0.16;
+      const len = Math.floor(sr * dur);
+      const mix = new Float32Array(len);
+      const p = 1.0 + (v - 1) * 0.055;
+
+      const bowString = this._karplusStrong(sr, dur, 185 * p, 0.72, 0.986, 0.48);
+      const bowBody = this._applyBiquad(bowString, sr, 'lowpass', 1350 * p, 1.4);
+
+      const airRaw = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        airRaw[i] = this._rand() * Math.min(1, t / 0.005) * Math.exp(-t * 24);
+      }
+      const airHigh = this._applyBiquad(airRaw, sr, 'bandpass', 1950 * p, 1.8);
+      const airMid = this._applyBiquad(airRaw, sr, 'bandpass', 820 * p, 1.5);
+
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        const chamberPunch =
+          Math.sin(2 * Math.PI * (128 * p + 140 * Math.exp(-t * 85)) * t) * Math.exp(-t * 46) * 0.88;
+        const muzzleTransient = this._rand() * Math.exp(-t * 260) * 0.6;
+        mix[i] =
+          chamberPunch +
+          muzzleTransient +
+          bowBody[i] * Math.exp(-t * 22) * 0.75 +
+          airHigh[i] * 0.72 +
+          airMid[i] * 0.65;
+      }
+      this.bank.shoot.push(this._toAudioBuffer(mix, sr, 0.95));
+    }
+
+    // 4. İSABET (Hit): Tok Hedef Darbesi
+    for (let v = 0; v < 2; v++) {
+      const dur = 0.13;
+      const len = Math.floor(sr * dur);
+      const mix = new Float32Array(len);
+      const p = 1.0 + v * 0.08;
+      const noise = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        noise[i] = this._rand() * Math.exp(-(i / sr) * 48);
+      }
+      const thwack = this._applyBiquad(noise, sr, 'bandpass', 1050 * p, 1.7);
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        const heavyThud = Math.sin(2 * Math.PI * (92 * p + 110 * Math.exp(-t * 90)) * t) * Math.exp(-t * 42) * 0.9;
+        mix[i] = heavyThud + thwack[i] * 0.8;
+      }
+      this.bank.hit.push(this._toAudioBuffer(mix, sr, 0.92));
+    }
+
+    // 5. ÖLÜM / ELEME (Kill)
+    {
+      const dur = 0.28;
+      const len = Math.floor(sr * dur);
+      const mix = new Float32Array(len);
+      const shatter = new Float32Array(len);
+      for (let i = 0; i < len; i++) shatter[i] = this._rand() * Math.exp(-(i / sr) * 22);
+      const shatterBand = this._applyBiquad(shatter, sr, 'bandpass', 1420, 1.6);
+      const chord = this._karplusStrong(sr, dur, 220, 0.85, 0.993, 0.55);
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        const subDrop = Math.sin(2 * Math.PI * (76 + 130 * Math.exp(-t * 35)) * t) * Math.exp(-t * 15) * 0.85;
+        mix[i] = subDrop + shatterBand[i] * 0.7 + chord[i] * Math.exp(-t * 12) * 0.5;
+      }
+      this.bank.kill.push(this._toAudioBuffer(mix, sr, 0.95));
+    }
+
+    // 6. POWERUP
+    {
+      const dur = 0.24;
+      const len = Math.floor(sr * dur);
+      const mix = new Float32Array(len);
+      const s1 = this._karplusStrong(sr, dur, 330, 1.0, 0.994, 0.6);
+      const s2 = this._karplusStrong(sr, dur, 440, 1.0, 0.994, 0.6);
+      const s3 = this._karplusStrong(sr, dur, 660, 1.0, 0.995, 0.65);
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        mix[i] += s1[i] * Math.exp(-t * 14) * 0.5;
+        if (t >= 0.045) {
+          const i2 = i - Math.floor(0.045 * sr);
+          mix[i] += s2[i2] * Math.exp(-(t - 0.045) * 14) * 0.55;
+        }
+        if (t >= 0.09) {
+          const i3 = i - Math.floor(0.09 * sr);
+          mix[i] += s3[i3] * Math.exp(-(t - 0.09) * 12) * 0.65;
+        }
+      }
+      this.bank.powerup.push(this._toAudioBuffer(mix, sr, 0.9));
+    }
+
+    // 7. UI CLICK
+    {
+      const dur = 0.045;
+      const len = Math.floor(sr * dur);
+      const mix = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        mix[i] =
+          Math.sin(2 * Math.PI * 520 * Math.exp(-t * 45) * t) * Math.exp(-t * 95) +
+          this._rand() * Math.exp(-t * 220) * 0.4;
+      }
+      this.bank.ui.push(this._toAudioBuffer(mix, sr, 0.8));
+    }
+
+    // 8. HAFİF HAREKET RÜZGARI (Move)
+    {
+      const dur = 0.085;
+      const len = Math.floor(sr * dur);
+      const raw = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        raw[i] = this._rand() * Math.sin((t / dur) * Math.PI);
+      }
+      const filtered = this._applyBiquad(raw, sr, 'bandpass', 420, 2.2);
+      this.bank.move.push(this._toAudioBuffer(filtered, sr, 0.35));
+    }
+  }
+
+  // Sunucudaki /sfx/sfx_db.json ve /sfx/*.wav ses veritabanını indirip AudioBuffer olarak decode eder
+  async _loadWavDatabase() {
+    if (this.dbLoaded || this.dbLoading || !this.ctx || typeof fetch !== 'function') return;
+    this.dbLoading = true;
+    try {
+      const res = await fetch('/sfx/sfx_db.json?v=4.0');
+      if (!res.ok) throw new Error('SFX DB fetch failed');
+      const manifest = await res.json();
+      if (!manifest || !manifest.sounds) return;
+
+      const categories = Object.keys(manifest.sounds);
+      for (const cat of categories) {
+        const items = manifest.sounds[cat];
+        if (!Array.isArray(items) || items.length === 0) continue;
+        const decodedList = [];
+        for (const item of items) {
+          if (!item || !item.url) continue;
+          try {
+            const wavRes = await fetch(`${item.url}?v=4.0`);
+            if (!wavRes.ok) continue;
+            const arrayBuf = await wavRes.arrayBuffer();
+            const audioBuf = await this.ctx.decodeAudioData(arrayBuf);
+            if (audioBuf) decodedList.push(audioBuf);
+          } catch (_err) {
+            // Tekil dosya hatasında bellekteki tampon korunur
+          }
+        }
+        if (decodedList.length > 0) {
+          this.bank[cat] = decodedList;
+        }
+      }
+      this.dbLoaded = true;
+    } catch (_e) {
+      // Çevrimdışı veya ağ hatası durumunda _buildInstantMemoryBank tamponları kesintisiz çalışmaya devam eder
+    } finally {
+      this.dbLoading = false;
     }
   }
 
   toggleMute() {
     this.init();
     this.muted = !this.muted;
-    if (this.masterGain) {
-      this.masterGain.gain.setValueAtTime(this.muted ? 0 : 0.88, this.ctx.currentTime);
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(this.muted ? 0 : 0.94, this.ctx.currentTime);
     }
     return this.muted;
   }
 
-  // Kameraya olan mesafeye göre doğal ses sönümlemesi
   getDistanceScale(worldX, worldY, camX, camY) {
-    if (typeof worldX !== 'number' || typeof worldY !== 'number' || typeof camX !== 'number' || typeof camY !== 'number') {
+    if (
+      typeof worldX !== 'number' ||
+      typeof worldY !== 'number' ||
+      typeof camX !== 'number' ||
+      typeof camY !== 'number'
+    ) {
       return 1.0;
     }
     const dist = Math.hypot(worldX - camX, worldY - camY);
-    if (dist <= 460) return 1.0;
-    if (dist >= 1250) return 0;
-    const norm = 1 - (dist - 460) / (1250 - 460);
+    if (dist <= 480) return 1.0;
+    if (dist >= 1280) return 0;
+    const norm = 1 - (dist - 480) / (1280 - 480);
     return norm * norm;
   }
 
-  // Stereo panlama (Sağdan/soldan gelen kemer kırılma ve atışların yönünü hissettirir)
-  _createOutputBus(worldX, camX) {
-    if (!this.ctx) return null;
-    if (typeof this.ctx.createStereoPanner === 'function' && typeof worldX === 'number' && typeof camX === 'number') {
-      const panner = this.ctx.createStereoPanner();
-      const panVal = Math.max(-0.78, Math.min(0.78, (worldX - camX) / 720));
-      panner.pan.setValueAtTime(panVal, this.ctx.currentTime);
-      panner.connect(this.masterGain);
-      return panner;
-    }
-    return this.masterGain;
-  }
-
-  // Yardımcı: Organik Rezonanslı Baloncuk / Vakum Damlası
-  _spawnBubble(startFreq, endFreq, durationSec, peakGain, delaySec = 0, outNode = null) {
-    if (!this.ctx || peakGain <= 0.001) return;
-    const dest = outNode || this.masterGain;
-    const t = this.ctx.currentTime + delaySec;
-
-    const osc = this.ctx.createOscillator();
-    const filter = this.ctx.createBiquadFilter();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(startFreq, t);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(25, endFreq), t + durationSec);
-
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(Math.max(startFreq, endFreq) * 1.85, t);
-    filter.Q.setValueAtTime(4.8, t);
-
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(peakGain, t + durationSec * 0.14);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + durationSec);
-
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(dest);
-
-    osc.start(t);
-    osc.stop(t + durationSec + 0.012);
-  }
-
-  // Yardımcı: Filtrelenmiş Islak/Hava Gürültü Darbesi
-  _spawnNoiseBurst({
-    useWhite = false,
-    filterType = 'bandpass',
-    startFreq = 800,
-    endFreq = 400,
-    q = 3.0,
-    durationSec = 0.08,
-    attackRatio = 0.12,
-    peakGain = 0.2,
-    delaySec = 0,
-    outNode = null
-  }) {
-    if (!this.ctx || peakGain <= 0.001) return;
-    const buf = useWhite ? this.whiteNoiseBuffer : this.pinkNoiseBuffer;
-    if (!buf) return;
-    const dest = outNode || this.masterGain;
-    const t = this.ctx.currentTime + delaySec;
-
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    // Her seferinde farklı örnek noktasından başlat ki robotik/aynı duyulmasın
-    const maxOffset = Math.max(0, buf.duration - durationSec - 0.02);
-    const offset = Math.random() * maxOffset;
-
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = filterType;
-    filter.frequency.setValueAtTime(Math.max(30, startFreq), t);
-    filter.frequency.exponentialRampToValueAtTime(Math.max(30, endFreq), t + durationSec);
-    filter.Q.setValueAtTime(q, t);
-
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(peakGain, t + Math.max(0.002, durationSec * attackRatio));
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + durationSec);
-
-    src.connect(filter);
-    filter.connect(gain);
-    gain.connect(dest);
-
-    src.start(t, offset, durationSec + 0.015);
-    src.stop(t + durationSec + 0.018);
-  }
-
-  // 1) Hızlı süzülürken hafif jel hareket sesi
-  playCuteGiggle(speedRatio = 0.5) {
+  // Sıfır gecikmeli (0.0ms) tek-düğüm (Single-Node) AudioBuffer oynatıcı
+  _playFromBank(category, gainScale = 1.0, worldX = null, camX = null, rateSpread = 0.07) {
     if (this.muted) return;
     this.init();
-    const now = performance.now();
-    if (now - this.lastMoveSquishTime < 3400) return;
-    this.lastMoveSquishTime = now;
+    if (!this.ctx || gainScale <= 0.015) return;
 
-    const base = 160 + Math.random() * 40;
-    const vol = 0.055 * (0.65 + speedRatio * 0.35);
-    this._spawnBubble(base, base * 2.05, 0.07, vol, 0);
-    this._spawnBubble(base * 1.25, base * 2.4, 0.06, vol * 0.8, 0.06);
+    const list = this.bank[category];
+    if (!list || list.length === 0) return;
+
+    // Sıradaki varyantı seç (Round-robin + hafif pitch değişimi ile doğal çeşitlilik)
+    const idx = (this.variantCursor[category] || 0) % list.length;
+    this.variantCursor[category] = idx + 1;
+    const buffer = list[idx];
+    if (!buffer) return;
+
+    const now = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+
+    const rate = 1.0 + (Math.random() - 0.5) * rateSpread;
+    src.playbackRate.setValueAtTime(rate, now);
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.setValueAtTime(Math.min(1.25, gainScale), now);
+
+    src.connect(gainNode);
+
+    if (
+      typeof this.ctx.createStereoPanner === 'function' &&
+      typeof worldX === 'number' &&
+      typeof camX === 'number'
+    ) {
+      const panner = this.ctx.createStereoPanner();
+      const panVal = Math.max(-0.78, Math.min(0.78, (worldX - camX) / 720));
+      panner.pan.setValueAtTime(panVal, now);
+      gainNode.connect(panner);
+      panner.connect(this.masterGain);
+    } else {
+      gainNode.connect(this.masterGain);
+    }
+
+    // Tam 0.0ms'de (şimdi) başlat!
+    src.start(now);
   }
 
-  // 2) TUTUNMA SESİ (Duvara/Kayaya Çarpıp Kemer Bağlama):
-  // Tok Fiziksel Kaya Darbesi + Güçlü Vantuz Vakum Yapışması ("ŞLUP-TAK!") + Gerilen Elastik Kemer Sesi
+  // 1) Hızlı süzülürken hafif aerodinamik hareket sesi
+  playCuteGiggle(speedRatio = 0.5) {
+    if (this.muted) return;
+    const now = performance.now();
+    if (now - this.lastMoveSquishTime < 3600) return;
+    this.lastMoveSquishTime = now;
+    this._playFromBank('move', 0.18 * (0.6 + speedRatio * 0.4), null, null, 0.12);
+  }
+
+  // 2) TUTUNMA SESİ (Duvara/Kayaya Çarpıp Kemer Bağlama - attach_1..3.wav)
   playWallAttachScream(worldX, worldY, camX, camY) {
     if (this.muted) return;
     const scale = this.getDistanceScale(worldX, worldY, camX, camY);
-    if (scale <= 0.02 || !this._canTrigger('wallAttach', 45)) return;
-    this.init();
-
-    const t = this.ctx.currentTime;
-    const bus = this._createOutputBus(worldX, camX);
-    const pitchVar = 0.94 + Math.random() * 0.12;
-
-    // KATMAN A: Tok Kaya/Duvar Çarpma Gövde Darbesi (Sub-Bass Punch + Warm Saturation)
-    const punchOsc = this.ctx.createOscillator();
-    const shaper = this.ctx.createWaveShaper();
-    const punchGain = this.ctx.createGain();
-
-    punchOsc.type = 'triangle';
-    punchOsc.frequency.setValueAtTime(148 * pitchVar, t);
-    punchOsc.frequency.exponentialRampToValueAtTime(44 * pitchVar, t + 0.085);
-
-    shaper.curve = this.saturationCurve;
-    shaper.oversample = '2x';
-
-    punchGain.gain.setValueAtTime(0.001, t);
-    punchGain.gain.linearRampToValueAtTime(0.36 * scale, t + 0.005);
-    punchGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.095);
-
-    punchOsc.connect(shaper);
-    shaper.connect(punchGain);
-    punchGain.connect(bus);
-    punchOsc.start(t);
-    punchOsc.stop(t + 0.10);
-
-    // KATMAN B: Gerçekçi Vantuz Vakum Kilitlenmesi ("ŞLUP-POP!")
-    // Önce aşağı doğru vakum emişi, hemen ardından yukarı doğru keskin vantuz mühürleme sesi
-    this._spawnBubble(320 * pitchVar, 115 * pitchVar, 0.038, 0.24 * scale, 0, bus);
-    this._spawnBubble(175 * pitchVar, 860 * pitchVar, 0.068, 0.34 * scale, 0.024, bus);
-    this._spawnBubble(340 * pitchVar, 1180 * pitchVar, 0.048, 0.20 * scale, 0.062, bus);
-
-    // KATMAN C: Kemer Halatının Gerilme / Kancalanma Sesi (Elastic Tether Tension Stretch)
-    const ropeOsc = this.ctx.createOscillator();
-    const ropeFilter = this.ctx.createBiquadFilter();
-    const ropeGain = this.ctx.createGain();
-
-    ropeOsc.type = 'sawtooth';
-    ropeOsc.frequency.setValueAtTime(115 * pitchVar, t + 0.015);
-    ropeOsc.frequency.exponentialRampToValueAtTime(285 * pitchVar, t + 0.095);
-    ropeOsc.frequency.exponentialRampToValueAtTime(190 * pitchVar, t + 0.165);
-
-    ropeFilter.type = 'bandpass';
-    ropeFilter.frequency.setValueAtTime(520, t + 0.015);
-    ropeFilter.frequency.exponentialRampToValueAtTime(1150, t + 0.11);
-    ropeFilter.Q.setValueAtTime(4.5, t + 0.015);
-
-    ropeGain.gain.setValueAtTime(0.0001, t + 0.015);
-    ropeGain.gain.linearRampToValueAtTime(0.16 * scale, t + 0.045);
-    ropeGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.17);
-
-    ropeOsc.connect(ropeFilter);
-    ropeFilter.connect(ropeGain);
-    ropeGain.connect(bus);
-    ropeOsc.start(t + 0.015);
-    ropeOsc.stop(t + 0.18);
-
-    // KATMAN D: Islak Jel Yüzey Şapırtısı (Wet Suction Transient)
-    this._spawnNoiseBurst({
-      useWhite: false,
-      filterType: 'bandpass',
-      startFreq: 520 * pitchVar,
-      endFreq: 1850 * pitchVar,
-      q: 3.4,
-      durationSec: 0.07,
-      attackRatio: 0.08,
-      peakGain: 0.25 * scale,
-      delaySec: 0.004,
-      outNode: bus
-    });
+    if (scale <= 0.02 || !this._canTrigger('wallAttach', 22)) return;
+    this._playFromBank('attach', 0.96 * scale, worldX, camX, 0.08);
   }
 
-  // 3) KEMER KIRILMA / KOPMA SESİ:
-  // Yüksek Gerilimli Elastik Halat Kırılması ("ÇAT / ŞLAK!") + Kamçı Geri Tepmesi ("VİİÜÜ-BOİNG!") + Jel Parçalanması
+  // 3) KEMER KIRILMA / KOPMA SESİ (Yüksek Gerilimli Halat/Yay Kopması - snap_1..3.wav)
   playBandSnap(worldX, worldY, camX, camY) {
     if (this.muted) return;
     const scale = this.getDistanceScale(worldX, worldY, camX, camY);
-    if (scale <= 0.02 || !this._canTrigger('bandSnap', 38)) return;
-    this.init();
-
-    const t = this.ctx.currentTime;
-    const bus = this._createOutputBus(worldX, camX);
-    const pitchVar = 0.93 + Math.random() * 0.14;
-
-    // KATMAN A: Keskin Kırılma / Kamçı Çatlaması Transient ("ÇAT! / ŞLAK!")
-    // Gerilmiş yayın/kemerin koptuğu ilk 22 milisaniyelik yüksek enerjili kırılma darbesi
-    const snapClickOsc = this.ctx.createOscillator();
-    const snapClickGain = this.ctx.createGain();
-    snapClickOsc.type = 'triangle';
-    snapClickOsc.frequency.setValueAtTime(1450 * pitchVar, t);
-    snapClickOsc.frequency.exponentialRampToValueAtTime(135 * pitchVar, t + 0.028);
-
-    snapClickGain.gain.setValueAtTime(0.42 * scale, t);
-    snapClickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.032);
-
-    snapClickOsc.connect(snapClickGain);
-    snapClickGain.connect(bus);
-    snapClickOsc.start(t);
-    snapClickOsc.stop(t + 0.035);
-
-    // Yüksek frekanslı kamçı şaklaması (Whip-Crack White Noise Impulse)
-    this._spawnNoiseBurst({
-      useWhite: true,
-      filterType: 'bandpass',
-      startFreq: 3200 * pitchVar,
-      endFreq: 950 * pitchVar,
-      q: 2.2,
-      durationSec: 0.042,
-      attackRatio: 0.04,
-      peakGain: 0.38 * scale,
-      delaySec: 0,
-      outNode: bus
-    });
-
-    // KATMAN B: Kopan Kemerin Havayı Yararak Geri Tepmesi (Dual-Detuned Elastic Recoil Twang)
-    const twang1 = this.ctx.createOscillator();
-    const twang2 = this.ctx.createOscillator();
-    const twangFilter = this.ctx.createBiquadFilter();
-    const twangShaper = this.ctx.createWaveShaper();
-    const twangGain = this.ctx.createGain();
-
-    twang1.type = 'sawtooth';
-    twang2.type = 'triangle';
-
-    twang1.frequency.setValueAtTime(540 * pitchVar, t + 0.006);
-    twang1.frequency.exponentialRampToValueAtTime(84 * pitchVar, t + 0.19);
-
-    twang2.frequency.setValueAtTime(760 * pitchVar, t + 0.006);
-    twang2.frequency.exponentialRampToValueAtTime(118 * pitchVar, t + 0.17);
-
-    // Kopan lastiğin titreşimli (vibrato) salınımı
-    const vibLfo = this.ctx.createOscillator();
-    const vibGain = this.ctx.createGain();
-    vibLfo.type = 'sine';
-    vibLfo.frequency.setValueAtTime(38, t);
-    vibGain.gain.setValueAtTime(28, t);
-    vibLfo.connect(vibGain);
-    vibGain.connect(twang1.frequency);
-    vibGain.connect(twang2.frequency);
-
-    twangFilter.type = 'lowpass';
-    twangFilter.frequency.setValueAtTime(2900 * pitchVar, t + 0.006);
-    twangFilter.frequency.exponentialRampToValueAtTime(210 * pitchVar, t + 0.19);
-    twangFilter.Q.setValueAtTime(5.2, t + 0.006);
-
-    twangShaper.curve = this.saturationCurve;
-
-    twangGain.gain.setValueAtTime(0.001, t);
-    twangGain.gain.linearRampToValueAtTime(0.32 * scale, t + 0.012);
-    twangGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.20);
-
-    twang1.connect(twangFilter);
-    twang2.connect(twangFilter);
-    twangFilter.connect(twangShaper);
-    twangShaper.connect(twangGain);
-    twangGain.connect(bus);
-
-    twang1.start(t + 0.006);
-    twang2.start(t + 0.006);
-    vibLfo.start(t + 0.006);
-    twang1.stop(t + 0.21);
-    twang2.stop(t + 0.21);
-    vibLfo.stop(t + 0.21);
-
-    // KATMAN C: Kopan Kemerden Etrafa Saçılan Islak Jel Damlaları
-    this._spawnNoiseBurst({
-      useWhite: false,
-      filterType: 'bandpass',
-      startFreq: 1650 * pitchVar,
-      endFreq: 420 * pitchVar,
-      q: 3.0,
-      durationSec: 0.085,
-      attackRatio: 0.1,
-      peakGain: 0.28 * scale,
-      delaySec: 0.012,
-      outNode: bus
-    });
-    this._spawnBubble(390 * pitchVar, 780 * pitchVar, 0.048, 0.18 * scale, 0.028, bus);
-    this._spawnBubble(280 * pitchVar, 610 * pitchVar, 0.045, 0.14 * scale, 0.065, bus);
+    if (scale <= 0.02 || !this._canTrigger('bandSnap', 20)) return;
+    this._playFromBank('snap', 1.02 * scale, worldX, camX, 0.09);
   }
 
-  // 4) ATEŞ / OK FIRLATMA SESİ:
-  // Basınçlı Yay/Sapan Boşalması ("TOK-PÜF!") + Aerodinamik Hava Yarma ("FŞŞŞT!") + Plazma Jel Çıkışı
+  // 4) ATEŞ / OK FIRLATMA SESİ (Taktiksel Arbalet / Yay Fırlatma + Hava Yarma - shoot_1..3.wav)
   playArrowShoot(worldX, worldY, camX, camY) {
     if (this.muted) return;
     const scale = this.getDistanceScale(worldX, worldY, camX, camY);
-    if (scale <= 0.02 || !this._canTrigger('arrowShoot', 38)) return;
-    this.init();
-
-    const t = this.ctx.currentTime;
-    const bus = this._createOutputBus(worldX, camX);
-    const pitchVar = 0.95 + Math.random() * 0.10;
-
-    // KATMAN A: Basınçlı Namlu / Yay İtiş Darbesi (Pneumatic Launch Thump)
-    const thumpOsc = this.ctx.createOscillator();
-    const thumpShaper = this.ctx.createWaveShaper();
-    const thumpGain = this.ctx.createGain();
-
-    thumpOsc.type = 'sine';
-    thumpOsc.frequency.setValueAtTime(245 * pitchVar, t);
-    thumpOsc.frequency.exponentialRampToValueAtTime(52 * pitchVar, t + 0.068);
-
-    thumpShaper.curve = this.saturationCurve;
-
-    thumpGain.gain.setValueAtTime(0.001, t);
-    thumpGain.gain.linearRampToValueAtTime(0.38 * scale, t + 0.004);
-    thumpGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.075);
-
-    thumpOsc.connect(thumpShaper);
-    thumpShaper.connect(thumpGain);
-    thumpGain.connect(bus);
-    thumpOsc.start(t);
-    thumpOsc.stop(t + 0.08);
-
-    // KATMAN B: Gergin Kemer Yayının Fırlatma Tınısı (Bowstring Release Snap)
-    const bowOsc = this.ctx.createOscillator();
-    const bowFilter = this.ctx.createBiquadFilter();
-    const bowGain = this.ctx.createGain();
-
-    bowOsc.type = 'triangle';
-    bowOsc.frequency.setValueAtTime(590 * pitchVar, t);
-    bowOsc.frequency.exponentialRampToValueAtTime(145 * pitchVar, t + 0.052);
-
-    bowFilter.type = 'lowpass';
-    bowFilter.frequency.setValueAtTime(2200, t);
-    bowFilter.frequency.exponentialRampToValueAtTime(480, t + 0.055);
-    bowFilter.Q.setValueAtTime(3.8, t);
-
-    bowGain.gain.setValueAtTime(0.28 * scale, t);
-    bowGain.gain.exponentialRampToValueAtTime(0.001, t + 0.058);
-
-    bowOsc.connect(bowFilter);
-    bowFilter.connect(bowGain);
-    bowGain.connect(bus);
-    bowOsc.start(t);
-    bowOsc.stop(t + 0.062);
-
-    // KATMAN C: Yüksek Hızlı Okun Havayı Yarma Sesi (High-Velocity Air Whoosh "FŞŞŞT!")
-    const whooshSrc = this.ctx.createBufferSource();
-    whooshSrc.buffer = this.whiteNoiseBuffer;
-    const maxOffset = Math.max(0, this.whiteNoiseBuffer.duration - 0.14);
-    const whooshFilter = this.ctx.createBiquadFilter();
-    const whooshGain = this.ctx.createGain();
-
-    whooshFilter.type = 'bandpass';
-    whooshFilter.frequency.setValueAtTime(620 * pitchVar, t + 0.004);
-    whooshFilter.frequency.exponentialRampToValueAtTime(2850 * pitchVar, t + 0.048);
-    whooshFilter.frequency.exponentialRampToValueAtTime(740 * pitchVar, t + 0.125);
-    whooshFilter.Q.setValueAtTime(2.6, t + 0.004);
-
-    whooshGain.gain.setValueAtTime(0.0001, t + 0.004);
-    whooshGain.gain.linearRampToValueAtTime(0.30 * scale, t + 0.026);
-    whooshGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.13);
-
-    whooshSrc.connect(whooshFilter);
-    whooshFilter.connect(whooshGain);
-    whooshGain.connect(bus);
-    whooshSrc.start(t + 0.004, Math.random() * maxOffset, 0.135);
-    whooshSrc.stop(t + 0.14);
-
-    // KATMAN D: Basınçlı Slime Mermi Çıkış Patlaması ("Plop-Zing!")
-    this._spawnBubble(260 * pitchVar, 890 * pitchVar, 0.058, 0.25 * scale, 0.006, bus);
+    if (scale <= 0.02 || !this._canTrigger('arrowShoot', 20)) return;
+    this._playFromBank('shoot', 0.98 * scale, worldX, camX, 0.07);
   }
 
-  // 5) OKUN DUVARA VEYA HEDEFE ÇARPMA SESİ:
-  // Ağır Islak Jel Çarpma Darbesi ("ŞLAP-TOK!")
+  // 5) OKUN DUVARA VEYA HEDEFE ÇARPMA SESİ (hit_1..2.wav)
   playSlimeSplat(worldX, worldY, camX, camY) {
     if (this.muted) return;
     const scale = this.getDistanceScale(worldX, worldY, camX, camY);
-    if (scale <= 0.02 || !this._canTrigger('slimeSplat', 40)) return;
-    this.init();
-
-    const t = this.ctx.currentTime;
-    const bus = this._createOutputBus(worldX, camX);
-    const r = 0.88 + Math.random() * 0.24;
-
-    // Çarpma tok darbesi
-    const hitOsc = this.ctx.createOscillator();
-    const hitGain = this.ctx.createGain();
-    hitOsc.type = 'triangle';
-    hitOsc.frequency.setValueAtTime(165 * r, t);
-    hitOsc.frequency.exponentialRampToValueAtTime(46 * r, t + 0.065);
-
-    hitGain.gain.setValueAtTime(0.24 * scale, t);
-    hitGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
-
-    hitOsc.connect(hitGain);
-    hitGain.connect(bus);
-    hitOsc.start(t);
-    hitOsc.stop(t + 0.075);
-
-    // Islak şapırtı ve sıçrayan damlalar
-    this._spawnNoiseBurst({
-      useWhite: false,
-      filterType: 'bandpass',
-      startFreq: 1250 * r,
-      endFreq: 310 * r,
-      q: 2.8,
-      durationSec: 0.08,
-      attackRatio: 0.08,
-      peakGain: 0.24 * scale,
-      delaySec: 0,
-      outNode: bus
-    });
-    this._spawnBubble(220 * r, 540 * r, 0.055, 0.16 * scale, 0.012, bus);
-    this._spawnBubble(340 * r, 720 * r, 0.045, 0.12 * scale, 0.042, bus);
+    if (scale <= 0.02 || !this._canTrigger('slimeSplat', 22)) return;
+    this._playFromBank('hit', 0.88 * scale, worldX, camX, 0.09);
   }
 
-  // 6) Oyuncu Elendiğinde: Güçlü Jel Patlaması + Bas Düşüşü + Saçılan Baloncuklar
+  // 6) Oyuncu Elendiğinde (kill_1.wav)
   playDeathPop() {
     if (this.muted) return;
-    this.init();
-    const t = this.ctx.currentTime;
-
-    // Derin gövde patlama ve sönme bası
-    const subOsc = this.ctx.createOscillator();
-    const subShaper = this.ctx.createWaveShaper();
-    const subGain = this.ctx.createGain();
-    subOsc.type = 'sine';
-    subOsc.frequency.setValueAtTime(260, t);
-    subOsc.frequency.exponentialRampToValueAtTime(42, t + 0.32);
-
-    subShaper.curve = this.saturationCurve;
-    subGain.gain.setValueAtTime(0.36, t);
-    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
-
-    subOsc.connect(subShaper);
-    subShaper.connect(subGain);
-    subGain.connect(this.masterGain);
-    subOsc.start(t);
-    subOsc.stop(t + 0.35);
-
-    // İlk patlama şapırtısı
-    this._spawnNoiseBurst({
-      useWhite: true,
-      filterType: 'bandpass',
-      startFreq: 1900,
-      endFreq: 340,
-      q: 2.4,
-      durationSec: 0.15,
-      attackRatio: 0.06,
-      peakGain: 0.28,
-      delaySec: 0
-    });
-
-    // Ardışık patlayan 5 organik slime parçacığı
-    const bubbleSteps = [
-      { f1: 190, f2: 490, delay: 0.0, gain: 0.22 },
-      { f1: 240, f2: 610, delay: 0.045, gain: 0.20 },
-      { f1: 205, f2: 540, delay: 0.095, gain: 0.18 },
-      { f1: 310, f2: 740, delay: 0.145, gain: 0.16 },
-      { f1: 370, f2: 880, delay: 0.195, gain: 0.14 }
-    ];
-    for (const b of bubbleSteps) {
-      this._spawnBubble(b.f1, b.f2, 0.07, b.gain, b.delay);
-    }
+    this._playFromBank('kill', 1.0, null, null, 0.06);
   }
 
-  // 7) Arayüz / Bildirim Sesi
+  // 7) Arayüz / Bildirim Sesi (ui_click.wav)
   playUiPop() {
     if (this.muted) return;
-    this.init();
-    this._spawnBubble(310, 660, 0.06, 0.15, 0);
-    this._spawnBubble(450, 910, 0.05, 0.11, 0.045);
+    this._playFromBank('ui', 0.65, null, null, 0.05);
   }
 
-  // 8) Güçlendirme Kutusu (Power-Up) Alındığında: Parlak Enerji + Jel Yükselişi
+  // 8) Güçlendirme Kutusu (Power-Up) Alındığında (powerup_1.wav)
   playPowerupPickup(worldX, worldY, camX, camY) {
     if (this.muted) return;
-    this.init();
     const scale = this.getDistanceScale(worldX, worldY, camX, camY);
     if (scale <= 0.02) return;
-    const bus = this._createOutputBus(worldX, camX);
-
-    const notes = [
-      { f1: 320, f2: 660, delay: 0.0, gain: 0.20 * scale },
-      { f1: 440, f2: 920, delay: 0.055, gain: 0.22 * scale },
-      { f1: 580, f2: 1240, delay: 0.11, gain: 0.25 * scale }
-    ];
-    for (const n of notes) {
-      this._spawnBubble(n.f1, n.f2, 0.08, n.gain, n.delay, bus);
-    }
-    this._spawnNoiseBurst({
-      useWhite: false,
-      filterType: 'bandpass',
-      startFreq: 560,
-      endFreq: 1420,
-      q: 3.2,
-      durationSec: 0.08,
-      attackRatio: 0.15,
-      peakGain: 0.16 * scale,
-      delaySec: 0.02,
-      outNode: bus
-    });
+    this._playFromBank('powerup', 0.9 * scale, worldX, camX, 0.04);
   }
 }
 
