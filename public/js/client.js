@@ -6256,6 +6256,82 @@
         if (mySpeed > 6.5) {
           window.soundManager.playCuteGiggle(Math.min(mySpeed / 13, 1));
         }
+
+        // 0ms Görsel Çarpışma Ses Öngörüsü: Slime ekranda kayaya veya duvara değdiği salisede tutunma sesini çal
+        const nowPerf = performance.now();
+        if (
+          Array.isArray(me.bands) &&
+          me.bands.length < (config.MAX_BANDS || 15) &&
+          nowPerf - lastLocalAttachSfxAt >= 270
+        ) {
+          const pr = (config.PLAYER_RADIUS || 24) + 4;
+          const halfW = (config.ARENA_WIDTH || 2600) / 2;
+          const halfH = (config.ARENA_HEIGHT || 1800) / 2;
+          const minAnchorSq = Math.pow(config.MIN_ANCHOR_DISTANCE || 45, 2);
+          let hitX = null;
+          let hitY = null;
+
+          if (Math.abs(me.renderX) >= halfW - pr) {
+            hitX = me.renderX > 0 ? halfW : -halfW;
+            hitY = me.renderY;
+          } else if (Math.abs(me.renderY) >= halfH - pr) {
+            hitX = me.renderX;
+            hitY = me.renderY > 0 ? halfH : -halfH;
+          } else {
+            for (let i = 0; i < mapObstacles.length; i++) {
+              const obs = mapObstacles[i];
+              if (obs.type === 'circle') {
+                const dx = me.renderX - obs.x;
+                const dy = me.renderY - obs.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist <= obs.radius + pr) {
+                  const n = dist || 1;
+                  hitX = obs.x + (dx / n) * obs.radius;
+                  hitY = obs.y + (dy / n) * obs.radius;
+                  break;
+                }
+              } else if (obs.vertices && obs.vertices.length >= 3) {
+                if (Math.abs(me.renderX - obs.x) > 220 || Math.abs(me.renderY - obs.y) > 220) continue;
+                const verts = obs.vertices;
+                for (let k = 0; k < verts.length; k++) {
+                  const v1 = verts[k];
+                  const v2 = verts[(k + 1) % verts.length];
+                  const vx = v2.x - v1.x;
+                  const vy = v2.y - v1.y;
+                  const lenSq = vx * vx + vy * vy || 1;
+                  const tProj = Math.max(0, Math.min(1, ((me.renderX - v1.x) * vx + (me.renderY - v1.y) * vy) / lenSq));
+                  const cx = v1.x + tProj * vx;
+                  const cy = v1.y + tProj * vy;
+                  if (Math.hypot(me.renderX - cx, me.renderY - cy) <= pr) {
+                    hitX = cx;
+                    hitY = cy;
+                    break;
+                  }
+                }
+                if (hitX !== null) break;
+              }
+            }
+          }
+
+          if (hitX !== null && hitY !== null) {
+            let farEnough = true;
+            for (let bIdx = 0; bIdx < me.bands.length; bIdx++) {
+              const b = me.bands[bIdx];
+              const bdx = b.anchorX - hitX;
+              const bdy = b.anchorY - hitY;
+              if (bdx * bdx + bdy * bdy < minAnchorSq) {
+                farEnough = false;
+                break;
+              }
+            }
+            if (farEnough) {
+              lastLocalAttachSfxAt = nowPerf;
+              me.impactPulse = 1.0;
+              window.soundManager.playWallAttachScream();
+            }
+          }
+        }
+
         updateMouseWorld();
         sendMouseTarget();
       } else {
