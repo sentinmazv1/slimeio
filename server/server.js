@@ -591,10 +591,11 @@ function grantLiveCombatReward(player, type) {
   const mods = player.combatMods || {};
   const bonusMult = isKill ? (1 + (mods.killPointBonus || 0)) : (1 + (mods.cutPointBonus || 0));
   const basePoints = isKill
-    ? (GAME_CONFIG.REWARD_POINT_PER_KILL || 12)
-    : (GAME_CONFIG.REWARD_POINT_PER_CUT || 4);
+    ? (GAME_CONFIG.REWARD_POINT_PER_KILL || 6)
+    : (GAME_CONFIG.REWARD_POINT_PER_CUT || 2);
   const earnedPoints = Math.round(basePoints * bonusMult);
-  const earnedCoins = isKill && player.kills > 0 && player.kills % 3 === 0
+  const killCoinStep = GAME_CONFIG.REWARD_COIN_KILL_THRESHOLD || 5;
+  const earnedCoins = isKill && player.kills > 0 && player.kills % killCoinStep === 0 && player.kills <= killCoinStep * 3
     ? (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 1)
     : 0;
 
@@ -1601,13 +1602,14 @@ function triggerMatchEnd(room) {
     const won = room.isTeam ? row.team === winningTeam : winner.id === row.id;
     const mods = row.combatMods || {};
     const matchMult = 1 + (mods.matchPointBonus || 0);
-    const cutsPoints = Math.round((row.cuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 4) * (1 + (mods.cutPointBonus || 0)));
-    const killsPoints = Math.round((row.kills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 12) * (1 + (mods.killPointBonus || 0)));
-    const scorePoints = Math.round((row.score || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.03) * matchMult);
-    const bonusPoints = Math.round(((GAME_CONFIG.REWARD_POINT_MATCH_COMPLETE || 10) + (won ? (GAME_CONFIG.REWARD_POINT_MATCH_WIN || 30) : 0)) * matchMult);
+    const cutsPoints = Math.round((row.cuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 2) * (1 + (mods.cutPointBonus || 0)));
+    const killsPoints = Math.round((row.kills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 6) * (1 + (mods.killPointBonus || 0)));
+    const scorePoints = Math.round((row.score || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.01) * matchMult);
+    const bonusPoints = Math.round(((GAME_CONFIG.REWARD_POINT_MATCH_COMPLETE || 5) + (won ? (GAME_CONFIG.REWARD_POINT_MATCH_WIN || 15) : 0)) * matchMult);
     const totalMatchPoints = cutsPoints + killsPoints + scorePoints + bonusPoints;
-    const killCoins = Math.floor((row.kills || 0) / 3) * (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 1);
-    const winCoins = won ? (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 3) : 0;
+    const killCoinStep = GAME_CONFIG.REWARD_COIN_KILL_THRESHOLD || 5;
+    const killCoins = Math.min(3, Math.floor((row.kills || 0) / killCoinStep)) * (GAME_CONFIG.REWARD_COIN_PER_3_KILLS || 1);
+    const winCoins = won ? (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 1) : 0;
     const totalMatchCoins = killCoins + winCoins;
 
     return {

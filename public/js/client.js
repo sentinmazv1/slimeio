@@ -192,6 +192,22 @@
   const upgradeCharLevelBtn = document.getElementById('upgrade-char-level-btn');
   const upgradeCharCostBadgeEl = document.getElementById('upgrade-char-cost-badge');
   const upgradeCharLockHintEl = document.getElementById('upgrade-char-lock-hint');
+  const lobbyVisualStreakTrackEl = document.getElementById('lobby-visual-streak-track');
+  const lobbyBestStreakTextEl = document.getElementById('lobby-best-streak-text');
+
+  // Boş Saha Eğitim (Tutorial) Modu Elementleri
+  const tutorialHudPanelEl = document.getElementById('tutorial-hud-panel');
+  const tutorialStepTitleEl = document.getElementById('tutorial-step-title');
+  const tutorialStepDescEl = document.getElementById('tutorial-step-desc');
+  const tutorialStepsBarEl = document.getElementById('tutorial-steps-bar');
+  const startTutorialTopBtn = document.getElementById('start-tutorial-top-btn');
+  const startTutorialCardBtn = document.getElementById('start-tutorial-card-btn');
+  const openTutorialBottomBtn = document.getElementById('open-tutorial-bottom-btn');
+  const tutSpawnDummyBtn = document.getElementById('tut-spawn-dummy-btn');
+  const tutSpawnPowerupBtn = document.getElementById('tut-spawn-powerup-btn');
+  const tutGiveBeltsBtn = document.getElementById('tut-give-belts-btn');
+  const tutExitToMatchBtn = document.getElementById('tut-exit-to-match-btn');
+  const tutExitLobbyBtn = document.getElementById('tut-exit-lobby-btn');
 
   const openShopBtn = document.getElementById('open-shop-btn');
   const openShopTopBtn = document.getElementById('open-shop-top-btn');
@@ -212,15 +228,15 @@
     STAT_GAIN_PER_STEP: 0.14,
     STAT_GAIN_PER_STREAK_STEP: 0.25,
     STEP_COSTS: {
-      '1.0': 650,
-      '1.5': 1100,
-      '2.0': 1650,
-      '2.5': 2300,
-      '3.0': 3100,
-      '3.5': 4000,
-      '4.0': 5200,
-      '4.5': 6600,
-      '5.0': 8500
+      '1.0': 950,
+      '1.5': 1850,
+      '2.0': 3200,
+      '2.5': 5000,
+      '3.0': 7500,
+      '3.5': 11000,
+      '4.0': 15500,
+      '4.5': 21000,
+      '5.0': 28000
     }
   };
   let mapObstacles = [];
@@ -234,8 +250,8 @@
   let currentUser = null; // Giriş yapmış üye bilgisi
   let guestFriends = []; // Misafir oturumda takip edilen oyuncular
   let guestEconomy = {
-    slimePoints: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_POINTS) || 120,
-    slimeCoins: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_COINS) || 25,
+    slimePoints: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_POINTS) || 60,
+    slimeCoins: (window.SharedConstants && window.SharedConstants.GAME_CONFIG && window.SharedConstants.GAME_CONFIG.STARTER_SLIME_COINS) || 10,
     ownedItems: [],
     equipped: { hat: null, skin: null, belt: null, kill_effect: null, title: null },
     baseCharacter: 'crown',
@@ -598,6 +614,22 @@
     return Math.min(maxTotal, Math.round((baseLv + winStreak * 0.5) * 2) / 2);
   }
 
+  function buildVisualStreakNodesHtml(winStreak) {
+    const streakIcons = ['🔥', '🔥', '🔥', '⚡', '⚡', '🌟', '💎', '👑', '🏆'];
+    const clampedStreak = Math.max(0, Number(winStreak) || 0);
+    return streakIcons.map((ic, idx) => {
+      const stepNum = idx + 1;
+      const isLit = clampedStreak >= stepNum;
+      const isNext = clampedStreak + 1 === stepNum;
+      const cls = isLit ? 'streak-node lit' : isNext ? 'streak-node next-target' : 'streak-node';
+      const bonusStr = `+${(stepNum * 0.5).toFixed(1)}`;
+      return `<div class="${cls}" title="${stepNum}. Arka Arkaya Zafer (${bonusStr} Seviye Bonusu)">
+        <span class="s-icon">${ic}${stepNum}</span>
+        <span class="s-lv">${bonusStr}</span>
+      </div>`;
+    }).join('');
+  }
+
   function renderLobbyCharacterStatsCard() {
     if (!lobbyCharStatBarsEl) return;
     const eco = getActiveEconomy();
@@ -613,6 +645,7 @@
 
     const baseLv = getBaseCharacterLevel(charObj.id);
     const winStreak = getActiveWinStreak();
+    const bestStreak = Math.max(winStreak, Number((eco && eco.stats && eco.stats.bestWinStreak) || 0));
     const currentLv = getCharacterLevel(charObj.id);
 
     const pointUpgradeSteps = Math.max(0, Math.round((baseLv - 1.0) / stepSize));
@@ -635,6 +668,12 @@
       lobbyCharStreakBadgeEl.textContent = winStreak > 0
         ? `🔥 Galibiyet Serisi: ${winStreak} Maç (+${(winStreak * 0.5).toFixed(1)} Sv)`
         : `🔥 Galibiyet Serisi: 0 Maç (+0.5 Sv / Zafer)`;
+    }
+    if (lobbyVisualStreakTrackEl) {
+      lobbyVisualStreakTrackEl.innerHTML = buildVisualStreakNodesHtml(winStreak);
+    }
+    if (lobbyBestStreakTextEl) {
+      lobbyBestStreakTextEl.textContent = `🏅 En İyi Seri: ${bestStreak} Zafer`;
     }
     if (lobbyCharLvBarEl) {
       const pct = Math.min(100, Math.max(10, (currentLv / maxTotal) * 100));
@@ -1182,7 +1221,11 @@
             me.skin = (currentUser.equipped && currentUser.equipped.hat) || selectedSkin || 'crown';
           }
           saveUserSessionToStorage(currentUser);
-          window.soundManager.playUiPop();
+          if (isNowEq) {
+            window.soundManager.playPowerupPickup();
+          } else {
+            window.soundManager.playUiPop();
+          }
           showShopFeedback(isNowEq ? `✨ "${item.name}" kuşanıldı!` : `↺ "${item.name}" kuşanması çıkarıldı.`, false);
           renderColorAndSkinSelectors();
           updateCareerAndShopUI();
@@ -1194,6 +1237,7 @@
     }
 
     if (!guestEconomy.ownedItems.includes(itemId)) return;
+    let equippedNow = false;
     if (guestEconomy.equipped[item.type] === itemId) {
       guestEconomy.equipped[item.type] = null;
       shopPreviewLoadout[item.type] = null;
@@ -1203,6 +1247,7 @@
       }
       showShopFeedback(`↺ "${item.name}" kuşanması çıkarıldı.`, false);
     } else {
+      equippedNow = true;
       guestEconomy.equipped[item.type] = itemId;
       shopPreviewLoadout[item.type] = itemId;
       if (item.type === 'hat') {
@@ -1215,7 +1260,11 @@
       me.equipped = { ...guestEconomy.equipped };
       me.skin = guestEconomy.equipped.hat || selectedSkin || 'crown';
     }
-    window.soundManager.playUiPop();
+    if (equippedNow) {
+      window.soundManager.playPowerupPickup();
+    } else {
+      window.soundManager.playUiPop();
+    }
     saveGuestEconomyToStorage();
     syncGuestLoadoutToServer();
     renderColorAndSkinSelectors();
@@ -1607,8 +1656,347 @@
     updateAuthUI();
   });
 
+  // --- BOŞ SAHADA DENEME & 5 ADIMLI EĞİTİM (TUTORIAL / SANDBOX) MOTORU ---
+  const tutorialState = {
+    active: false,
+    step: 1, // 1: Duvara Tutun, 2: 3 Kemer Topla, 3: Ok Fırlat, 4: Kemer Kopar, 5: Kukla Ele, 6: Serbest Antrenman
+    nextBandId: 100,
+    nextDummyId: 1,
+    nextPowerupId: 500,
+    lastPhysicsAt: 0
+  };
+
+  function updateTutorialHudUI() {
+    if (!tutorialHudPanelEl) return;
+    if (!tutorialState.active) {
+      tutorialHudPanelEl.style.display = 'none';
+      return;
+    }
+    tutorialHudPanelEl.style.display = 'flex';
+
+    const stepsMeta = [
+      { id: 1, label: '1. Duvara Tutun', title: '🎯 Adım 1 / 5 — Boş Sahada Duvara veya Kayaya Tutunarak Doğ', desc: 'Parlak neon kayalardan birinin üzerine imlecini götür ve <b>Sol Tık</b> (veya <b>Space</b> / Dokunmatik) ile ilk kemerini bağla!' },
+      { id: 2, label: '2. 3 Kemer Topla', title: '🔗 Adım 2 / 5 — Salınarak 3 Kemer Topla', desc: 'Fareyle (veya WASD / Joystick ile) yakındaki kayalara doğru yönel! Kayalara çarptığında otomatik yeni kemer bağlanır. <b>En az 3 kemere ulaş!</b>' },
+      { id: 3, label: '3. Ok Fırlat', title: '🏹 Adım 3 / 5 — Slime Oku Fırlat', desc: 'Her ekstra kemer sana 1 Slime Oku cephaneleri verir. Şimdi <b>Sol Tık</b> (veya <b>Space</b> / 🏹 Butonu) ile ileriye bir Slime Oku fırlat!' },
+      { id: 4, label: '4. Kemer Kopar', title: '✂️ Adım 4 / 5 — Kendi Kemerini Koparıp Sapan Gibi Fırla', desc: 'Bir kemer yönüne bakıp <b>Sağ Tık</b> (veya <b>E / Shift</b> / ✂️ Butonu) basarak kendi kemerini kopar ve sapan ivmesini hisset!' },
+      { id: 5, label: '5. Kuklayı Avla', title: '🎯 Adım 5 / 5 — Antrenman Kuklasının Kemerlerini Kes!', desc: 'Sahadaki <b>🎯 Antrenman Kuklası</b>nın gerili kemerlerine <b>Slime Oku (Sol Tık)</b> isabet ettirerek veya kemerlerin üstünden hızla geçerek tüm kemerlerini kopar!' }
+    ];
+
+    if (tutorialStepsBarEl) {
+      tutorialStepsBarEl.innerHTML = stepsMeta.map((s) => {
+        const cls = tutorialState.step > s.id
+          ? 'tut-step-pill done'
+          : tutorialState.step === s.id
+            ? 'tut-step-pill active'
+            : 'tut-step-pill';
+        const prefix = tutorialState.step > s.id ? '✓ ' : '';
+        return `<span class="${cls}">${prefix}${s.label}</span>`;
+      }).join('');
+    }
+
+    const currentMeta = stepsMeta.find((s) => s.id === tutorialState.step);
+    if (currentMeta) {
+      if (tutorialStepTitleEl) tutorialStepTitleEl.textContent = currentMeta.title;
+      if (tutorialStepDescEl) tutorialStepDescEl.innerHTML = currentMeta.desc;
+    } else {
+      if (tutorialStepTitleEl) {
+        tutorialStepTitleEl.textContent = '🏆 EĞİTİM TAMAMLANDI! — Serbest Boş Saha Antrenman Modu';
+      }
+      if (tutorialStepDescEl) {
+        tutorialStepDescEl.innerHTML = 'Tebrikler, tüm temel mekanikleri öğrendin! Boş sahada istediğin kadar <b>+ 🎯 Kukla</b> ve <b>+ ⚡ Güç Kutusu</b> çıkarıp pratik yapabilir veya <b>🚀 Gerçek Maça Katıl</b> ile arenaya çıkabilirsin!';
+      }
+    }
+  }
+
+  function advanceTutorialStep(targetStep) {
+    if (!tutorialState.active) return;
+    if (tutorialState.step === targetStep) {
+      tutorialState.step = targetStep + 1;
+      window.soundManager.playPowerupPickup();
+      if (tutorialState.step === 5) {
+        // 5. adıma geçildiğinde kukla yoksa hemen oyuncunun yakınına kukla oluştur
+        const hasDummy = [...renderPlayers.values()].some((p) => p.id !== selfId && p.alive);
+        if (!hasDummy) {
+          spawnTutorialDummy();
+        }
+      }
+      updateTutorialHudUI();
+    }
+  }
+
+  function createBandsAroundPoint(cx, cy, count = 3) {
+    const sortedObs = [...mapObstacles].sort(
+      (a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy)
+    );
+    const bands = [];
+    for (let i = 0; i < Math.min(count, sortedObs.length); i++) {
+      const obs = sortedObs[i];
+      const dx = cx - obs.x;
+      const dy = cy - obs.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const r = obs.radius || 55;
+      bands.push({
+        id: tutorialState.nextBandId++,
+        anchorX: obs.x + (dx / d) * r,
+        anchorY: obs.y + (dy / d) * r
+      });
+    }
+    return bands;
+  }
+
+  function spawnTutorialDummy() {
+    if (!tutorialState.active) return;
+    const me = renderPlayers.get(selfId);
+    const refX = me && me.alive ? me.renderX : 0;
+    const refY = me && me.alive ? me.renderY : 0;
+
+    // Oyuncuya yakın ama üst üste binmeyen bir nokta seç
+    const candidatePoints = [
+      { x: 240, y: -120 },
+      { x: -240, y: 120 },
+      { x: 260, y: 160 },
+      { x: -260, y: -160 },
+      { x: 0, y: 200 }
+    ];
+    candidatePoints.sort((a, b) => {
+      const da = Math.abs(Math.hypot(a.x - refX, a.y - refY) - 280);
+      const db = Math.abs(Math.hypot(b.x - refX, b.y - refY) - 280);
+      return da - db;
+    });
+    const pt = candidatePoints[0];
+    const dummyId = `tut_dummy_${tutorialState.nextDummyId++}`;
+    const dummyBands = createBandsAroundPoint(pt.x, pt.y, 3);
+    const dummyColors = ['#FF2A85', '#FFE066', '#9B5DE5', '#00BBF9'];
+    const dColor = dummyColors[tutorialState.nextDummyId % dummyColors.length];
+
+    renderPlayers.set(dummyId, {
+      id: dummyId,
+      name: `🎯 Antrenman Kuklası #${tutorialState.nextDummyId - 1}`,
+      username: '',
+      isBot: true,
+      isTutorialDummy: true,
+      color: dColor,
+      skin: 'viking',
+      equipped: null,
+      alive: true,
+      waitingForWall: false,
+      spectating: false,
+      watchOnly: false,
+      score: 100,
+      cuts: 0,
+      kills: 0,
+      x: pt.x,
+      y: pt.y,
+      renderX: pt.x,
+      renderY: pt.y,
+      vx: 0,
+      vy: 0,
+      bands: dummyBands,
+      wobblePhase: Math.random() * Math.PI * 2,
+      impactPulse: 1.0
+    });
+
+    floatingTexts.push({
+      text: '🎯 Antrenman Kuklası Sahaya Eklendi!',
+      x: pt.x,
+      y: pt.y - 42,
+      color: '#FFE066',
+      alpha: 1.0,
+      vy: -1.1
+    });
+  }
+
+  function spawnTutorialPowerup() {
+    if (!tutorialState.active) return;
+    const me = renderPlayers.get(selfId);
+    const px = me && me.alive ? me.renderX + (Math.random() * 180 - 90) : (Math.random() * 300 - 150);
+    const py = me && me.alive ? me.renderY + (Math.random() * 180 - 90) : (Math.random() * 200 - 100);
+    const types = ['wide_cam', 'double_shot', 'high_speed'];
+    const chosenType = types[tutorialState.nextPowerupId % types.length];
+    renderPowerups.push({
+      id: tutorialState.nextPowerupId++,
+      x: Math.max(-900, Math.min(900, px)),
+      y: Math.max(-600, Math.min(600, py)),
+      powerupType: chosenType
+    });
+    window.soundManager.playUiPop();
+    floatingTexts.push({
+      text: '⚡ Güç Kutusu Sahaya Bırakıldı!',
+      x: px,
+      y: py - 35,
+      color: '#00BBF9',
+      alpha: 1.0,
+      vy: -1.1
+    });
+  }
+
+  function giveTutorialBelts() {
+    if (!tutorialState.active) return;
+    const me = renderPlayers.get(selfId);
+    if (!me || !me.alive) {
+      if (me && me.waitingForWall) {
+        triggerClientSpawnAtWall(0, -200);
+      }
+      return;
+    }
+    const extra = createBandsAroundPoint(me.renderX, me.renderY, 6);
+    for (const b of extra) {
+      if (me.bands.length >= (config.MAX_BANDS || 15)) break;
+      const tooClose = me.bands.some((eb) => Math.hypot(eb.anchorX - b.anchorX, eb.anchorY - b.anchorY) < 35);
+      if (!tooClose) {
+        me.bands.push(b);
+      }
+    }
+    me.impactPulse = 1.0;
+    window.soundManager.playWallAttachScream();
+    if (tutorialState.step === 2 && me.bands.length >= 3) {
+      advanceTutorialStep(2);
+    }
+  }
+
+  function startTutorialMode() {
+    window.soundManager.init();
+    window.soundManager.playUiPop();
+
+    // Aktif bir sunucu odasındaysak çıkalım ki sunucu paketleri boş sahayı ezmesin
+    if (socket && socket.connected) {
+      socket.emit('leaveRoom');
+    }
+
+    if (!selfId) selfId = 'local_tutorial_self';
+    currentRoomId = 'tutorial_sandbox';
+    tutorialState.active = true;
+    tutorialState.step = 1;
+    tutorialState.lastPhysicsAt = performance.now();
+
+    lobbyModal.style.display = 'none';
+    matchEndModal.style.display = 'none';
+    teamWaitingModal.style.display = 'none';
+    if (spectatorControlsBarEl) spectatorControlsBarEl.style.display = 'none';
+    if (cameraFollowBannerEl) cameraFollowBannerEl.style.display = 'none';
+    overlayEl.style.display = 'none';
+    spectatorBannerEl.style.display = 'block';
+    spectatorBannerEl.textContent = '🎯 BOŞ SAHA EĞİTİM MODU — Kayaya/Duvara Sol Tıkla veya Space Basarak İlk Kemerini Bağla!';
+
+    renderPlayers.clear();
+    renderArrows = [];
+    renderPowerups = [];
+    snapEffects.length = 0;
+    splatEffects.length = 0;
+    floatingTexts.length = 0;
+
+    const eco = getActiveEconomy();
+    const myName = (currentUser && currentUser.displayName) || (guestNameInput && guestNameInput.value.trim()) || 'Slime Savaşçısı';
+    const charId = getActiveCharacterId();
+
+    renderPlayers.set(selfId, {
+      id: selfId,
+      name: myName,
+      username: (currentUser && currentUser.username) || '',
+      color: selectedColor || '#00F5D4',
+      skin: selectedSkin || 'crown',
+      equipped: (eco && eco.equipped) ? { ...eco.equipped } : null,
+      charLevel: getCharacterLevel(charId),
+      fovMult: 1.0,
+      alive: false,
+      waitingForWall: true,
+      spectating: false,
+      watchOnly: false,
+      score: 0,
+      cuts: 0,
+      kills: 0,
+      activePowerup: null,
+      powerupRemaining: 0,
+      x: 0,
+      y: 0,
+      renderX: 0,
+      renderY: 0,
+      vx: 0,
+      vy: 0,
+      bands: [],
+      wobblePhase: 0,
+      impactPulse: 0
+    });
+
+    // Sahaya 1 adet başlangıç antrenman kuklası ve 2 adet güç kutusu yerleştir
+    spawnTutorialDummy();
+    spawnTutorialPowerup();
+
+    timerEl.textContent = 'EĞİTİM';
+    myScoreEl.textContent = '🎯 Antrenman';
+    myBandsEl.textContent = '🎯 Duvar/Kaya Seç!';
+    if (teamHudScoresEl) teamHudScoresEl.style.display = 'none';
+    if (leaderboardListEl) {
+      leaderboardListEl.innerHTML = `<div class="lb-row me"><span class="lb-name"><span class="lb-dot" style="background:${escapeHtml(selectedColor)};"></span>1. ${escapeHtml(myName)} (Eğitim)</span><span class="lb-val">Boş Saha</span></div>`;
+    }
+
+    updateTutorialHudUI();
+    window.focus();
+  }
+
+  function stopTutorialMode(openLobbyAfter = true) {
+    if (!tutorialState.active) return;
+    tutorialState.active = false;
+    currentRoomId = null;
+    if (tutorialHudPanelEl) tutorialHudPanelEl.style.display = 'none';
+    if (spectatorBannerEl) spectatorBannerEl.style.display = 'none';
+    if (mobileActionBtns) mobileActionBtns.style.display = 'none';
+    renderPlayers.clear();
+    renderArrows = [];
+    renderPowerups = [];
+    if (openLobbyAfter && lobbyModal) {
+      lobbyModal.style.display = 'flex';
+      updateCareerAndShopUI();
+    }
+  }
+
+  if (startTutorialTopBtn) {
+    startTutorialTopBtn.addEventListener('click', () => startTutorialMode());
+  }
+  if (startTutorialCardBtn) {
+    startTutorialCardBtn.addEventListener('click', () => startTutorialMode());
+  }
+  if (openTutorialBottomBtn) {
+    openTutorialBottomBtn.addEventListener('click', () => startTutorialMode());
+  }
+  if (tutSpawnDummyBtn) {
+    tutSpawnDummyBtn.addEventListener('click', () => {
+      window.soundManager.init();
+      window.soundManager.playUiPop();
+      spawnTutorialDummy();
+    });
+  }
+  if (tutSpawnPowerupBtn) {
+    tutSpawnPowerupBtn.addEventListener('click', () => {
+      window.soundManager.init();
+      spawnTutorialPowerup();
+    });
+  }
+  if (tutGiveBeltsBtn) {
+    tutGiveBeltsBtn.addEventListener('click', () => {
+      window.soundManager.init();
+      giveTutorialBelts();
+    });
+  }
+  if (tutExitToMatchBtn) {
+    tutExitToMatchBtn.addEventListener('click', () => {
+      stopTutorialMode(false);
+      enterRoom(selectedModeId, null, false);
+    });
+  }
+  if (tutExitLobbyBtn) {
+    tutExitLobbyBtn.addEventListener('click', () => {
+      window.soundManager.init();
+      window.soundManager.playUiPop();
+      stopTutorialMode(true);
+    });
+  }
+
   // Odaya Katılma veya Maçı Canlı İzleme
   function enterRoom(roomId, preferredTeam = null, watchOnly = false) {
+    if (tutorialState.active) {
+      stopTutorialMode(false);
+    }
     window.soundManager.init();
     window.soundManager.playUiPop();
     const guestName = guestNameInput.value.trim();
@@ -1743,6 +2131,10 @@
   });
 
   openLobbyBtn.addEventListener('click', () => {
+    if (tutorialState.active) {
+      stopTutorialMode(true);
+      return;
+    }
     lobbyModal.style.display = 'flex';
   });
 
@@ -2449,12 +2841,92 @@
       lastLocalAttachSfxAt = now;
       window.soundManager.playWallAttachScream();
     }
+    if (tutorialState.active) {
+      const me = renderPlayers.get(selfId);
+      if (me) {
+        const preview = getNearestWallPreview(wx, wy);
+        me.x = preview.spawnX;
+        me.y = preview.spawnY;
+        me.renderX = preview.spawnX;
+        me.renderY = preview.spawnY;
+        me.vx = 0;
+        me.vy = 0;
+        me.waitingForWall = false;
+        me.alive = true;
+        me.bands = [{
+          id: tutorialState.nextBandId++,
+          anchorX: preview.anchorX,
+          anchorY: preview.anchorY
+        }];
+        me.impactPulse = 1.0;
+        spectatorBannerEl.style.display = 'none';
+        if (mobileActionBtns && (isTouchDevice || canvas.width < 860)) {
+          mobileActionBtns.style.display = 'flex';
+        }
+        advanceTutorialStep(1);
+      }
+      return;
+    }
     socket.emit('spawnAtWall', { x: wx, y: wy });
   }
 
   function triggerClientShootArrow(tx, ty) {
     const me = renderPlayers.get(selfId);
     const now = performance.now();
+    if (tutorialState.active) {
+      if (!me || !me.alive) return;
+      if (!Array.isArray(me.bands) || me.bands.length <= 1) {
+        floatingTexts.push({
+          text: '🏹 Ok İçin En Az 2 Kemer Gerekli! Kayalara Çarp!',
+          x: me.renderX,
+          y: me.renderY - 38,
+          color: '#FFE066',
+          alpha: 1.0,
+          vy: -1.1
+        });
+        return;
+      }
+      if (now - lastLocalShootSfxAt < 260) return;
+      lastLocalShootSfxAt = now;
+      window.soundManager.playArrowShoot();
+      me.bands.pop();
+      const ang = Math.atan2(ty - me.renderY, tx - me.renderX);
+      const spd = (config && config.ARROW_SPEED) || 19;
+      if (me.activePowerup === 'double_shot') {
+        const spread = (config && config.POWERUP_DOUBLE_SHOT_SPREAD_RAD) || 0.16;
+        for (const s of [-1, 1]) {
+          const a = ang + s * spread;
+          renderArrows.push({
+            id: tutorialState.nextBandId++,
+            ownerId: selfId,
+            x: me.renderX + Math.cos(a) * 26,
+            y: me.renderY + Math.sin(a) * 26,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd,
+            color: me.color || '#00F5D4',
+            r: (config && config.ARROW_RADIUS) || 9,
+            bornAt: now
+          });
+        }
+      } else {
+        renderArrows.push({
+          id: tutorialState.nextBandId++,
+          ownerId: selfId,
+          x: me.renderX + Math.cos(ang) * 26,
+          y: me.renderY + Math.sin(ang) * 26,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          color: me.color || '#00F5D4',
+          r: (config && config.ARROW_RADIUS) || 9,
+          bornAt: now
+        });
+      }
+      me.vx -= Math.cos(ang) * 2.5;
+      me.vy -= Math.sin(ang) * 2.5;
+      advanceTutorialStep(3);
+      return;
+    }
+
     if (me && me.alive && Array.isArray(me.bands) && me.bands.length > 1) {
       if (now - lastLocalShootSfxAt >= 320) {
         lastLocalShootSfxAt = now;
@@ -2467,6 +2939,48 @@
   function triggerClientCutBelt(tx, ty) {
     const me = renderPlayers.get(selfId);
     const now = performance.now();
+    if (tutorialState.active) {
+      if (!me || !me.alive) return;
+      if (!Array.isArray(me.bands) || me.bands.length <= 1) {
+        floatingTexts.push({
+          text: 'Son Kemer Koparılamaz! Önce Başka Kayaya Bağlan!',
+          x: me.renderX,
+          y: me.renderY - 35,
+          color: '#FF2A85',
+          alpha: 1.0,
+          vy: -1.1
+        });
+        return;
+      }
+      const targetId = getTargetedOwnBeltId(me) ?? me.bands[0].id;
+      const idx = me.bands.findIndex((b) => b.id === targetId);
+      if (idx !== -1) {
+        const removed = me.bands.splice(idx, 1)[0];
+        lastLocalCutSfxAt = now;
+        window.soundManager.playBandSnap();
+        snapEffects.push({
+          x: (me.renderX + removed.anchorX) * 0.5,
+          y: (me.renderY + removed.anchorY) * 0.5,
+          radius: 10,
+          alpha: 1.0
+        });
+        // Kalan kemerlerin merkezine doğru sapan fırlatma ivmesi
+        let avgX = 0, avgY = 0;
+        for (const b of me.bands) {
+          avgX += b.anchorX;
+          avgY += b.anchorY;
+        }
+        avgX /= me.bands.length;
+        avgY /= me.bands.length;
+        const boostAng = Math.atan2(avgY - removed.anchorY, avgX - removed.anchorX);
+        me.vx += Math.cos(boostAng) * 7.5;
+        me.vy += Math.sin(boostAng) * 7.5;
+        me.impactPulse = 0.9;
+        advanceTutorialStep(4);
+      }
+      return;
+    }
+
     if (me && me.alive && Array.isArray(me.bands) && me.bands.length > 1) {
       const targetId = getTargetedOwnBeltId(me);
       if (targetId !== null && now - lastLocalCutSfxAt >= 180) {
@@ -2871,14 +3385,20 @@
   });
 
   socket.on('bandSnapped', ({ ownerId, cutterId, snapX, snapY }) => {
+    const isSelfCut = ownerId === cutterId;
     if (ownerId === selfId || cutterId === selfId) {
-      const isSelfCut = ownerId === selfId && cutterId === selfId;
-      if (!isSelfCut || performance.now() - lastLocalCutSfxAt >= 520) {
-        lastLocalCutSfxAt = performance.now();
-        window.soundManager.playBandSnap();
+      if (isSelfCut) {
+        if (performance.now() - lastLocalCutSfxAt >= 520) {
+          lastLocalCutSfxAt = performance.now();
+          window.soundManager.playBandSnap();
+        }
+      } else {
+        window.soundManager.playEnemyBeltSlice();
       }
-    } else {
+    } else if (isSelfCut) {
       window.soundManager.playBandSnap(snapX, snapY, camera.x, camera.y);
+    } else {
+      window.soundManager.playEnemyBeltSlice(snapX, snapY, camera.x, camera.y);
     }
     if (snapEffects.length >= 20) snapEffects.shift();
     snapEffects.push({ x: snapX, y: snapY, radius: 8, alpha: 1.0 });
@@ -3117,16 +3637,18 @@
 
     const eco = getActiveEconomy();
     const newLv = getCharacterLevel(activeCharId);
+    const activeStreak = getActiveWinStreak();
     const streakText = reward.won
-      ? `<span style="background:rgba(0,245,155,0.18); border:1.5px solid #00F59B; color:#00F59B; padding:5px 12px; border-radius:10px; font-weight:900; font-size:13px;">🔥 Galibiyet Serisi! Seviye +0.5 ➔ Sv.${newLv.toFixed(1)} / 10.0</span>`
+      ? `<span style="background:rgba(0,245,155,0.18); border:1.5px solid #00F59B; color:#00F59B; padding:5px 12px; border-radius:10px; font-weight:900; font-size:13px;">🔥 Galibiyet Serisi (${activeStreak} Maç)! Seviye +0.5 ➔ Sv.${newLv.toFixed(1)} / 10.0</span>`
       : `<span style="background:rgba(255,42,133,0.16); border:1.5px solid #FF2A85; color:#FF70A6; padding:5px 12px; border-radius:10px; font-weight:900; font-size:12.5px;">⚔️ Galibiyet Serisi Sıfırlandı (Sv.${newLv.toFixed(1)}) — Yeni Seri İçin Mücadeleye Devam!</span>`;
 
     if (matchRewardSummaryEl) {
       matchRewardSummaryEl.style.display = 'flex';
       matchRewardSummaryEl.innerHTML = `
-        <div style="display:flex; flex-direction:column; gap:2px;">
-          <span style="font-size:11px; font-weight:900; color:#00F5D4; text-transform:uppercase;">🎁 Maç Sonu Kazancın &amp; Mücadele Serisi</span>
+        <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:260px;">
+          <span style="font-size:11px; font-weight:900; color:#00F5D4; text-transform:uppercase;">🎁 Maç Sonu Kazancın &amp; Görsel Galibiyet Serisi</span>
           <span style="font-size:12px; color:#E2E8F0;">✂️ ${reward.cuts || 0} Kesim  •  💀 ${reward.kills || 0} Eleme  •  ⭐ ${reward.score || 0} Skor ${reward.won ? ' • 🏆 ŞAMPİYONLUK BONUSLU!' : ''}</span>
+          <div class="streak-nodes-row" style="max-width:440px; margin-top:3px;">${buildVisualStreakNodesHtml(activeStreak)}</div>
         </div>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           ${streakText}
@@ -3349,6 +3871,7 @@
   }
 
   socket.on('stateUpdate', (state) => {
+    if (tutorialState.active) return;
     const {
       roomStatus,
       isTeam,
@@ -6205,6 +6728,292 @@
     ctx.restore();
   }
 
+  let lastLocalBounceSfxAt = 0;
+
+  function distPointToSeg(px, py, x1, y1, x2, y2) {
+    const vx = x2 - x1;
+    const vy = y2 - y1;
+    const lenSq = vx * vx + vy * vy || 1;
+    const t = Math.max(0, Math.min(1, ((px - x1) * vx + (py - y1) * vy) / lenSq));
+    const cx = x1 + t * vx;
+    const cy = y1 + t * vy;
+    return { dist: Math.hypot(px - cx, py - cy), cx, cy };
+  }
+
+  function updateTutorialPhysics(now) {
+    if (!tutorialState.active) return;
+    const me = renderPlayers.get(selfId);
+    if (!me) return;
+
+    const dt = Math.min(2.0, Math.max(0.5, (now - (tutorialState.lastPhysicsAt || now)) / 16.67));
+    tutorialState.lastPhysicsAt = now;
+
+    const halfW = (config.ARENA_WIDTH || 2600) / 2;
+    const halfH = (config.ARENA_HEIGHT || 1800) / 2;
+    const pr = config.PLAYER_RADIUS || 24;
+
+    if (me.alive) {
+      // 1) Güçlendirme süresi takibi
+      if (me.activePowerup && me.powerupRemaining > 0) {
+        me.powerupRemaining = Math.max(0, me.powerupRemaining - dt * 16.67);
+        if (me.powerupRemaining <= 0) me.activePowerup = null;
+      }
+
+      // 2) Fare / Klavye / Joystick yönüne çekim + Kemer yay fiziği
+      const dxInput = mouseWorld.x - me.x;
+      const dyInput = mouseWorld.y - me.y;
+      const distInput = Math.hypot(dxInput, dyInput) || 1;
+      const pullRatio = Math.min(distInput / (config.MAX_INPUT_DIST || 360), 1.0);
+      const speedMult = me.activePowerup === 'high_speed' ? 1.45 : 1.0;
+      const moveForce = 0.72 * pullRatio * speedMult;
+
+      me.vx += (dxInput / distInput) * moveForce * dt;
+      me.vy += (dyInput / distInput) * moveForce * dt;
+
+      for (const b of me.bands) {
+        const bdx = b.anchorX - me.x;
+        const bdy = b.anchorY - me.y;
+        const bDist = Math.hypot(bdx, bdy) || 1;
+        if (bDist > 120) {
+          const stretch = bDist - 120;
+          me.vx += (bdx / bDist) * stretch * 0.0018 * dt;
+          me.vy += (bdy / bDist) * stretch * 0.0018 * dt;
+        }
+      }
+
+      me.vx *= Math.pow(0.92, dt);
+      me.vy *= Math.pow(0.92, dt);
+      me.x = Math.max(-halfW + pr, Math.min(halfW - pr, me.x + me.vx * dt));
+      me.y = Math.max(-halfH + pr, Math.min(halfH - pr, me.y + me.vy * dt));
+      me.renderX = me.x;
+      me.renderY = me.y;
+
+      // 3) Kayalara çarpma, esnek sekme (Squishy Bounce) ve yeni kemer bağlama
+      for (const obs of mapObstacles) {
+        const odx = me.x - obs.x;
+        const ody = me.y - obs.y;
+        const oDist = Math.hypot(odx, ody) || 1;
+        const obsR = obs.radius || 55;
+        if (oDist <= obsR + pr + 2) {
+          const nx = odx / oDist;
+          const ny = ody / oDist;
+          me.x = obs.x + nx * (obsR + pr + 2);
+          me.y = obs.y + ny * (obsR + pr + 2);
+          me.renderX = me.x;
+          me.renderY = me.y;
+          me.vx = nx * 4.2;
+          me.vy = ny * 4.2;
+          me.impactPulse = 1.0;
+
+          const anchorX = obs.x + nx * obsR;
+          const anchorY = obs.y + ny * obsR;
+          const minAnchorDist = config.MIN_ANCHOR_DISTANCE || 45;
+          const alreadyClose = me.bands.some(
+            (b) => Math.hypot(b.anchorX - anchorX, b.anchorY - anchorY) < minAnchorDist
+          );
+
+          if (!alreadyClose && me.bands.length < (config.MAX_BANDS || 15)) {
+            me.bands.push({
+              id: tutorialState.nextBandId++,
+              anchorX,
+              anchorY
+            });
+            lastLocalAttachSfxAt = now;
+            window.soundManager.playWallAttachScream();
+            if (me.bands.length >= 3) {
+              advanceTutorialStep(2);
+            }
+          } else if (now - lastLocalBounceSfxAt >= 180) {
+            lastLocalBounceSfxAt = now;
+            window.soundManager.playSlimeBounce();
+          }
+        }
+      }
+
+      // 4) Güç Kutusu (Power-Up) Toplama
+      for (let i = renderPowerups.length - 1; i >= 0; i--) {
+        const box = renderPowerups[i];
+        if (Math.hypot(me.x - box.x, me.y - box.y) <= pr + (config.POWERUP_RADIUS || 22)) {
+          const pType = box.powerupType || 'high_speed';
+          me.activePowerup = pType;
+          me.powerupRemaining = config.POWERUP_DURATION_MS || 10000;
+          me.impactPulse = 1.2;
+          renderPowerups.splice(i, 1);
+          window.soundManager.playPowerupPickup();
+          const meta = POWERUP_META[pType] || POWERUP_META.high_speed;
+          floatingTexts.push({
+            text: `${meta.icon} ${meta.name} AKTİF!`,
+            x: box.x,
+            y: box.y - 30,
+            color: meta.color,
+            alpha: 1.0,
+            vy: -1.3
+          });
+        }
+      }
+
+      // 5) Oyuncunun Gövdesiyle Antrenman Kuklası Kemerlerini Kesmesi
+      for (const p of renderPlayers.values()) {
+        if (p.id === selfId || !p.alive) continue;
+        // Kukla ile esnek çarpışma (Squishy Slime Bounce)
+        const pdx = me.x - p.x;
+        const pdy = me.y - p.y;
+        const pDist = Math.hypot(pdx, pdy) || 1;
+        if (pDist < pr * 2) {
+          const nx = pdx / pDist;
+          const ny = pdy / pDist;
+          me.vx += nx * 5.0;
+          me.vy += ny * 5.0;
+          me.impactPulse = 1.0;
+          p.impactPulse = 1.0;
+          if (now - lastLocalBounceSfxAt >= 180) {
+            lastLocalBounceSfxAt = now;
+            window.soundManager.playSlimeBounce();
+          }
+        }
+
+        for (let bIdx = p.bands.length - 1; bIdx >= 0; bIdx--) {
+          const b = p.bands[bIdx];
+          const hit = distPointToSeg(me.x, me.y, p.x, p.y, b.anchorX, b.anchorY);
+          if (hit.dist <= pr * 0.85) {
+            p.bands.splice(bIdx, 1);
+            me.cuts = (me.cuts || 0) + 1;
+            me.score = (me.score || 0) + 20;
+            window.soundManager.playEnemyBeltSlice();
+            snapEffects.push({ x: hit.cx, y: hit.cy, radius: 10, alpha: 1.0 });
+            floatingTexts.push({
+              text: '✂️ Kemer Kesildi!',
+              x: hit.cx,
+              y: hit.cy - 24,
+              color: '#00F5D4',
+              alpha: 1.0,
+              vy: -1.2
+            });
+          }
+        }
+
+        if (p.bands.length === 0 && p.alive) {
+          p.alive = false;
+          me.kills = (me.kills || 0) + 1;
+          me.score = (me.score || 0) + 70;
+          window.soundManager.playDeathPop();
+          const eqKill = (me.equipped && me.equipped.kill_effect) || 'kill_confetti';
+          spawnKillAnimation(p.x, p.y, eqKill, p.color);
+          floatingTexts.push({
+            text: '💥 Antrenman Kuklası Elendi!',
+            x: p.x,
+            y: p.y - 36,
+            color: '#FFE066',
+            alpha: 1.0,
+            vy: -1.4
+          });
+          advanceTutorialStep(5);
+        }
+      }
+
+      const count = me.bands.length;
+      const ammo = Math.max(0, count - 1);
+      myBandsEl.textContent = `🔗 ${count} Kemer | 🏹 ${ammo} Ok`;
+      myScoreEl.textContent = `🎯 Skor: ${me.score || 0}`;
+    }
+
+    // 6) Okların Hareketi ve Kukla Kemerlerini Kesmesi
+    for (let i = renderArrows.length - 1; i >= 0; i--) {
+      const a = renderArrows[i];
+      a.x += a.vx * dt;
+      a.y += a.vy * dt;
+
+      if (Math.abs(a.x) >= halfW || Math.abs(a.y) >= halfH || now - (a.bornAt || 0) > 2600) {
+        window.soundManager.playSlimeSplat(a.x, a.y, camera.x, camera.y);
+        splatEffects.push({ x: a.x, y: a.y, color: a.color || '#00F5D4', radius: 8, alpha: 1.0 });
+        renderArrows.splice(i, 1);
+        continue;
+      }
+
+      let hitObstacle = false;
+      for (const obs of mapObstacles) {
+        if (Math.hypot(a.x - obs.x, a.y - obs.y) <= (obs.radius || 55) + (a.r || 9)) {
+          hitObstacle = true;
+          break;
+        }
+      }
+      if (hitObstacle) {
+        window.soundManager.playSlimeSplat(a.x, a.y, camera.x, camera.y);
+        splatEffects.push({ x: a.x, y: a.y, color: a.color || '#00F5D4', radius: 8, alpha: 1.0 });
+        renderArrows.splice(i, 1);
+        continue;
+      }
+
+      // Kukla kemerlerini okla kesme kontrolü
+      let slicedAny = false;
+      for (const p of renderPlayers.values()) {
+        if (p.id === selfId || !p.alive) continue;
+        for (let bIdx = p.bands.length - 1; bIdx >= 0; bIdx--) {
+          const b = p.bands[bIdx];
+          const hit = distPointToSeg(a.x, a.y, p.x, p.y, b.anchorX, b.anchorY);
+          if (hit.dist <= (a.r || 9) + 12) {
+            p.bands.splice(bIdx, 1);
+            slicedAny = true;
+            if (me) {
+              me.cuts = (me.cuts || 0) + 1;
+              me.score = (me.score || 0) + 20;
+            }
+            window.soundManager.playEnemyBeltSlice();
+            snapEffects.push({ x: hit.cx, y: hit.cy, radius: 10, alpha: 1.0 });
+            floatingTexts.push({
+              text: '🏹 Süper İsabet! Kemer Koptu!',
+              x: hit.cx,
+              y: hit.cy - 26,
+              color: '#00F59B',
+              alpha: 1.0,
+              vy: -1.3
+            });
+          }
+        }
+        if (p.bands.length === 0 && p.alive) {
+          p.alive = false;
+          if (me) {
+            me.kills = (me.kills || 0) + 1;
+            me.score = (me.score || 0) + 70;
+          }
+          window.soundManager.playDeathPop();
+          const eqKill = (me && me.equipped && me.equipped.kill_effect) || 'kill_confetti';
+          spawnKillAnimation(p.x, p.y, eqKill, p.color);
+          floatingTexts.push({
+            text: '💥 Antrenman Kuklası Elendi!',
+            x: p.x,
+            y: p.y - 36,
+            color: '#FFE066',
+            alpha: 1.0,
+            vy: -1.4
+          });
+          advanceTutorialStep(5);
+        }
+      }
+      if (slicedAny) {
+        splatEffects.push({ x: a.x, y: a.y, color: a.color || '#00F5D4', radius: 9, alpha: 1.0 });
+        renderArrows.splice(i, 1);
+      }
+    }
+  }
+
+  function drawTutorialGuides(time) {
+    if (!tutorialState.active) return;
+    const pulse = 1 + Math.sin(time * 0.008) * 0.12;
+    ctx.save();
+    for (const p of renderPlayers.values()) {
+      if (p.id === selfId || !p.alive) continue;
+      ctx.beginPath();
+      ctx.arc(p.renderX, p.renderY, 44 * pulse, 0, Math.PI * 2);
+      ctx.strokeStyle = '#FFE066';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([8, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
   function renderLoop(time) {
     // Sekme arka plandayken GPU/CPU çizimini tamamen durdur
     if (document.hidden) {
@@ -6218,6 +7027,10 @@
     if (!currentRoomId && lobbyModal && lobbyModal.style.display !== 'none') {
       requestAnimationFrame(renderLoop);
       return;
+    }
+
+    if (tutorialState.active) {
+      updateTutorialPhysics(time);
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -6257,13 +7070,9 @@
           window.soundManager.playCuteGiggle(Math.min(mySpeed / 13, 1));
         }
 
-        // 0ms Görsel Çarpışma Ses Öngörüsü: Slime ekranda kayaya veya duvara değdiği salisede tutunma sesini çal
+        // 0ms Görsel Çarpışma Ses Öngörüsü: Slime ekranda kayaya veya duvara değdiği salisede tutunma veya jölemsi sekme sesini çal
         const nowPerf = performance.now();
-        if (
-          Array.isArray(me.bands) &&
-          me.bands.length < (config.MAX_BANDS || 15) &&
-          nowPerf - lastLocalAttachSfxAt >= 270
-        ) {
+        if (!tutorialState.active && Array.isArray(me.bands) && nowPerf - lastLocalAttachSfxAt >= 240) {
           const pr = (config.PLAYER_RADIUS || 24) + 4;
           const halfW = (config.ARENA_WIDTH || 2600) / 2;
           const halfH = (config.ARENA_HEIGHT || 1800) / 2;
@@ -6324,16 +7133,22 @@
                 break;
               }
             }
-            if (farEnough) {
+            if (farEnough && me.bands.length < (config.MAX_BANDS || 15)) {
               lastLocalAttachSfxAt = nowPerf;
               me.impactPulse = 1.0;
               window.soundManager.playWallAttachScream();
+            } else if (nowPerf - lastLocalBounceSfxAt >= 260) {
+              lastLocalBounceSfxAt = nowPerf;
+              me.impactPulse = 0.85;
+              window.soundManager.playSlimeBounce();
             }
           }
         }
 
         updateMouseWorld();
-        sendMouseTarget();
+        if (!tutorialState.active) {
+          sendMouseTarget();
+        }
       } else {
         // Duvar seçimi, 5 saniye yeniden doğuş sayacı veya izleyici modunda tüm arenayı göster
         const overviewScale = Math.min(
@@ -6356,6 +7171,7 @@
 
     drawOpenWorldAndObstacles(time);
     drawPowerupBoxes(time);
+    drawTutorialGuides(time);
 
     const targetedBeltId = me ? getTargetedOwnBeltId(me) : null;
 

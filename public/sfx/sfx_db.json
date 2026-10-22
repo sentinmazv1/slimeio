@@ -1,86 +1,106 @@
 {
-  "version": "4.0",
+  "version": "5.0.0",
+  "generatedAt": "2026-10-22T15:02:58.586Z",
   "sampleRate": 44100,
-  "generatedAt": "2026-10-22T13:13:09.629Z",
   "sounds": {
+    "shoot": [
+      {
+        "filename": "shoot_1.wav",
+        "url": "/sfx/shoot_1.wav",
+        "durationMs": 135,
+        "bytes": 11950
+      },
+      {
+        "filename": "shoot_2.wav",
+        "url": "/sfx/shoot_2.wav",
+        "durationMs": 135,
+        "bytes": 11950
+      },
+      {
+        "filename": "shoot_3.wav",
+        "url": "/sfx/shoot_3.wav",
+        "durationMs": 135,
+        "bytes": 11950
+      }
+    ],
     "attach": [
       {
         "filename": "attach_1.wav",
         "url": "/sfx/attach_1.wav",
-        "durationMs": 165,
-        "bytes": 14596
+        "durationMs": 145,
+        "bytes": 12832
       },
       {
         "filename": "attach_2.wav",
         "url": "/sfx/attach_2.wav",
-        "durationMs": 165,
-        "bytes": 14596
+        "durationMs": 145,
+        "bytes": 12832
       },
       {
         "filename": "attach_3.wav",
         "url": "/sfx/attach_3.wav",
-        "durationMs": 165,
-        "bytes": 14596
+        "durationMs": 145,
+        "bytes": 12832
+      }
+    ],
+    "slice": [
+      {
+        "filename": "slice_1.wav",
+        "url": "/sfx/slice_1.wav",
+        "durationMs": 185,
+        "bytes": 16360
+      },
+      {
+        "filename": "slice_2.wav",
+        "url": "/sfx/slice_2.wav",
+        "durationMs": 185,
+        "bytes": 16360
       }
     ],
     "snap": [
       {
         "filename": "snap_1.wav",
         "url": "/sfx/snap_1.wav",
-        "durationMs": 195,
-        "bytes": 17242
+        "durationMs": 130,
+        "bytes": 11510
       },
       {
         "filename": "snap_2.wav",
         "url": "/sfx/snap_2.wav",
-        "durationMs": 195,
-        "bytes": 17242
+        "durationMs": 130,
+        "bytes": 11510
       },
       {
         "filename": "snap_3.wav",
         "url": "/sfx/snap_3.wav",
-        "durationMs": 195,
-        "bytes": 17242
-      }
-    ],
-    "shoot": [
-      {
-        "filename": "shoot_1.wav",
-        "url": "/sfx/shoot_1.wav",
-        "durationMs": 160,
-        "bytes": 14156
-      },
-      {
-        "filename": "shoot_2.wav",
-        "url": "/sfx/shoot_2.wav",
-        "durationMs": 160,
-        "bytes": 14156
-      },
-      {
-        "filename": "shoot_3.wav",
-        "url": "/sfx/shoot_3.wav",
-        "durationMs": 160,
-        "bytes": 14156
+        "durationMs": 130,
+        "bytes": 11510
       }
     ],
     "hit": [
       {
         "filename": "hit_1.wav",
         "url": "/sfx/hit_1.wav",
-        "durationMs": 130,
-        "bytes": 11510
+        "durationMs": 165,
+        "bytes": 14596
       },
       {
         "filename": "hit_2.wav",
         "url": "/sfx/hit_2.wav",
-        "durationMs": 130,
-        "bytes": 11510
+        "durationMs": 165,
+        "bytes": 14596
       }
     ],
     "kill": [
       {
         "filename": "kill_1.wav",
         "url": "/sfx/kill_1.wav",
+        "durationMs": 290,
+        "bytes": 25622
+      },
+      {
+        "filename": "kill_2.wav",
+        "url": "/sfx/kill_2.wav",
         "durationMs": 280,
         "bytes": 24740
       }
@@ -89,16 +109,24 @@
       {
         "filename": "powerup_1.wav",
         "url": "/sfx/powerup_1.wav",
-        "durationMs": 240,
-        "bytes": 21212
+        "durationMs": 340,
+        "bytes": 30032
       }
     ],
     "ui": [
       {
         "filename": "ui_click.wav",
         "url": "/sfx/ui_click.wav",
-        "durationMs": 45,
-        "bytes": 4012
+        "durationMs": 38,
+        "bytes": 3394
+      }
+    ],
+    "move": [
+      {
+        "filename": "move_1.wav",
+        "url": "/sfx/move_1.wav",
+        "durationMs": 75,
+        "bytes": 6658
       }
     ]
   }

@@ -56,16 +56,17 @@
     MAX_PLAYERS_PER_ROOM: 40,
     AFK_TIMEOUT_MS: 3 * 60 * 1000,      // 3 dakika (180 sn) hareketsiz kalan oyuncuyu askıya al
 
-    // Slime Mağazası & Kariyer Puan/Coin Kazanım Kurgusu (Zorlu & Dengeli Rekabet Ekonomisi)
-    STARTER_SLIME_POINTS: 120,          // Yeni oyunculara başlangıç Slime Puanı
-    STARTER_SLIME_COINS: 25,            // Yeni oyunculara başlangıç Slime Coin
-    REWARD_POINT_PER_CUT: 4,            // Her kemer kesimi (✂️) başına +4 Slime Puan
-    REWARD_POINT_PER_KILL: 12,          // Her rakip eleme (💀) başına +12 Slime Puan
-    REWARD_POINT_SCORE_RATIO: 0.03,     // Maç skoru üzerinden +%3 Slime Puan
-    REWARD_POINT_MATCH_COMPLETE: 10,    // Maç tamamlama ödülü +10 Slime Puan
-    REWARD_POINT_MATCH_WIN: 30,         // Maç şampiyonluğu ödülü +30 Slime Puan
-    REWARD_COIN_MATCH_WIN: 3,           // Maç şampiyonluğu ödülü +3 Slime Coin
-    REWARD_COIN_PER_3_KILLS: 1          // Her 3 elemede +1 Slime Coin
+    // Slime Mağazası & Kariyer Puan/Coin Kazanım Kurgusu (Zorlu & Uzun Vadeli Rekabet Ekonomisi - 1 Saatte Lv.5 Olunamaz)
+    STARTER_SLIME_POINTS: 60,           // Yeni oyunculara başlangıç Slime Puanı
+    STARTER_SLIME_COINS: 10,            // Yeni oyunculara başlangıç Slime Coin
+    REWARD_POINT_PER_CUT: 2,            // Her kemer kesimi (✂️) başına +2 Slime Puan
+    REWARD_POINT_PER_KILL: 6,           // Her rakip eleme (💀) başına +6 Slime Puan
+    REWARD_POINT_SCORE_RATIO: 0.01,     // Maç skoru üzerinden +%1 Slime Puan
+    REWARD_POINT_MATCH_COMPLETE: 5,     // Maç tamamlama ödülü +5 Slime Puan
+    REWARD_POINT_MATCH_WIN: 15,         // Maç şampiyonluğu ödülü +15 Slime Puan
+    REWARD_COIN_MATCH_WIN: 1,           // Maç şampiyonluğu ödülü +1 Slime Coin
+    REWARD_COIN_PER_3_KILLS: 1,         // Eleme serisi başına +1 Slime Coin
+    REWARD_COIN_KILL_THRESHOLD: 5       // Her 5 elemede +1 Slime Coin (zorlu coin kazanımı)
   };
 
   // Rastgele Verilen 3 Geçici Güçlendirme Türü (10 Saniye Süreli)
@@ -116,7 +117,7 @@
     { key: 'durability', label: 'Dayanıklılık', icon: '🛡️', color: '#38E54D' }
   ];
 
-  // Karakter Mücadele & Galibiyet Serisi Seviye Kurgusu
+  // Karakter Mücadele & Galibiyet Serisi Seviye Kurgusu (Ağırlaştırılmış Uzun Vadeli İlerleme)
   exports.CHARACTER_UPGRADE_CONFIG = {
     START_LEVEL: 1.0,
     LEVEL_STEP: 0.5,
@@ -125,15 +126,15 @@
     STAT_GAIN_PER_STEP: 0.14,
     STAT_GAIN_PER_STREAK_STEP: 0.25,
     STEP_COSTS: {
-      '1.0': 650,
-      '1.5': 1100,
-      '2.0': 1650,
-      '2.5': 2300,
-      '3.0': 3100,
-      '3.5': 4000,
-      '4.0': 5200,
-      '4.5': 6600,
-      '5.0': 8500
+      '1.0': 950,
+      '1.5': 1850,
+      '2.0': 3200,
+      '2.5': 5000,
+      '3.0': 7500,
+      '3.5': 11000,
+      '4.0': 15500,
+      '4.5': 21000,
+      '5.0': 28000
     }
   };
 

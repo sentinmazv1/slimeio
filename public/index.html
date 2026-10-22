@@ -946,6 +946,145 @@
       transition: left 0.25s ease, width 0.25s ease;
       z-index: 2;
     }
+    /* Lobi 3 Adımda Hızlı Rehber Şeridi */
+    .lobby-step-guide {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+    .lobby-step-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(13, 19, 34, 0.9);
+      border: 1px solid rgba(0, 245, 212, 0.35);
+      border-radius: 999px;
+      padding: 4px 11px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #E2E8F0;
+    }
+    .lobby-step-pill .step-num {
+      background: linear-gradient(135deg, #00F5D4, #00BBF9);
+      color: #080B12;
+      font-weight: 900;
+      font-size: 10px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    /* Görsel Maç Serisi (Galibiyet Serisi) Haritası */
+    .streak-visual-box {
+      background: linear-gradient(160deg, rgba(255, 107, 0, 0.1) 0%, rgba(15, 23, 42, 0.92) 100%);
+      border: 1.5px solid rgba(255, 184, 0, 0.42);
+      border-radius: 11px;
+      padding: 6px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .streak-nodes-row {
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      gap: 3px;
+      align-items: center;
+    }
+    .streak-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3px 1px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      font-size: 9px;
+      font-weight: 900;
+      color: #64748B;
+      transition: all 0.2s ease;
+    }
+    .streak-node .s-ico {
+      font-size: 13px;
+      line-height: 1.1;
+      filter: grayscale(0.85) opacity(0.55);
+    }
+    .streak-node.lit {
+      background: linear-gradient(145deg, rgba(255, 184, 0, 0.28), rgba(0, 245, 155, 0.22));
+      border-color: #FFE066;
+      color: #FFE066;
+      box-shadow: 0 0 10px rgba(255, 184, 0, 0.38);
+    }
+    .streak-node.lit .s-ico {
+      filter: none;
+      transform: scale(1.08);
+    }
+    .streak-node.next-target {
+      background: rgba(0, 245, 212, 0.14);
+      border: 1.5px dashed #00F5D4;
+      color: #00F5D4;
+      animation: streakPulse 1.4s infinite ease-in-out;
+    }
+    .streak-node.next-target .s-ico {
+      filter: none;
+    }
+    @keyframes streakPulse {
+      0%, 100% { box-shadow: 0 0 4px rgba(0, 245, 212, 0.25); transform: translateY(0); }
+      50% { box-shadow: 0 0 12px rgba(0, 245, 212, 0.65); transform: translateY(-1px); }
+    }
+    /* Boş Sahada Eğitim & Deneme (Tutorial) Üst Koç Paneli */
+    #tutorial-hud-panel {
+      position: fixed;
+      top: 54px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 680px;
+      max-width: 95vw;
+      background: rgba(10, 15, 28, 0.94);
+      backdrop-filter: blur(12px);
+      border: 2px solid #00F59B;
+      border-radius: 18px;
+      padding: 10px 14px;
+      z-index: 22;
+      display: none;
+      flex-direction: column;
+      gap: 7px;
+      box-shadow: 0 10px 35px rgba(0, 245, 155, 0.28);
+    }
+    .tut-steps-bar {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 5px;
+    }
+    .tut-step-pill {
+      padding: 4px 5px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 900;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #64748B;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tut-step-pill.done {
+      background: rgba(0, 245, 155, 0.2);
+      border-color: #00F59B;
+      color: #00F59B;
+    }
+    .tut-step-pill.current {
+      background: linear-gradient(135deg, rgba(0, 245, 212, 0.26), rgba(0, 187, 249, 0.26));
+      border: 1.5px solid #00F5D4;
+      color: #FFFFFF;
+      box-shadow: 0 0 12px rgba(0, 245, 212, 0.4);
+    }
     .shop-price-row {
       display: flex;
       gap: 6px;
@@ -1330,9 +1469,37 @@
     </button>
   </div>
 
+  <!-- Boş Sahada Eğitim & Deneme (Tutorial) Koç Paneli -->
+  <div id="tutorial-hud-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:7px;">
+        <span style="background:#00F59B; color:#080B12; font-weight:900; font-size:10.5px; padding:2px 8px; border-radius:999px;">🎓 EĞİTİM &amp; BOŞ SAHA</span>
+        <strong id="tutorial-step-title" style="color:#FFFFFF; font-size:13.5px;">Adım 1/5: Bir Kayaya Tutun ve Doğ!</strong>
+      </div>
+      <div style="display:flex; gap:5px; flex-wrap:wrap;">
+        <button id="tut-spawn-dummy-btn" type="button" style="background:rgba(255,42,133,0.2); color:#FF70A6; border:1px solid #FF2A85; border-radius:8px; padding:3px 8px; font-size:10.5px; font-weight:900; cursor:pointer;">🎯 Kukla Ekle</button>
+        <button id="tut-spawn-powerup-btn" type="button" style="background:rgba(255,224,102,0.18); color:#FFE066; border:1px solid #FFE066; border-radius:8px; padding:3px 8px; font-size:10.5px; font-weight:900; cursor:pointer;">⚡ Güç Kutusu</button>
+        <button id="tut-give-belts-btn" type="button" style="background:rgba(0,245,212,0.18); color:#00F5D4; border:1px solid #00F5D4; border-radius:8px; padding:3px 8px; font-size:10.5px; font-weight:900; cursor:pointer;">🔗 +4 Kemer</button>
+        <button id="tut-exit-to-match-btn" type="button" style="background:linear-gradient(135deg,#FF2A85,#FF6B00); color:#FFFFFF; border:none; border-radius:8px; padding:4px 10px; font-size:11px; font-weight:900; cursor:pointer;">🚀 Gerçek Maça Geç</button>
+        <button id="tut-exit-lobby-btn" type="button" style="background:rgba(255,255,255,0.12); color:#E2E8F0; border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:3px 8px; font-size:10.5px; font-weight:800; cursor:pointer;">🏠 Lobi</button>
+      </div>
+    </div>
+    <div id="tutorial-step-desc" style="font-size:12px; color:#E2E8F0; font-weight:700; line-height:1.35; background:rgba(0,245,212,0.08); border-left:3px solid #00F5D4; padding:5px 9px; border-radius:6px;">
+      Haritadaki parlak neon kayalardan birine <b>Sol Tıkla / Dokun</b> (veya <b>Space</b> bas) ve ilk kemerini bağlayarak sahaya doğ!
+    </div>
+    <div id="tutorial-steps-bar" class="tut-steps-bar">
+      <div class="tut-step-pill current" data-step="1">1. Duvara Doğ 🎯</div>
+      <div class="tut-step-pill" data-step="2">2. 3 Kemer Bağla 🔗</div>
+      <div class="tut-step-pill" data-step="3">3. Ok Fırlat 🏹</div>
+      <div class="tut-step-pill" data-step="4">4. Kemer Kopar ✂️</div>
+      <div class="tut-step-pill" data-step="5">5. Kuklayı Ele 💀</div>
+    </div>
+  </div>
+
   <!-- Alt Oyuncu Barı -->
   <div id="bottom-menu-bar">
-    <button id="open-lobby-btn">🏠 Lobi<span class="btn-desk-only"> / Mod Seç</span></button>
+    <button id="open-lobby-btn">🏠 Lobi<span class="btn-desk-only"> / Menü</span></button>
+    <button id="open-tutorial-bottom-btn" style="background:rgba(0,245,155,0.2); border-color:#00F59B; color:#00F59B;">🎓 Eğitim<span class="btn-desk-only"> (Boş Saha)</span></button>
     <button id="open-shop-bottom-btn" style="background:linear-gradient(135deg,rgba(255,42,133,0.28),rgba(255,184,0,0.28)); border-color:#FFB800; color:#FFE066;">🛒 Mağaza</button>
     <button id="open-friends-btn">👥 <span class="btn-desk-only">Arkadaşlar (</span><span id="my-friend-count-badge">0</span><span class="btn-desk-only">)</span></button>
     <button id="open-my-profile-btn">👤<span class="btn-desk-only"> Profilim</span></button>
@@ -1344,35 +1511,42 @@
   <div id="lobby-modal" class="modal-backdrop">
     <div class="lobby-container">
       <div class="lobby-header">
-        <div style="display:flex; justify-content:center; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div style="display:flex; justify-content:center; align-items:center; gap:8px; flex-wrap:wrap;">
           <h1>🟢 SLIME.IO — SAVAŞ ARENASI</h1>
-          <button id="open-shop-top-btn" type="button" style="background:linear-gradient(135deg,#FF2A85,#FFB800); color:#080B12; border:2px solid #FFFFFF; border-radius:999px; padding:6px 16px; font-size:12.5px; font-weight:900; cursor:pointer; box-shadow:0 0 20px rgba(255,184,0,0.5);">
-            🛒 SLIME MAĞAZASI (50 EŞYA)
+          <button id="start-tutorial-top-btn" type="button" style="background:linear-gradient(135deg,#00F59B,#00BBF9); color:#080B12; border:2px solid #FFFFFF; border-radius:999px; padding:6px 15px; font-size:12px; font-weight:900; cursor:pointer; box-shadow:0 0 18px rgba(0,245,155,0.5);">
+            🎓 BOŞ SAHADA DENE (EĞİTİM)
           </button>
-          <button id="share-game-btn" type="button" style="background:rgba(0,245,155,0.16); color:#00F59B; border:1.5px solid #00F59B; border-radius:999px; padding:6px 14px; font-size:12px; font-weight:900; cursor:pointer;">
-            🔗 Arkadaşını Çağır / Linki Paylaş
+          <button id="open-shop-top-btn" type="button" style="background:linear-gradient(135deg,#FF2A85,#FFB800); color:#080B12; border:2px solid #FFFFFF; border-radius:999px; padding:6px 15px; font-size:12px; font-weight:900; cursor:pointer; box-shadow:0 0 20px rgba(255,184,0,0.5);">
+            🛒 MAĞAZA &amp; CEPHANELİK (50 EŞYA)
+          </button>
+          <button id="share-game-btn" type="button" style="background:rgba(0,245,155,0.16); color:#00F59B; border:1.5px solid #00F59B; border-radius:999px; padding:6px 13px; font-size:11.5px; font-weight:900; cursor:pointer;">
+            🔗 Arkadaşını Çağır
           </button>
         </div>
-        <p>İsmini gir, maçlarda kemer kesip (✂️ +4 💎) rakip eleyerek (💀 +12 💎) Maç Puanı biriktir, karakterini güçlendir ve galibiyet serisiyle Sv. 10.0'a ulaş!</p>
+        <div class="lobby-step-guide">
+          <span class="lobby-step-pill"><span class="step-num">1</span> 👤 Adını Yaz veya Üye Ol</span>
+          <span class="lobby-step-pill"><span class="step-num">2</span> ⚔️ Karakterini Seç &amp; Güçlendir</span>
+          <span class="lobby-step-pill"><span class="step-num">3</span> 🎓 Boş Sahada Dene veya 🚀 Maça Katıl!</span>
+        </div>
       </div>
 
       <div class="lobby-grid">
         <!-- SOL KOLON: GİRİŞ, HIZLI ÜYELİK & KARİYER / PUAN ÖZETİ -->
         <div class="lobby-panel">
-          <h2>👤 1. Oyuncu Kimliği & Kariyer</h2>
+          <h2>👤 1. Oyuncu Kimliği &amp; Cüzdan</h2>
 
           <!-- Giriş Yapılmamışsa Gösterilen Sekmeler -->
           <div id="auth-guest-or-member-box">
             <div class="auth-tabs">
-              <button class="auth-tab active" data-tab="guest">⚡ Misafir</button>
+              <button class="auth-tab active" data-tab="guest">⚡ Hızlı Oyna</button>
               <button class="auth-tab" data-tab="login">🔑 Giriş Yap</button>
-              <button class="auth-tab" data-tab="register">✨ Hızlı Üye Ol</button>
+              <button class="auth-tab" data-tab="register">✨ Üye Ol (Kayıt)</button>
             </div>
 
             <!-- Misafir Sekmesi -->
             <div id="tab-guest" style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
               <div class="form-field">
-                <label>Slime Takma Adın (Zorunlu)</label>
+                <label>Slime Takma Adın</label>
                 <div style="display:flex; gap:6px;">
                   <input id="guest-name-input" type="text" placeholder="Örn: NeonAvcı..." maxlength="14" style="flex:1;" />
                   <button id="guest-save-name-btn" type="button" style="background:rgba(0,245,212,0.18); color:#00F5D4; border:1.5px solid #00F5D4; border-radius:9px; padding:0 11px; font-size:11.5px; font-weight:900; cursor:pointer; white-space:nowrap;">
@@ -1380,8 +1554,8 @@
                   </button>
                 </div>
               </div>
-              <div style="font-size:11px; color:#94A3B8; background:rgba(255,184,0,0.1); border:1px solid rgba(255,184,0,0.35); padding:8px; border-radius:10px;">
-                💡 <strong>Bilgi:</strong> Kazandığın Slime Puanları ve mağaza eşyalarını kalıcı olarak buluta kaydetmek ve <strong>Takım Savaşlarına (2v2, 4v4, 8v8)</strong> girmek için yukarıdan <em>Hızlı Üye Ol</em>!
+              <div style="font-size:11px; color:#CBD5E1; background:rgba(0,245,212,0.08); border:1px solid rgba(0,245,212,0.3); padding:8px; border-radius:10px; line-height:1.4;">
+                💡 <strong>İpucu:</strong> İlk kez oynuyorsan sağdaki <b>"🎓 Boş Sahada Dene"</b> butonuyla engelsiz antrenman yapabilir, hesabını buluta kaydetmek için <b>Üye Ol</b> sekmesini kullanabilirsin!
               </div>
             </div>
 
@@ -1442,20 +1616,20 @@
             <button id="logout-btn" style="background:rgba(255,42,133,0.2); color:#FF70A6; border:1px solid #FF2A85; padding:5px; border-radius:8px; font-size:11px; font-weight:800; cursor:pointer;">Çıkış Yap</button>
           </div>
 
-          <!-- LOBİ KARİYER, KESME, ÖLDÜRME VE CÜZDAN PANELİ (Hem Üye Hem Misafir İçin Canlı) -->
+          <!-- LOBİ KARİYER, KESME, ÖLDÜRME VE CÜZDAN PANELİ -->
           <div style="margin-top:auto; background:linear-gradient(145deg,rgba(0,245,212,0.09),rgba(155,93,229,0.12)); border:1.5px solid rgba(0,245,212,0.4); border-radius:14px; padding:10px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <span style="font-size:11.5px; font-weight:900; color:#F8FAFC;">📊 Savaşçı Kariyer &amp; Cüzdan</span>
+              <span style="font-size:11.5px; font-weight:900; color:#F8FAFC;">📊 Savaşçı Cüzdanı &amp; Kariyer</span>
               <span id="lobby-equipped-title-badge" style="font-size:10.5px; font-weight:900; color:#FFE066;">⭐ Çaylak Slime</span>
             </div>
             <div style="display:flex; gap:6px; margin-bottom:6px;">
-              <div style="flex:1; background:rgba(0,245,212,0.15); border:1px solid #00F5D4; border-radius:9px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:10.5px; font-weight:800; color:#CBD5E1;">💎 Slime Puan:</span>
-                <span id="lobby-wallet-points" style="font-size:13px; font-weight:900; color:#00F5D4;">120</span>
+              <div style="flex:1; background:rgba(0,245,212,0.15); border:1px solid #00F5D4; border-radius:9px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center;" title="Kemer keserek ve rakip eleyerek kazanılır">
+                <span style="font-size:10.5px; font-weight:800; color:#CBD5E1;">💎 Maç Puanı:</span>
+                <span id="lobby-wallet-points" style="font-size:13px; font-weight:900; color:#00F5D4;">60</span>
               </div>
-              <div style="flex:1; background:rgba(255,184,0,0.15); border:1px solid #FFB800; border-radius:9px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center;">
+              <div style="flex:1; background:rgba(255,184,0,0.15); border:1px solid #FFB800; border-radius:9px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center;" title="Sadece maç şampiyonluğu ve 5'li eleme serileriyle kazanılan nadir para">
                 <span style="font-size:10.5px; font-weight:800; color:#CBD5E1;">🪙 Coin:</span>
-                <span id="lobby-wallet-coins" style="font-size:13px; font-weight:900; color:#FFE066;">25</span>
+                <span id="lobby-wallet-coins" style="font-size:13px; font-weight:900; color:#FFE066;">10</span>
               </div>
             </div>
             <div class="career-stats-grid">
@@ -1465,7 +1639,7 @@
               </div>
               <div class="career-stat-box">
                 <div id="lobby-stat-kills" class="career-stat-val" style="color:#FF2A85;">0</div>
-                <div class="career-stat-lbl">💀 Öldürme</div>
+                <div class="career-stat-lbl">💀 Eleme</div>
               </div>
               <div class="career-stat-box">
                 <div id="lobby-stat-score" class="career-stat-val" style="color:#FFE066;">0</div>
@@ -1475,19 +1649,19 @@
           </div>
         </div>
 
-        <!-- ORTA KOLON: SLIME RENGİ, KARAKTER ÖNİZLEME, MÜCADELE GÜCÜ & MAĞAZA -->
+        <!-- ORTA KOLON: SLIME RENGİ, KARAKTER ÖNİZLEME, GÖRSEL MAÇ SERİSİ & GÜÇLENDİRME -->
         <div class="lobby-panel">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h2>⚔️ 2. Karakterim &amp; Mücadele Ruhu</h2>
+            <h2>⚔️ 2. Savaşçı Seçimi &amp; Maç Serisi</h2>
             <span id="skin-lock-badge" style="font-size:10.5px; color:#FFB800; font-weight:800;">⚡ 10 Savaşçı Sınıfı</span>
           </div>
 
           <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; background:#080B12; border-radius:14px; padding:6px 8px; border:1px solid rgba(255,255,255,0.08); position:relative;">
-            <canvas id="skinPreviewCanvas" width="190" height="105"></canvas>
+            <canvas id="skinPreviewCanvas" width="190" height="98"></canvas>
             <div id="lobby-preview-loadout-tags" style="font-size:10.5px; color:#00F5D4; font-weight:800; text-align:center;"></div>
           </div>
 
-          <!-- KARAKTER ÖZELLİKLERİ, 5 İSTATİSTİK ÇUBUĞU, MAÇ PUANI GÜÇLENDİRME VE GALİBİYET SERİSİ (1.0 ➔ 10.0) -->
+          <!-- KARAKTER ÖZELLİKLERİ, GÖRSEL MAÇ SERİSİ YOLU VE 5 İSTATİSTİK ÇUBUĞU -->
           <div id="lobby-char-stats-card" class="char-stats-card">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
               <div id="lobby-char-name-role" style="font-size:12px; font-weight:900; color:#FFFFFF;">👑 Kral Tacı • <span style="color:#00F5D4;">Dengeli Lider</span></div>
@@ -1500,53 +1674,74 @@
               👑 Dengeli Güç &amp; +%5 Kemer Puanı
             </div>
 
-            <!-- Galibiyet Serisi & Seviye Barı (1.0 ➔ 10.0) -->
-            <div style="display:flex; flex-direction:column; gap:2px;">
-              <div style="display:flex; justify-content:space-between; font-size:9.5px; font-weight:800; color:#94A3B8;">
-                <span>Mücadele Seviyesi: <strong id="lobby-char-lv-text" style="color:#00F59B;">Sv. 1.0 / 10.0</strong></span>
-                <span id="lobby-char-streak-badge" style="color:#FFE066;">🔥 Galibiyet Serisi: 0 Maç (+0.0 Sv)</span>
+            <!-- GÖRSEL MAÇ SERİSİ HARİTASI (9 Kademeli Galibiyet Serisi Görseli) -->
+            <div class="streak-visual-box">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:9.5px; font-weight:900;">
+                <span style="color:#FFE066;">🔥 GÖRSEL GALİBİYET SERİSİ (+0.5 Sv / Zafer)</span>
+                <span id="lobby-char-streak-badge" style="color:#00F59B;">Aktif: 0 Seri</span>
               </div>
-              <div class="char-stat-track" style="height:9px;">
+              <div id="lobby-visual-streak-track" class="streak-nodes-row"></div>
+              <div style="display:flex; justify-content:space-between; font-size:9px; font-weight:800; color:#94A3B8;">
+                <span>Toplam Seviye: <strong id="lobby-char-lv-text" style="color:#00F5D4;">Sv. 1.0 / 10.0</strong></span>
+                <span id="lobby-best-streak-text" style="color:#CBD5E1;">🏅 Rekor Seri: 0 Maç</span>
+              </div>
+              <div class="char-stat-track" style="height:7px;">
                 <div id="lobby-char-lv-bar" class="char-stat-fill-base" style="width:10%; background:linear-gradient(90deg,#00F59B,#00F5D4,#FFE066);"></div>
               </div>
             </div>
 
             <!-- 5 Rekabetçi İstatistik Çubuğu (Hız, Atış, Manevra, Kemer, Dayanıklılık) -->
-            <div id="lobby-char-stat-bars" style="display:flex; flex-direction:column; gap:4px; margin-top:2px;"></div>
+            <div id="lobby-char-stat-bars" style="display:flex; flex-direction:column; gap:3.5px; margin-top:1px;"></div>
 
             <!-- Maç Puanı ile Seviye Güçlendirme Butonu -->
             <button id="upgrade-char-level-btn" type="button" class="upgrade-char-btn">
               <span>⬆️ Seviye Güçlendir (+0.5 Sv)</span>
-              <span id="upgrade-char-cost-badge" style="background:rgba(8,11,18,0.85); color:#00F5D4; padding:2px 8px; border-radius:999px; font-size:10.5px;">650 💎</span>
+              <span id="upgrade-char-cost-badge" style="background:rgba(8,11,18,0.85); color:#00F5D4; padding:2px 8px; border-radius:999px; font-size:10.5px;">950 💎</span>
             </button>
 
             <!-- Mücadele Ruhu & Galibiyet Serisi Bilgi Kutusu -->
-            <div id="upgrade-char-lock-hint" style="font-size:10px; color:#E2E8F0; background:rgba(0,245,212,0.08); border:1px solid rgba(0,245,212,0.28); border-radius:8px; padding:5px 8px; font-weight:800; text-align:center; line-height:1.3;">
-              ⚔️ <strong style="color:#00F59B;">Mücadele Ruhu:</strong> Maç Puanı (💎) veya arka arkaya galibiyet serisi (<b style="color:#FFE066;">+0.5 Sv</b>) ile <b>Sv. 10.0</b>'a ilerle! Seri bozulursa seri bonusu sıfırlanır.
+            <div id="upgrade-char-lock-hint" style="font-size:9.5px; color:#E2E8F0; background:rgba(0,245,212,0.08); border:1px solid rgba(0,245,212,0.28); border-radius:8px; padding:4px 7px; font-weight:800; text-align:center; line-height:1.25;">
+              ⚔️ <strong style="color:#00F59B;">Mücadele Ruhu:</strong> Maç Puanı (💎) ve üst üste galibiyet serileri (<b style="color:#FFE066;">+0.5 Sv</b>) ile <b>Sv. 10.0</b>'a ilerle! Maç kaybedersen seri halkaları baştan başlar.
             </div>
           </div>
 
-          <button id="open-shop-btn" type="button" style="width:100%; background:linear-gradient(135deg, #FF2A85 0%, #9B5DE5 50%, #00BBF9 100%); color:#FFFFFF; border:1.5px solid #FFE066; border-radius:12px; padding:9px; font-size:12.5px; font-weight:900; cursor:pointer; box-shadow:0 0 22px rgba(255,42,133,0.45);">
+          <button id="open-shop-btn" type="button" style="width:100%; background:linear-gradient(135deg, #FF2A85 0%, #9B5DE5 50%, #00BBF9 100%); color:#FFFFFF; border:1.5px solid #FFE066; border-radius:12px; padding:8px; font-size:12px; font-weight:900; cursor:pointer; box-shadow:0 0 22px rgba(255,42,133,0.45);">
             🛒 SLIME MAĞAZASI &amp; EKİPMAN GÜÇLERİ (50 EŞYA)
           </button>
 
           <div style="font-size:11px; color:#94A3B8; font-weight:700;">Slime Rengi Seç:</div>
           <div id="color-palette-container" class="color-palette"></div>
 
-          <div style="font-size:11px; color:#94A3B8; font-weight:700;">10 Temel Savaşçı Karakter:</div>
+          <div style="font-size:11px; color:#94A3B8; font-weight:700;">10 Temel Savaşçı Sınıfı (Tıkla &amp; Seç):</div>
           <div id="skins-grid-container" class="skins-grid" style="touch-action:pan-y; -webkit-overflow-scrolling:touch;"></div>
         </div>
 
-        <!-- SAĞ KOLON: OYUN MODU & TAKIM ODALARI -->
+        <!-- SAĞ KOLON: EĞİTİM SAHASI, OYUN MODU & BAŞLAT -->
         <div class="lobby-panel">
-          <h2>🏟️ 3. Oyun Modu Seç</h2>
-          <div id="modes-list-container" style="display:flex; flex-direction:column; gap:8px;"></div>
+          <h2>🏟️ 3. Antrenman &amp; Oyun Modu Seç</h2>
 
-          <div style="font-size:11px; color:#CBD5E1; background:rgba(0,245,212,0.08); border:1px solid rgba(0,245,212,0.3); border-radius:10px; padding:8px 10px; line-height:1.45;">
-            🎮 <strong>Maç Puanı (💎) &amp; Galibiyet Serisi:</strong><br/>
-            • <strong>Kemer Kesme (✂️):</strong> +4 Maç Puanı<br/>
-            • <strong>Rakip Eleme (💀):</strong> +12 Maç Puanı (+Her 3 elemede 1 🪙)<br/>
-            • <strong>Zafer &amp; Seri:</strong> +40 Maç Puanı, +3 🪙 ve <strong>+0.5 Seviye Serisi</strong>!
+          <!-- YENİ OYUNCULAR İÇİN BOŞ SAHADA DENEME / TUTORIAL KARTI -->
+          <div style="background:linear-gradient(145deg, rgba(0,245,155,0.16), rgba(0,187,249,0.14)); border:2px solid #00F59B; border-radius:14px; padding:9px 11px; display:flex; flex-direction:column; gap:6px; box-shadow:0 0 20px rgba(0,245,155,0.2);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:12.5px; font-weight:900; color:#00F59B;">🎓 Yeni Oyuncu Eğitim &amp; Boş Saha</span>
+              <span style="background:#00F59B; color:#080B12; font-size:9.5px; font-weight:900; padding:2px 7px; border-radius:999px;">ÖNERİLEN</span>
+            </div>
+            <div style="font-size:11px; color:#E2E8F0; line-height:1.35;">
+              Rakip olmadan <b>boş sahada</b> duvara tutunmayı, kemer toplamayı, ok atmayı ve hedef kuklası patlatmayı 5 adımda öğren!
+            </div>
+            <button id="start-tutorial-card-btn" type="button" style="width:100%; background:linear-gradient(135deg,#00F59B,#00BBF9); color:#080B12; border:none; border-radius:10px; padding:8px 10px; font-size:12.5px; font-weight:900; cursor:pointer; box-shadow:0 0 14px rgba(0,245,155,0.35);">
+              🎯 BOŞ SAHADA DENE (EĞİTİM BAŞLAT)
+            </button>
+          </div>
+
+          <div style="font-size:11px; font-weight:900; color:#00F5D4; margin-top:2px;">⚔️ Canlı Online Savaş Odaları:</div>
+          <div id="modes-list-container" style="display:flex; flex-direction:column; gap:7px;"></div>
+
+          <div style="font-size:10.5px; color:#CBD5E1; background:rgba(0,245,212,0.07); border:1px solid rgba(0,245,212,0.25); border-radius:10px; padding:7px 9px; line-height:1.4;">
+            🎮 <strong>Zorlu Mücadele &amp; Ödül Dengesi:</strong><br/>
+            • <strong>Kemer Kesme (✂️):</strong> +2 💎 | <strong>Eleme (💀):</strong> +6 💎<br/>
+            • <strong>Nadir Coin (🪙):</strong> Her 5 Elemede +1 🪙, Maç Zaferinde +1 🪙<br/>
+            • <strong>Galibiyet Serisi (🔥):</strong> Her üst üste zaferde <strong>+0.5 Seviye</strong>!
           </div>
 
           <div style="display:flex; gap:8px; margin-top:auto;">
@@ -1767,9 +1962,9 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/vendor/matter.min.js"></script>
-  <script src="/shared/constants.js?v=5.2"></script>
-  <script src="/shared/geometry.js?v=5.2"></script>
-  <script src="/js/audio.js?v=5.2"></script>
-  <script src="/js/client.js?v=5.2"></script>
+  <script src="/shared/constants.js?v=5.5"></script>
+  <script src="/shared/geometry.js?v=5.5"></script>
+  <script src="/js/audio.js?v=5.5"></script>
+  <script src="/js/client.js?v=5.5"></script>
 </body>
 </html>

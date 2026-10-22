@@ -266,14 +266,14 @@ function ensureUserEconomy(u) {
   if (!Number.isFinite(Number(u.stats.bestWinStreak))) u.stats.bestWinStreak = 0;
   if (typeof u.slimePoints !== 'number' || !Number.isFinite(u.slimePoints)) {
     const legacyBonus =
-      (u.stats.totalCuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 4) +
-      (u.stats.totalKills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 12) +
-      Math.round((u.stats.totalScore || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.03));
-    u.slimePoints = (GAME_CONFIG.STARTER_SLIME_POINTS || 120) + legacyBonus;
+      (u.stats.totalCuts || 0) * (GAME_CONFIG.REWARD_POINT_PER_CUT || 2) +
+      (u.stats.totalKills || 0) * (GAME_CONFIG.REWARD_POINT_PER_KILL || 6) +
+      Math.round((u.stats.totalScore || 0) * (GAME_CONFIG.REWARD_POINT_SCORE_RATIO || 0.01));
+    u.slimePoints = (GAME_CONFIG.STARTER_SLIME_POINTS || 60) + legacyBonus;
   }
   if (typeof u.slimeCoins !== 'number' || !Number.isFinite(u.slimeCoins)) {
-    const winCoinBonus = (u.stats.wins || 0) * (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 3);
-    u.slimeCoins = (GAME_CONFIG.STARTER_SLIME_COINS || 25) + winCoinBonus;
+    const winCoinBonus = (u.stats.wins || 0) * (GAME_CONFIG.REWARD_COIN_MATCH_WIN || 1);
+    u.slimeCoins = (GAME_CONFIG.STARTER_SLIME_COINS || 10) + winCoinBonus;
   }
   if (!Array.isArray(u.ownedItems)) {
     u.ownedItems = [];
@@ -340,8 +340,8 @@ function registerUser({ fullName, username, password, color, skin }) {
     baseCharacter: chosenBaseChar,
     characterLevels: {},
     friends: prevFriends,
-    slimePoints: GAME_CONFIG.STARTER_SLIME_POINTS || 120,
-    slimeCoins: GAME_CONFIG.STARTER_SLIME_COINS || 25,
+    slimePoints: GAME_CONFIG.STARTER_SLIME_POINTS || 60,
+    slimeCoins: GAME_CONFIG.STARTER_SLIME_COINS || 10,
     ownedItems: [],
     equipped: {
       hat: null,
@@ -431,8 +431,8 @@ function restoreOrLoginUser({ username, password, fullName, displayName, color, 
       : (BASIC_10_SKINS.some((s) => s.id === validSkin) ? validSkin : 'crown'),
     characterLevels: characterLevels && typeof characterLevels === 'object' ? { ...characterLevels } : {},
     friends: Array.isArray(friends) ? friends.map((f) => normalizeUsername(f)).filter(Boolean) : [],
-    slimePoints: typeof slimePoints === 'number' ? slimePoints : (GAME_CONFIG.STARTER_SLIME_POINTS || 120),
-    slimeCoins: typeof slimeCoins === 'number' ? slimeCoins : (GAME_CONFIG.STARTER_SLIME_COINS || 25),
+    slimePoints: typeof slimePoints === 'number' ? slimePoints : (GAME_CONFIG.STARTER_SLIME_POINTS || 60),
+    slimeCoins: typeof slimeCoins === 'number' ? slimeCoins : (GAME_CONFIG.STARTER_SLIME_COINS || 10),
     ownedItems: Array.isArray(ownedItems) ? ownedItems.filter((id) => typeof id === 'string') : [],
     equipped: equipped && typeof equipped === 'object'
       ? {
