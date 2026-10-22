@@ -2797,13 +2797,15 @@
     }
   });
 
-  socket.on('bandAttached', ({ playerId }) => {
+  socket.on('bandAttached', ({ playerId, band }) => {
     const p = renderPlayers.get(playerId);
     if (playerId === selfId) {
       window.soundManager.playWallAttachScream();
       if (p) p.impactPulse = 1.0;
-    } else if (p && followedPlayerId === playerId) {
-      window.soundManager.playWallAttachScream(p.renderX, p.renderY, camera.x, camera.y);
+    } else if (p) {
+      const ax = (band && typeof band.anchorX === 'number') ? band.anchorX : p.renderX;
+      const ay = (band && typeof band.anchorY === 'number') ? band.anchorY : p.renderY;
+      window.soundManager.playWallAttachScream(ax, ay, camera.x, camera.y);
       p.impactPulse = 1.0;
     }
   });
@@ -2823,8 +2825,12 @@
     splatEffects.push({ x, y, color: color || '#00F5D4', radius: 7, alpha: 1.0 });
   });
 
-  socket.on('bandSnapped', ({ snapX, snapY }) => {
-    window.soundManager.playBandSnap(snapX, snapY, camera.x, camera.y);
+  socket.on('bandSnapped', ({ ownerId, cutterId, snapX, snapY }) => {
+    if (ownerId === selfId || cutterId === selfId) {
+      window.soundManager.playBandSnap();
+    } else {
+      window.soundManager.playBandSnap(snapX, snapY, camera.x, camera.y);
+    }
     if (snapEffects.length >= 20) snapEffects.shift();
     snapEffects.push({ x: snapX, y: snapY, radius: 8, alpha: 1.0 });
   });
